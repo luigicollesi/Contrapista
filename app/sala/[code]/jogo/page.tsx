@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   CASE_LOCATIONS,
@@ -120,6 +121,10 @@ export default function GamePage() {
       return readDismissedEventIds(code, readUserId(code));
     },
   );
+  const [lockedTimedEvent, setLockedTimedEvent] = useState<RoomEvent | null>(
+    null,
+  );
+  const [queuedEvent, setQueuedEvent] = useState<RoomEvent | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -141,6 +146,24 @@ export default function GamePage() {
 
         if (!isActive) {
           return;
+        }
+
+        const nextEvent = roomData.room.activeevent;
+        const isLockedOwnClue =
+          lockedTimedEvent?.type === "clue" &&
+          lockedTimedEvent.actorId === userId;
+
+        if (nextEvent && !dismissedEventIds.has(nextEvent.id)) {
+          if (isLockedOwnClue && nextEvent.id !== lockedTimedEvent?.id) {
+            setQueuedEvent((current) => current ?? nextEvent);
+          } else if (
+            nextEvent.type === "clue" &&
+            nextEvent.actorId === userId &&
+            nextEvent.id !== lockedTimedEvent?.id
+          ) {
+            setLockedTimedEvent(nextEvent);
+            setQueuedEvent(null);
+          }
         }
 
         setRoom(roomData.room);
@@ -190,20 +213,30 @@ export default function GamePage() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [code, gameCase, router]);
+  }, [code, dismissedEventIds, gameCase, lockedTimedEvent, router, userId]);
 
   const event = room?.activeevent ?? null;
+  const visibleEvent = lockedTimedEvent ?? queuedEvent ?? event;
   const modalEvent =
-    event && !dismissedEventIds.has(event.id) ? event : null;
+    visibleEvent && !dismissedEventIds.has(visibleEvent.id)
+      ? visibleEvent
+      : null;
+  const isMissingGame =
+    error === "Sala não encontrada." || error === "Caso não encontrado.";
 
-  function dismissEvent(eventId: string) {
+  const dismissEvent = useCallback((eventId: string) => {
     setDismissedEventIds((current) => {
       const next = new Set(current);
       next.add(eventId);
       saveDismissedEventIds(code, userId, next);
       return next;
     });
-  }
+
+    setQueuedEvent((current) => (current?.id === eventId ? null : current));
+    setLockedTimedEvent((current) =>
+      current?.id === eventId ? null : current,
+    );
+  }, [code, userId]);
 
   async function publishEvent(body: Record<string, unknown>) {
     if (!userId) {
@@ -238,7 +271,12 @@ export default function GamePage() {
     setError("");
 
     try {
-      await publishEvent({ type: "clue", clueKey });
+      const event = await publishEvent({ type: "clue", clueKey });
+
+      if (event?.type === "clue" && event.actorId === userId) {
+        setLockedTimedEvent(event);
+        setQueuedEvent(null);
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -418,6 +456,36 @@ export default function GamePage() {
     );
   }
 
+  if (isMissingGame) {
+    return (
+      <main className="sy-theme relative flex min-h-screen items-center justify-center overflow-hidden bg-[#10130f] px-6 py-10 text-stone-50">
+        <div className="absolute inset-0 opacity-20">
+          <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
+        </div>
+        <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[#8b1e1e]/35 to-transparent" />
+
+        <section className="relative w-full max-w-xl rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-8 text-center shadow-2xl shadow-black/30">
+          <p className="text-xs font-bold uppercase tracking-[0.32em] text-[#d7b861]">
+            Sala {code}
+          </p>
+          <h1 className="mt-4 font-serif text-5xl font-bold text-[#fff3cf]">
+            Jogo não encontrado
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-base leading-7 text-stone-300">
+            A sala ou o caso ativo não está mais disponível. Volte ao início
+            para criar uma nova sala ou entrar com outro código.
+          </p>
+          <Link
+            className="mt-7 inline-flex h-12 items-center justify-center rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+            href="/"
+          >
+            Voltar ao início
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-6 py-8 text-stone-50">
       <div className="absolute inset-0 opacity-20">
@@ -559,6 +627,8 @@ function TimedClueModal({
   onDone: () => void;
 }) {
   const [seconds, setSeconds] = useState(30);
+  const progress = (seconds / 30) * 100;
+  const isUrgent = seconds <= 10;
 
   useEffect(() => {
     if (seconds <= 0) {
@@ -584,11 +654,71 @@ function TimedClueModal({
             Dica aberta
           </h2>
         </div>
-        <span className="rounded-full bg-[#d7b861] px-3 py-1 font-mono text-sm font-bold text-[#17130d]">
-          {seconds}s
-        </span>
+        <button
+          aria-label="Fechar dica"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+          onClick={onDone}
+          type="button"
+        >
+          X
+        </button>
       </div>
+
+      <div
+        className={`mt-6 rounded-lg border p-4 ${
+          isUrgent
+            ? "border-red-400/50 bg-red-950/35"
+            : "border-[#d7b861]/35 bg-[#0f120e]"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-5">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+              Tempo de leitura
+            </p>
+            <p className="mt-1 text-sm text-stone-400">
+              O modal fecha quando o contador zerar.
+            </p>
+          </div>
+          <div
+            className={`clue-timer-pulse flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 font-mono text-3xl font-black ${
+              isUrgent
+                ? "border-red-400 bg-red-600 text-white shadow-[0_0_28px_rgba(248,113,113,.45)]"
+                : "border-[#d7b861] bg-[#d7b861] text-[#17130d] shadow-[0_0_24px_rgba(215,184,97,.35)]"
+            }`}
+            key={seconds}
+          >
+            {seconds}
+          </div>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-black/35">
+          <div
+            className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
+              isUrgent ? "bg-red-400" : "bg-[#d7b861]"
+            }`}
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
       <p className="mt-5 text-lg leading-8 text-stone-300">{clueText}</p>
+      <style jsx>{`
+        @keyframes clue-timer-pulse {
+          0% {
+            transform: scale(1);
+          }
+          35% {
+            transform: scale(1.14);
+          }
+          100% {
+            transform: scale(1);
+          }
+        }
+
+        .clue-timer-pulse {
+          animation: clue-timer-pulse 0.45s ease-out;
+        }
+      `}</style>
     </>
   );
 }
