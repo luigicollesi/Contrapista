@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scotland Yard",
-  description: "Lobby simples para salas temporárias.",
+  title: "Scotland Yard | Ecos de Baker Street",
+  description:
+    "Entre névoa, lampiões e segredos, cada silêncio deixa uma pista.",
 };
 
 export default function RootLayout({
