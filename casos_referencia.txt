@@ -1,0 +1,40 @@
+```json
+{
+  "caseText": "O CASO DO LIVRO DE BRONZE\n\nÀs 23h10, o auditor Otávio Ferraz foi encontrado morto no quarto 304 do Hotel Royal. Ele havia sido atingido na cabeça, e seu relógio de bolso desaparecera. Naquela noite, Otávio pretendia entregar à Scotland Yard documentos que comprovariam um grande desvio de dinheiro.\n\nTrês pessoas sabiam da reunião: Davi Montenegro, diretor do banco investigado; Clara Vidal, atriz e antiga companheira da vítima; e Elias Porto, estivador que fornecera informações para a auditoria.\n\nDescubra quem matou Otávio, qual objeto foi utilizado e qual foi o motivo do crime.",
+  "museumClue": "O Museu Real emprestou ao Hotel Royal dois pesados suportes de livro feitos de bronze. Na manhã seguinte ao crime, apenas um deles continuava na biblioteca do hotel.",
+  "barClue": "O atendente ouviu Otávio dizer a Davi: “Amanhã os inspetores verão todas as transferências”. Davi respondeu que não permitiria que sua família fosse destruída.",
+  "pharmacyClue": "O médico-legista concluiu que Otávio morreu entre 22h35 e 22h50 devido a um único golpe provocado por um objeto pesado. Não havia veneno ou sedativo em seu organismo.",
+  "pawnShopClue": "O relógio desaparecido foi vendido às 22h55. O vendedor usava sobretudo e luvas, mas o comerciante notou uma abotoadura azul com o símbolo do Banco Albion.",
+  "theaterClue": "Clara permaneceu no palco entre 22h20 e 22h55. A apresentação ocorreu diante de mais de duzentas pessoas e não foi interrompida.",
+  "bankClue": "A auditoria identificou transferências ilegais autorizadas pela conta administrativa de Davi. Otávio tinha cópias dos comprovantes e entregaria tudo à polícia.",
+  "bookstoreClue": "Naquela tarde, Otávio comprou um livro-caixa. Na primeira página escreveu: “D.M. criou empresas falsas. Os documentos definitivos estão comigo”.",
+  "locksmithClue": "A fechadura do quarto 304 trava automaticamente quando a porta é fechada. Portanto, o assassino não precisava possuir nem copiar a chave para deixar o quarto trancado.",
+  "docksClue": "Elias trabalhou no carregamento do navio Aurora das 22h às 23h. O registro foi assinado pelo supervisor e por outros quatro trabalhadores.",
+  "hotelClue": "O recepcionista viu Davi subir às 22h32 carregando um embrulho retangular. Às 22h50, ele desceu sem o embrulho e afirmou que Otávio não estava no quarto.",
+  "tobacconistClue": "Cinzas encontradas no quarto vieram de um charuto da marca Coroa Imperial. Davi comprou uma caixa dessa marca naquela tarde; Otávio não fumava.",
+  "carriageStationClue": "Um cocheiro levou Davi do hotel até a rua da Casa de Penhores às 22h52. Durante o trajeto, Davi perguntou se o comerciante ainda estaria aberto.",
+  "scotlandYardClue": "A polícia encontrou sangue de Otávio no punho direito do sobretudo de Davi. Ele alegou ter apertado a mão da vítima, mas o sangue já estava parcialmente seco.",
+  "parkClue": "Um suporte de livros de bronze foi encontrado dentro de uma fonte, embrulhado em papel do Hotel Royal. Em uma reentrância havia sangue da vítima e uma fibra azul do sobretudo de Davi.",
+  "finalSolution": "Davi Montenegro matou Otávio Ferraz com o suporte de livros de bronze. Otávio descobrira que Davi desviava dinheiro do Banco Albion e entregaria os comprovantes à Scotland Yard. Davi foi ao hotel, golpeou o auditor, levou seu relógio para simular um roubo, vendeu-o na Casa de Penhores e jogou a arma na fonte do parque. Os registros do teatro e das docas eliminam Clara e Elias, enquanto o horário do hotel, a corrida de carruagem, a abotoadura, o sangue e a fibra ligam Davi ao crime."
+}
+```
+```json
+{
+  "caseText": "O CASO DO VIOLINO INVISÍVEL\n\nNa manhã da estreia da ópera A Rainha de Vidro, o violinista Augusto Bell anunciou o desaparecimento de seu valioso violino Stradella. Segundo ele, o instrumento havia sido deixado durante a noite em um cofre no Teatro Imperial. A porta não apresentava sinais de arrombamento.\n\nAugusto acusou três pessoas: Laura Reis, sua substituta na orquestra; Mauro Klein, dono de uma casa de penhores; e Vicente Salgado, cenógrafo do teatro. O violino estava segurado por uma quantia muito superior ao valor pelo qual Augusto tentara vendê-lo semanas antes.\n\nDescubra quem provocou o desaparecimento, onde o violino foi escondido e qual era o objetivo.",
+  "museumClue": "O especialista do museu examinou fotografias recentes do violino. Uma pequena rachadura reduzia bastante seu valor, embora Augusto continuasse declarando à seguradora que o instrumento estava em perfeito estado.",
+  "barClue": "Na noite anterior, Augusto comentou que em breve não precisaria mais tocar para pagar suas dívidas. Quando perguntaram se venderia o violino, respondeu: “Receberei muito mais do que conseguiriam pagar por ele”.",
+  "pharmacyClue": "Augusto comprou cera moldável e tinta da cor de bronze. Disse que seriam usadas para reparar um objeto decorativo, embora esses materiais também pudessem produzir uma impressão temporária de uma chave.",
+  "pawnShopClue": "Mauro confirmou que se recusou a comprar o violino por causa da rachadura. Seu livro de registros mostra que ele permaneceu atendendo clientes até meia-noite.",
+  "theaterClue": "Uma vistoria revelou que a base oca do trono usado no segundo ato estava mais pesada que no ensaio anterior. O compartimento somente seria aberto durante a apresentação da noite.",
+  "bankClue": "Augusto possuía dívidas vencidas e receberia da seguradora uma quantia equivalente a quatro vezes o valor atual do instrumento caso o roubo não fosse solucionado.",
+  "bookstoreClue": "Augusto comprou um manual sobre mecanismos de cofres. Entre as páginas estava anotada a sequência de abertura do cofre do teatro, escrita com sua própria caligrafia.",
+  "locksmithClue": "O cofre não foi arrombado. Ele só poderia ser aberto pela combinação ou por uma chave reserva. A chave oficial do gerente nunca saiu do chaveiro lacrado.",
+  "docksClue": "Nenhum navio partiu durante a madrugada, e todas as bagagens foram inspecionadas por causa de uma operação alfandegária. Não há evidências de que o violino tenha deixado a cidade.",
+  "hotelClue": "Laura estava hospedada no Hotel Royal. Três funcionários confirmaram que ela ensaiou no salão entre 22h e meia-noite, horário em que o teatro já estava fechado ao público.",
+  "tobacconistClue": "Vicente participou de um torneio de cartas na charutaria das 21h30 à meia-noite. Sua presença aparece no registro do torneio e foi confirmada pelos demais participantes.",
+  "carriageStationClue": "Um cocheiro levou Augusto até a entrada lateral do teatro às 00h20. Ele carregava o estojo do violino ao entrar, mas voltou quinze minutos depois sem ele.",
+  "scotlandYardClue": "A análise da suposta chave encontrada perto do cofre mostrou que ela era apenas uma cópia de cera pintada. As impressões presentes pertenciam exclusivamente a Augusto.",
+  "parkClue": "Um jardineiro encontrou no lixo um pano com tinta cenográfica dourada e fibras do forro do estojo de Augusto. O pano havia sido usado para limpar a base do trono do teatro.",
+  "finalSolution": "Augusto Bell simulou o roubo do próprio violino para receber o dinheiro do seguro. Ele conhecia a combinação do cofre, produziu uma falsa chave para sugerir a ação de um ladrão e retornou ao teatro de madrugada. Depois, escondeu o instrumento dentro da base oca do trono, onde pretendia recuperá-lo após o pagamento da seguradora. Seus problemas financeiros, a corrida de carruagem, a chave falsa, o pano descartado e o peso alterado do trono revelam o plano. Os álibis confirmados inocentam Laura, Mauro e Vicente."
+}
+```

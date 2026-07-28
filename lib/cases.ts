@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { chatCompletion } from "@/lib/ai";
 import { CASE_LOCATIONS, type CaseLocationKey } from "@/lib/case-locations";
 import { pool } from "@/lib/db";
@@ -5,6 +7,7 @@ import { setRoomActiveCase } from "@/lib/rooms";
 
 export type GameCase = {
   id: string;
+  title: string;
   case_text: string;
   final_solution: string;
   created_at?: string;
@@ -13,6 +16,14 @@ export type GameCase = {
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
+
+function getReferenceCases() {
+  try {
+    return readFileSync(join(process.cwd(), "casos_referencia.txt"), "utf8");
+  } catch {
+    return "";
+  }
+}
 
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -34,6 +45,7 @@ function extractJson(text: string) {
 function assertGeneratedCase(value: unknown): GeneratedCase {
   const data = value as Partial<Record<keyof GeneratedCase, unknown>>;
   const requiredKeys = [
+    "title",
     "case_text",
     ...CASE_LOCATIONS.map((location) => location.key),
     "final_solution",
@@ -52,15 +64,16 @@ async function generateCaseWithAi() {
   const locationList = CASE_LOCATIONS.map(
     (location, index) => `${index + 1}. ${location.name}: ${location.key}`,
   ).join("\n");
+  const referenceCases = getReferenceCases();
 
   const chat = await chatCompletion({
     temperature: 0.85,
-    maxTokens: 2400,
+    maxTokens: 3000,
     messages: [
       {
         role: "system",
         content:
-          "Voce cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard classico. Responda somente JSON valido, sem markdown.",
+          "Voce cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard classico. Responda somente JSON valido, sem markdown. Use deducao clara, pistas curtas e criativas, algumas pistas em duas metades e algumas pistas que parecam levar a uma conclusao errada sem contradizer a solucao.",
       },
       {
         role: "user",
@@ -68,15 +81,20 @@ async function generateCaseWithAi() {
 Crie um caso original em portugues, com atmosfera de Londres vitoriana e investigacao dedutiva familiar.
 
 O caso deve ter:
-- case_text: texto inicial do caso, com 2 a 4 paragrafos curtos.
-- 14 dicas, uma para cada local abaixo. Cada dica deve parecer uma pista encontrada naquele local, ter 1 a 3 frases e ajudar a resolver o caso.
-- final_solution: solucao final explicando culpado, motivo, oportunidade e como as pistas se conectam.
+- title: titulo curto em estilo "O CASO DE ...".
+- case_text: texto inicial com 2 a 4 paragrafos curtos e perguntas claras no final. As perguntas devem ser objetivas, por exemplo: "Quem matou X?", "Qual arma foi usada?", "Qual foi o motivo?", "Onde o objeto foi escondido?". Use mais de uma pergunta quando necessario.
+- 14 dicas, uma para cada local abaixo. As dicas devem ser mais curtas e criativas. Algumas podem ter duas metades encontradas no mesmo local em pontos diferentes. Algumas podem parecer levar para um caminho errado, desde que a solucao final explique por que eram falsas pistas ou interpretações incompletas.
+- final_solution: comece com uma resposta simples e clara para as perguntas do caso. Depois, em outro paragrafo, contextualize a solucao explicando como as pistas se conectam.
+
+Use estes casos prontos como referencia de estrutura, tom e nivel de deducao, sem copiar personagens, objetos ou solucoes:
+${referenceCases}
 
 Locais e chaves obrigatorias:
 ${locationList}
 
 Formato obrigatorio:
 {
+  "title": "...",
   "case_text": "...",
   "museum_clue": "...",
   "bar_clue": "...",
@@ -145,6 +163,7 @@ export async function createCaseForRoom(roomCode: string) {
     const result = await pool.query<GameCase>(
       `
         INSERT INTO cases (
+          title,
           case_text,
           museum_clue,
           bar_clue,
@@ -164,11 +183,12 @@ export async function createCaseForRoom(roomCode: string) {
         )
         VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15, $16
+          $9, $10, $11, $12, $13, $14, $15, $16, $17
         )
         RETURNING *
       `,
       [
+        generatedCase.title,
         generatedCase.case_text,
         generatedCase.museum_clue,
         generatedCase.bar_clue,

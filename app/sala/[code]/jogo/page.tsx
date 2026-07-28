@@ -34,6 +34,7 @@ type Room = {
 
 type GameCase = {
   id: string;
+  title: string;
   case_text: string;
   final_solution: string;
 } & Record<CaseLocationKey, string>;
@@ -193,11 +194,7 @@ export default function GamePage() {
 
   const event = room?.activeevent ?? null;
   const modalEvent =
-    event &&
-    !dismissedEventIds.has(event.id) &&
-    (event.type !== "solution" || event.actorId === userId)
-      ? event
-      : null;
+    event && !dismissedEventIds.has(event.id) ? event : null;
 
   function dismissEvent(eventId: string) {
     setDismissedEventIds((current) => {
@@ -333,33 +330,63 @@ export default function GamePage() {
     }
 
     if (modalEvent.type === "solution") {
+      const isActor = modalEvent.actorId === userId;
+
       return (
         <Modal>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-            Solucao final
-          </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-            Confira sua resposta
-          </h2>
-          <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
-            {gameCase.final_solution}
-          </p>
-          <div className="mt-6 flex flex-wrap justify-end gap-3">
-            <button
-              className="h-11 rounded-lg border border-stone-600 px-5 font-semibold text-stone-100 transition hover:bg-white/10"
-              onClick={() => dismissEvent(modalEvent.id)}
-              type="button"
-            >
-              Errou
-            </button>
-            <button
-              className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
-              onClick={markCorrect}
-              type="button"
-            >
-              Acertou
-            </button>
-          </div>
+          {isActor ? (
+            <>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                Solucao final
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                Confira sua resposta
+              </h2>
+              <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
+                {gameCase.final_solution}
+              </p>
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                <button
+                  className="h-11 rounded-lg border border-stone-600 px-5 font-semibold text-stone-100 transition hover:bg-white/10"
+                  onClick={() => dismissEvent(modalEvent.id)}
+                  type="button"
+                >
+                  Errou
+                </button>
+                <button
+                  className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+                  onClick={markCorrect}
+                  type="button"
+                >
+                  Acertou
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                    Solucao consultada
+                  </p>
+                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                    {modalEvent.actorNickname} abriu a resposta final
+                  </h2>
+                </div>
+                <button
+                  aria-label="Fechar"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+                  onClick={() => dismissEvent(modalEvent.id)}
+                  type="button"
+                >
+                  X
+                </button>
+              </div>
+              <p className="mt-5 text-lg leading-8 text-stone-300">
+                Aguarde a confirmacao de acerto ou erro desse jogador.
+              </p>
+            </>
+          )}
         </Modal>
       );
     }
@@ -436,7 +463,7 @@ export default function GamePage() {
                   Arquivo principal
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                  O caso
+                  {gameCase.title}
                 </h2>
               </div>
               <div className="px-6 py-6">
