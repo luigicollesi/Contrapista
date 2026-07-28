@@ -136,7 +136,7 @@ export default function GamePage() {
         };
 
         if (!roomResponse.ok || !roomData.room) {
-          throw new Error(roomData.error ?? "Sala nao encontrada.");
+          throw new Error(roomData.error ?? "Sala não encontrada.");
         }
 
         if (!isActive) {
@@ -167,7 +167,7 @@ export default function GamePage() {
           }
 
           if (!caseResponse.ok || !caseData.case) {
-            throw new Error(caseData.error ?? "Caso nao encontrado.");
+            throw new Error(caseData.error ?? "Caso não encontrado.");
           }
 
           setGameCase(caseData.case);
@@ -177,7 +177,7 @@ export default function GamePage() {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Nao foi possivel carregar o jogo.",
+              : "Não foi possível carregar o jogo.",
           );
         }
       }
@@ -221,7 +221,7 @@ export default function GamePage() {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error ?? "Nao foi possivel publicar evento.");
+      throw new Error(data.error ?? "Não foi possível publicar evento.");
     }
 
     setDismissedEventIds((current) => {
@@ -243,7 +243,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel abrir a dica.",
+          : "Não foi possível abrir a dica.",
       );
     }
   }
@@ -257,7 +257,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel abrir a solucao.",
+          : "Não foi possível abrir a solução.",
       );
     }
   }
@@ -271,7 +271,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel confirmar a resposta.",
+          : "Não foi possível confirmar a resposta.",
       );
     }
   }
@@ -337,7 +337,7 @@ export default function GamePage() {
           {isActor ? (
             <>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                Solucao final
+                Solução final
               </p>
               <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
                 Confira sua resposta
@@ -367,7 +367,7 @@ export default function GamePage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                    Solucao consultada
+                    Solução consultada
                   </p>
                   <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
                     {modalEvent.actorNickname} abriu a resposta final
@@ -383,7 +383,7 @@ export default function GamePage() {
                 </button>
               </div>
               <p className="mt-5 text-lg leading-8 text-stone-300">
-                Aguarde a confirmacao de acerto ou erro desse jogador.
+                Aguarde a confirmação de acerto ou erro desse jogador.
               </p>
             </>
           )}
@@ -400,7 +400,7 @@ export default function GamePage() {
           Resposta correta
         </h2>
         <p className="mt-3 text-stone-400">
-          {modalEvent.actorNickname} confirmou a solucao do caso.
+          {modalEvent.actorNickname} confirmou a solução do caso.
         </p>
         <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
           {gameCase.final_solution}
@@ -427,7 +427,7 @@ export default function GamePage() {
         <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
-              Investigacao ativa
+              Investigação ativa
             </p>
             <h1 className="mt-2 font-serif text-5xl font-bold text-[#fff3cf]">
               Sala {code}
@@ -516,7 +516,7 @@ export default function GamePage() {
                     Encerramento
                   </p>
                   <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    Solucao final
+                    Solução final
                   </h2>
                   <p className="mt-2 text-stone-400">
                     Abra somente quando estiver pronto para responder.
@@ -527,7 +527,7 @@ export default function GamePage() {
                   onClick={openSolution}
                   type="button"
                 >
-                  Revelar solucao
+                  Revelar solução
                 </button>
               </div>
             </section>

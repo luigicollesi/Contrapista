@@ -3,7 +3,7 @@ import { Pool } from "pg";
 const connectionString = process.env.DATABASE;
 
 if (!connectionString) {
-  throw new Error("Variavel DATABASE nao configurada.");
+  throw new Error("Variável DATABASE não configurada.");
 }
 
 const databaseUrl = new URL(connectionString);

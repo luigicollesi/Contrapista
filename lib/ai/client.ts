@@ -16,5 +16,5 @@ export function getAiClient(): AiProviderClient {
     return cachedClient;
   }
 
-  throw new Error(`Provider de IA nao suportado: ${config.provider}`);
+  throw new Error(`Provider de IA não suportado: ${config.provider}`);
 }

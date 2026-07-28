@@ -13,7 +13,7 @@ export async function POST(
   };
 
   if (!body.userId || !body.type) {
-    return Response.json({ error: "Evento invalido." }, { status: 400 });
+    return Response.json({ error: "Evento inválido." }, { status: 400 });
   }
 
   try {
@@ -23,7 +23,7 @@ export async function POST(
       );
 
       if (!location) {
-        return Response.json({ error: "Dica invalida." }, { status: 400 });
+        return Response.json({ error: "Dica inválida." }, { status: 400 });
       }
 
       const event = await publishRoomEvent({
@@ -37,7 +37,7 @@ export async function POST(
       });
 
       if (!event) {
-        return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+        return Response.json({ error: "Sala não encontrada." }, { status: 404 });
       }
 
       return Response.json({ event });
@@ -50,7 +50,7 @@ export async function POST(
     });
 
     if (!event) {
-      return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
     }
 
     return Response.json({ event });

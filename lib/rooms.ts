@@ -94,7 +94,7 @@ function ensureColorAvailable({
   );
 
   if (colorInUse) {
-    throw new Error("Essa cor ja esta em uso na sala.");
+    throw new Error("Essa cor já está em uso na sala.");
   }
 }
 
@@ -180,7 +180,7 @@ export async function createRoom() {
     }
   }
 
-  throw new Error("Nao foi possivel criar uma sala agora.");
+  throw new Error("Não foi possível criar uma sala agora.");
 }
 
 export async function getRoom(code: string) {
@@ -222,7 +222,7 @@ export async function joinRoom({
   const normalizedColor = color.trim();
 
   if (!trimmedNickname || !isPlayerColor(normalizedColor)) {
-    throw new Error("Dados de usuario invalidos.");
+    throw new Error("Dados de usuário inválidos.");
   }
 
   const client = await pool.connect();
@@ -371,7 +371,7 @@ export async function updateRoomUser({
   const normalizedColor = color.trim();
 
   if (!trimmedNickname || !isPlayerColor(normalizedColor)) {
-    throw new Error("Dados de usuario invalidos.");
+    throw new Error("Dados de usuário inválidos.");
   }
 
   const client = await pool.connect();
@@ -421,7 +421,7 @@ export async function updateRoomUser({
 
     if (!updatedUser) {
       await client.query("ROLLBACK");
-      throw new Error("Usuario nao encontrado na sala.");
+      throw new Error("Usuário não encontrado na sala.");
     }
 
     await client.query(
@@ -501,7 +501,7 @@ export async function setRoomUserReady({
 
     if (!userExists) {
       await client.query("ROLLBACK");
-      throw new Error("Usuario nao encontrado na sala.");
+      throw new Error("Usuário não encontrado na sala.");
     }
 
     await client.query(
@@ -594,7 +594,7 @@ export async function publishRoomEvent({
 
     if (!actor) {
       await client.query("ROLLBACK");
-      throw new Error("Usuario nao encontrado na sala.");
+      throw new Error("Usuário não encontrado na sala.");
     }
 
     const activeevent: RoomEvent =

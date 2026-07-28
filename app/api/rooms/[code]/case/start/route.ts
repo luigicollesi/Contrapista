@@ -11,7 +11,7 @@ export async function POST(
     const room = await getRoom(code);
 
     if (!room) {
-      return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
     }
 
     if (!room.activecase && !room.allReady) {

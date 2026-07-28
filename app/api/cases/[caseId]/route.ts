@@ -8,7 +8,7 @@ export async function GET(
   const gameCase = await getCase(caseId);
 
   if (!gameCase) {
-    return Response.json({ error: "Caso nao encontrado." }, { status: 404 });
+    return Response.json({ error: "Caso não encontrado." }, { status: 404 });
   }
 
   return Response.json({ case: gameCase });

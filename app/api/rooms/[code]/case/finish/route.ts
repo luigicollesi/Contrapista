@@ -8,7 +8,7 @@ export async function POST(
   const room = await finishRoomCase({ code });
 
   if (!room) {
-    return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+    return Response.json({ error: "Sala não encontrada." }, { status: 404 });
   }
 
   return Response.json({ room });

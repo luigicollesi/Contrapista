@@ -33,7 +33,7 @@ export async function chatCompletion(
 
   if (!models.length) {
     throw new AiModelsUnavailableError(
-      "Todos os modelos LLM configurados estao em stand off de 24 horas.",
+      "Todos os modelos LLM configurados estão em stand off de 24 horas.",
     );
   }
 
@@ -80,7 +80,7 @@ export async function chatCompletion(
   const status = allRateLimited ? 429 : hasRateLimit ? 503 : 502;
 
   throw new AiModelsUnavailableError(
-    `Todos os modelos LLM disponiveis falharam: ${failures
+    `Todos os modelos LLM disponíveis falharam: ${failures
       .map(({ model }) => model)
       .join(", ")}`,
     failures,

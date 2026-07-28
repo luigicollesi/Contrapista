@@ -18,7 +18,7 @@ export async function POST(
     });
 
     if (!result) {
-      return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
     }
 
     return Response.json(result);

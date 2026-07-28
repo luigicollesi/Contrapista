@@ -19,13 +19,13 @@ export async function PATCH(
     });
 
     if (!result) {
-      return Response.json({ error: "Sala nao encontrada." }, { status: 404 });
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
     }
 
     return Response.json(result);
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Erro ao atualizar usuario.";
+      error instanceof Error ? error.message : "Erro ao atualizar usuário.";
 
     return Response.json({ error: message }, { status: 400 });
   }

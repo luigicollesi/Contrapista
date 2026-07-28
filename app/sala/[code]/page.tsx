@@ -117,7 +117,7 @@ export default function RoomPage() {
         }
       } catch {
         if (isActive) {
-          setError("Nao foi possivel atualizar o lobby.");
+          setError("Não foi possível atualizar o lobby.");
         }
       }
     }
@@ -160,7 +160,7 @@ export default function RoomPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Nao foi possivel entrar na sala.");
+        throw new Error(data.error ?? "Não foi possível entrar na sala.");
       }
 
       saveSession({
@@ -176,7 +176,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel entrar na sala.",
+          : "Não foi possível entrar na sala.",
       );
     } finally {
       setIsSaving(false);
@@ -207,7 +207,7 @@ export default function RoomPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Nao foi possivel atualizar usuario.");
+        throw new Error(data.error ?? "Não foi possível atualizar usuário.");
       }
 
       saveSession({
@@ -222,7 +222,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel atualizar usuario.",
+          : "Não foi possível atualizar usuário.",
       );
     } finally {
       setIsSaving(false);
@@ -248,7 +248,7 @@ export default function RoomPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Nao foi possivel alterar pronto.");
+        throw new Error(data.error ?? "Não foi possível alterar pronto.");
       }
 
       setRoom(data.room);
@@ -260,7 +260,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel alterar pronto.",
+          : "Não foi possível alterar pronto.",
       );
     } finally {
       setIsSaving(false);
@@ -285,7 +285,7 @@ export default function RoomPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Nao foi possivel sair da sala.");
+        throw new Error(data.error ?? "Não foi possível sair da sala.");
       }
 
       clearSession(code);
@@ -296,7 +296,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel sair da sala.",
+          : "Não foi possível sair da sala.",
       );
     }
   }
@@ -305,9 +305,9 @@ export default function RoomPage() {
     return (
       <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6 text-zinc-950">
         <section className="w-full max-w-md rounded-lg border border-zinc-200 bg-white p-8 text-center shadow-sm">
-          <h1 className="text-3xl font-bold">Sala nao encontrada</h1>
+          <h1 className="text-3xl font-bold">Sala não encontrada</h1>
           <p className="mt-3 text-zinc-600">
-            Confira o codigo ou crie uma nova sala.
+            Confira o código ou crie uma nova sala.
           </p>
           <Link
             className="mt-6 inline-flex h-12 items-center justify-center rounded-lg bg-zinc-950 px-6 font-semibold text-white"
@@ -345,25 +345,25 @@ export default function RoomPage() {
                 }
 
                 event.preventDefault();
-                setError("Saia da sala antes de voltar ao inicio.");
+                setError("Saia da sala antes de voltar ao início.");
               }}
             >
-              Voltar ao inicio
+              Voltar ao início
             </Link>
             <p className="mt-5 text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
-              Mesa de preparacao
+              Mesa de preparação
             </p>
             <h1 className="mt-2 font-serif text-5xl font-bold text-[#fff3cf]">
               Lobby da sala
             </h1>
             <p className="mt-3 max-w-2xl text-stone-300">
               Escolha um nickname e uma cor exclusiva. Quando todos estiverem
-              prontos, o caso sera aberto para a sala.
+              prontos, o caso será aberto para a sala.
             </p>
           </div>
           <div className="rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-6 py-4 shadow-2xl shadow-black/25">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
-              Codigo
+              Código
             </p>
             <p className="mt-1 font-mono text-4xl font-bold tracking-[0.32em] text-[#fff3cf]">
               {code}
@@ -419,7 +419,7 @@ export default function RoomPage() {
                         disabled={isUsed}
                         key={key}
                         onClick={() => setColor(key)}
-                        title={isUsed ? "Cor ja escolhida" : option.name}
+                        title={isUsed ? "Cor já escolhida" : option.name}
                         type="button"
                       >
                         <span
@@ -494,7 +494,7 @@ export default function RoomPage() {
                 }}
                 type="button"
               >
-                Alterar informacoes
+                Alterar informações
               </button>
               <button
                 className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] shadow-sm transition hover:bg-[#f3dfaa]"
@@ -547,7 +547,7 @@ export default function RoomPage() {
                   <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#d7b861]">
                       {PLAYER_COLORS[user.color].name}
-                      {user.id === userId ? " / Voce" : ""}
+                      {user.id === userId ? " / Você" : ""}
                     </p>
                     <h3 className="mt-2 truncate text-3xl font-black text-[#fff3cf]">
                       {user.nickname}
@@ -575,7 +575,7 @@ export default function RoomPage() {
 
             {room && room.users.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-600 bg-[#171b16] p-6 text-stone-400">
-                Ainda nao ha usuarios no lobby.
+                Ainda não há usuários no lobby.
               </p>
             ) : null}
           </div>

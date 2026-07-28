@@ -41,7 +41,7 @@ function requireEnv(name: string): string {
   const value = process.env[name]?.trim();
 
   if (!value) {
-    throw new Error(`A variavel de ambiente ${name} nao esta definida.`);
+    throw new Error(`A variável de ambiente ${name} não está definida.`);
   }
 
   return value;
@@ -52,7 +52,7 @@ function parseProvider(rawProvider?: string): LlmProvider {
 
   if (provider !== "openrouter") {
     throw new Error(
-      `LLM_PROVIDER invalido: "${provider}". Valor suportado: "openrouter".`,
+      `LLM_PROVIDER inválido: "${provider}". Valor suportado: "openrouter".`,
     );
   }
 

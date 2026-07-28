@@ -97,7 +97,7 @@ export default function Home() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Nao foi possivel criar a sala.");
+        throw new Error(data.error ?? "Não foi possível criar a sala.");
       }
 
       router.push(`/sala/${data.room.code}`);
@@ -105,7 +105,7 @@ export default function Home() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel criar a sala.",
+          : "Não foi possível criar a sala.",
       );
     } finally {
       setIsLoading(false);
@@ -118,7 +118,7 @@ export default function Home() {
     const code = roomCode.trim();
 
     if (!/^\d{4}$/.test(code)) {
-      setError("Digite um codigo com 4 numeros.");
+      setError("Digite um código com 4 números.");
       return;
     }
 
@@ -129,7 +129,7 @@ export default function Home() {
       const response = await fetch(`/api/rooms/${code}`);
 
       if (!response.ok) {
-        throw new Error("Sala nao encontrada.");
+        throw new Error("Sala não encontrada.");
       }
 
       router.push(`/sala/${code}`);
@@ -137,7 +137,7 @@ export default function Home() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Nao foi possivel entrar na sala.",
+          : "Não foi possível entrar na sala.",
       );
     } finally {
       setIsLoading(false);
@@ -173,11 +173,11 @@ export default function Home() {
               Uma mesa. Um caso. Quatorze pistas.
             </p>
             <h1 className="mt-5 max-w-3xl font-serif text-5xl font-bold leading-[1.02] text-[#fff3cf] sm:text-7xl">
-              Reuna os detetives antes que Londres esfrie as pistas.
+              Reúna os detetives antes que Londres esfrie as pistas.
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
-              Crie uma sala temporaria, compartilhe o codigo e comece uma
-              investigacao cooperativa inspirada no Scotland Yard classico.
+              Crie uma sala temporária, compartilhe o código e comece uma
+              investigação cooperativa inspirada no Scotland Yard clássico.
             </p>
 
             <div className="mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
@@ -194,11 +194,11 @@ export default function Home() {
                   Criar sala
                 </span>
                 <span className="mt-5 block text-base leading-7 text-[#3a3021]">
-                  Gera um codigo de 4 numeros e abre um lobby para os
+                  Gera um código de 4 números e abre um lobby para os
                   jogadores.
                 </span>
                 <span className="mt-6 inline-flex h-10 items-center rounded-full bg-[#17130d] px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#8b1e1e]">
-                  Abrir investigacao
+                  Abrir investigação
                 </span>
               </button>
 
@@ -213,16 +213,16 @@ export default function Home() {
                 type="button"
               >
                 <span className="block text-sm font-bold uppercase tracking-[0.2em] text-[#d7b861]">
-                  Codigo da sala
+                  Código da sala
                 </span>
                 <span className="mt-5 block font-serif text-3xl font-bold text-[#fff3cf]">
                   Entrar
                 </span>
                 <span className="mt-5 block text-base leading-7 text-stone-300">
-                  Use o codigo recebido para se juntar ao lobby do grupo.
+                  Use o código recebido para se juntar ao lobby do grupo.
                 </span>
                 <span className="mt-6 inline-flex h-10 items-center rounded-full border border-[#d7b861]/60 px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#d7b861] group-hover:text-[#17130d]">
-                  Inserir codigo
+                  Inserir código
                 </span>
               </button>
             </div>
@@ -237,7 +237,7 @@ export default function Home() {
           <div className="relative hidden min-h-[520px] lg:block">
             <div className="absolute left-10 top-4 h-72 w-56 rotate-[-8deg] rounded-lg border border-[#d7b861]/40 bg-[#e9d3a0] p-5 text-[#21170f] shadow-2xl">
               <p className="border-b border-[#6f5533]/30 pb-3 font-serif text-2xl font-bold">
-                Relatorio
+                Relatório
               </p>
               <div className="mt-5 space-y-3">
                 <span className="block h-3 w-36 rounded-full bg-[#6f5533]/50" />
@@ -283,7 +283,7 @@ export default function Home() {
                   Entrar na sala
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                  Codigo do caso
+                  Código do caso
                 </h2>
               </div>
               <button
@@ -300,7 +300,7 @@ export default function Home() {
             </div>
 
             <input
-              aria-label="Codigo da sala"
+              aria-label="Código da sala"
               autoFocus
               className="mt-6 h-16 w-full rounded-lg border border-[#d7b861]/50 bg-[#0f120e] px-5 text-center font-mono text-3xl font-bold tracking-[0.42em] text-[#fff3cf] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20"
               inputMode="numeric"
@@ -323,7 +323,7 @@ export default function Home() {
               disabled={isLoading}
               type="submit"
             >
-              Entrar na investigacao
+              Entrar na investigação
             </button>
           </form>
         </div>

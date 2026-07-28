@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { chatCompletion } from "@/lib/ai";
 import { CASE_LOCATIONS, type CaseLocationKey } from "@/lib/case-locations";
 import { pool } from "@/lib/db";
@@ -16,14 +14,6 @@ export type GameCase = {
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
-
-function getReferenceCases() {
-  try {
-    return readFileSync(join(process.cwd(), "casos_referencia.txt"), "utf8");
-  } catch {
-    return "";
-  }
-}
 
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -53,7 +43,7 @@ function assertGeneratedCase(value: unknown): GeneratedCase {
 
   for (const key of requiredKeys) {
     if (typeof data[key] !== "string" || !data[key]?.trim()) {
-      throw new Error(`Resposta da IA sem campo valido: ${key}`);
+      throw new Error(`Resposta da IA sem campo válido: ${key}`);
     }
   }
 
@@ -64,7 +54,6 @@ async function generateCaseWithAi() {
   const locationList = CASE_LOCATIONS.map(
     (location, index) => `${index + 1}. ${location.name}: ${location.key}`,
   ).join("\n");
-  const referenceCases = getReferenceCases();
 
   const chat = await chatCompletion({
     temperature: 0.85,
@@ -73,26 +62,41 @@ async function generateCaseWithAi() {
       {
         role: "system",
         content:
-          "Voce cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard classico. Responda somente JSON valido, sem markdown. Use deducao clara, pistas curtas e criativas, algumas pistas em duas metades e algumas pistas que parecam levar a uma conclusao errada sem contradizer a solucao.",
+          "Você cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard clássico. Responda somente JSON válido, sem markdown. Construa mistérios dedutivos com perguntas objetivas, pistas curtas, falsas pistas plausíveis e uma solução que responda claramente cada pergunta.",
       },
       {
         role: "user",
         content: `
-Crie um caso original em portugues, com atmosfera de Londres vitoriana e investigacao dedutiva familiar.
+Crie um caso original em português, com atmosfera de Londres vitoriana e investigação dedutiva familiar.
 
-O caso deve ter:
-- title: titulo curto em estilo "O CASO DE ...".
-- case_text: texto inicial com 2 a 4 paragrafos curtos e perguntas claras no final. As perguntas devem ser objetivas, por exemplo: "Quem matou X?", "Qual arma foi usada?", "Qual foi o motivo?", "Onde o objeto foi escondido?". Use mais de uma pergunta quando necessario.
-- 14 dicas, uma para cada local abaixo. As dicas devem ser mais curtas e criativas. Algumas podem ter duas metades encontradas no mesmo local em pontos diferentes. Algumas podem parecer levar para um caminho errado, desde que a solucao final explique por que eram falsas pistas ou interpretações incompletas.
-- final_solution: comece com uma resposta simples e clara para as perguntas do caso. Depois, em outro paragrafo, contextualize a solucao explicando como as pistas se conectam.
+Padrão obrigatório do caso:
+- Deve haver um incidente central claro: morte, roubo, desaparecimento, fraude ou sabotagem.
+- Apresente 3 ou 4 suspeitos com motivos aparentes diferentes.
+- Inclua álibis, horários, objetos físicos e pelo menos uma tentativa de despistar os investigadores.
+- A solução deve depender de cruzar várias pistas, não de uma única pista óbvia.
+- Pelo menos duas pistas devem inocentar suspeitos.
+- Pelo menos duas pistas devem parecer incriminar alguém errado, mas a solução deve explicar por que elas eram enganosas, incompletas ou plantadas.
+- Pelo menos três dicas devem vir em fragmentos complementares: metades no mesmo local, partes numeradas espalhadas por locais diferentes ou pistas que só façam sentido quando cruzadas com outra dica.
+- As dicas devem ser curtas, concretas e criativas: registros, objetos, testemunhos, marcas, horários, fibras, recibos, chaves, rotas, contradições, charadas, rimas ou trocadilhos.
+- Use algumas dicas cifradas por linguagem: jogos de palavra, sons parecidos, rimas, duplos sentidos, descrições metafóricas de objetos ou pistas incompletas que apontem para sílabas, formatos, materiais ou partes de uma palavra.
+- As dicas criativas não podem resolver tudo sozinhas. Elas devem sugerir uma peça da solução e precisar de confirmação por outra pista física, testemunhal ou temporal.
+- Não use exemplos literais de armas, rimas, frases ou fragmentos já citados pelo usuário. Crie jogos de palavra originais para o caso gerado.
+- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
+- Não copie personagens, objetos ou soluções de exemplos anteriores.
 
-Use estes casos prontos como referencia de estrutura, tom e nivel de deducao, sem copiar personagens, objetos ou solucoes:
-${referenceCases}
+Campos obrigatórios:
+- title: título curto em estilo "O CASO DO ..." ou "O CASO DA ...".
+- case_text: 2 a 4 parágrafos curtos. No último parágrafo, faça perguntas explícitas e objetivas que os jogadores devem responder.
+- As perguntas do case_text devem ser numeradas. Elas precisam apontar para conclusões dedutivas, não para opiniões.
+- Faça 2, 3 ou 4 perguntas adequadas ao caso. Cada pergunta deve pedir uma resposta objetiva: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
+- Evite perguntas vagas como "o que aconteceu?", "qual é o mistério?" ou "quem parece suspeito?". Prefira formatos como: "Quem cometeu o crime?", "Qual arma foi usada?", "Qual foi o motivo?", "Onde o objeto foi escondido?", "Que álibi era falso?"
+- Todas as perguntas devem ter resposta direta no primeiro parágrafo de final_solution, na mesma ordem em que aparecerem no case_text.
+- final_solution: o primeiro parágrafo deve começar com "Resposta:" e responder cada pergunta de forma simples, direta e numerada quando houver mais de uma pergunta. O segundo parágrafo deve começar com "Contexto:" e explicar como as pistas se conectam.
 
-Locais e chaves obrigatorias:
+Locais e chaves obrigatórias:
 ${locationList}
 
-Formato obrigatorio:
+Formato obrigatório:
 {
   "title": "...",
   "case_text": "...",

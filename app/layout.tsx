@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Scotland Yard",
-  description: "Lobby simples para salas temporarias.",
+  description: "Lobby simples para salas temporárias.",
 };
 
 export default function RootLayout({
