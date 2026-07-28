@@ -50,6 +50,61 @@ function assertGeneratedCase(value: unknown): GeneratedCase {
   return data as GeneratedCase;
 }
 
+function parseGeneratedJson(text: string) {
+  const jsonText = extractJson(text);
+
+  return JSON.parse(jsonText) as unknown;
+}
+
+async function repairGeneratedJson(text: string, parseError: unknown) {
+  const jsonText = extractJson(text);
+  const errorMessage =
+    parseError instanceof Error ? parseError.message : "erro desconhecido";
+
+  const repair = await chatCompletion({
+    temperature: 0,
+    maxTokens: 4200,
+    responseFormat: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content:
+          "Você corrige respostas para JSON válido. Não invente conteúdo novo. Preserve todos os campos, textos e valores recebidos. Responda somente um objeto JSON válido, sem markdown.",
+      },
+      {
+        role: "user",
+        content: `
+O JSON abaixo falhou com este erro: ${errorMessage}
+
+Repare apenas a sintaxe JSON: aspas internas, quebras de linha, vírgulas, barras invertidas e caracteres que precisem de escape. Não mude a história, as pistas ou a solução.
+
+JSON com problema:
+${jsonText}
+`.trim(),
+      },
+    ],
+  });
+
+  try {
+    return parseGeneratedJson(repair.text);
+  } catch (repairError) {
+    const repairMessage =
+      repairError instanceof Error ? repairError.message : "erro desconhecido";
+
+    throw new Error(
+      `A IA retornou um JSON inválido e o reparo automático falhou: ${repairMessage}`,
+    );
+  }
+}
+
+async function parseCaseResponse(text: string) {
+  try {
+    return parseGeneratedJson(text);
+  } catch (parseError) {
+    return repairGeneratedJson(text, parseError);
+  }
+}
+
 async function generateCaseWithAi() {
   const locationList = CASE_LOCATIONS.map(
     (location, index) => `${index + 1}. ${location.name}: ${location.key}`,
@@ -57,12 +112,13 @@ async function generateCaseWithAi() {
 
   const chat = await chatCompletion({
     temperature: 0.85,
-    maxTokens: 3000,
+    maxTokens: 4200,
+    responseFormat: { type: "json_object" },
     messages: [
       {
         role: "system",
         content:
-          "Você cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard clássico. Responda somente JSON válido, sem markdown. Construa mistérios dedutivos com perguntas objetivas, pistas curtas, falsas pistas plausíveis e uma solução que responda claramente cada pergunta.",
+          "Você cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard clássico. Responda somente um objeto JSON válido, sem markdown. Todos os valores devem ser strings JSON válidas; escape aspas internas e quebras de linha como \\n. Construa mistérios dedutivos com perguntas objetivas, pistas curtas, falsas pistas plausíveis e uma solução que responda claramente cada pergunta.",
       },
       {
         role: "user",
@@ -121,7 +177,7 @@ Formato obrigatório:
     ],
   });
 
-  return assertGeneratedCase(JSON.parse(extractJson(chat.text)));
+  return assertGeneratedCase(await parseCaseResponse(chat.text));
 }
 
 export async function getCase(caseId: string) {

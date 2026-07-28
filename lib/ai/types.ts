@@ -11,6 +11,9 @@ export type AiChatCompletionParams = {
   messages: AiChatMessage[];
   temperature?: number;
   maxTokens?: number;
+  responseFormat?: {
+    type: "json_object";
+  };
 };
 
 export type AiProviderChatCompletionParams = AiChatCompletionParams & {

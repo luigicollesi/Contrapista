@@ -51,6 +51,7 @@ export function createOpenRouterClient(): AiProviderClient {
         messages: params.messages,
         temperature: params.temperature,
         max_tokens: params.maxTokens,
+        response_format: params.responseFormat,
       };
 
       if (provider) {

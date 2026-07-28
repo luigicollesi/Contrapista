@@ -17,18 +17,19 @@ const steps = [
 ];
 
 const boardPins = [
-  { left: "12%", top: "18%", delay: "0s" },
-  { left: "68%", top: "14%", delay: ".35s" },
-  { left: "82%", top: "46%", delay: ".7s" },
-  { left: "28%", top: "72%", delay: "1.05s" },
-  { left: "58%", top: "82%", delay: "1.4s" },
+  { left: "18%", top: "22%", delay: "0s" },
+  { left: "52%", top: "14%", delay: ".35s" },
+  { left: "78%", top: "38%", delay: ".7s" },
+  { left: "34%", top: "74%", delay: "1.05s" },
+  { left: "70%", top: "78%", delay: "1.4s" },
+  { left: "18%", top: "58%", delay: "1.75s" },
 ];
 
 const clueCards = [
-  { label: "Depoimento", left: "7%", top: "16%", rotate: "-7deg" },
-  { label: "Horário", left: "60%", top: "10%", rotate: "5deg" },
-  { label: "Objeto", left: "68%", top: "56%", rotate: "-4deg" },
-  { label: "Álibi", left: "18%", top: "62%", rotate: "6deg" },
+  { label: "Depoimento", left: "7%", top: "6%", rotate: "-5deg" },
+  { label: "Horário", left: "58%", top: "5%", rotate: "4deg" },
+  { label: "Objeto", left: "63%", top: "67%", rotate: "-3deg" },
+  { label: "Álibi", left: "8%", top: "72%", rotate: "5deg" },
 ];
 
 export default function CreatingCasePage() {
@@ -87,7 +88,7 @@ export default function CreatingCasePage() {
   }, [code, router]);
 
   return (
-    <main className="sy-theme relative flex min-h-screen items-center justify-center overflow-hidden bg-[#10130f] px-6 py-10 text-stone-50">
+    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-8 text-stone-50 sm:px-6 lg:py-10">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
@@ -101,12 +102,12 @@ export default function CreatingCasePage() {
           ))}
         </div>
       </div>
-      <section className="relative grid w-full max-w-6xl items-center gap-10 lg:grid-cols-[.95fr_1.05fr]">
-        <div>
+      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[.82fr_1.18fr] lg:gap-12">
+        <div className="mx-auto w-full max-w-2xl lg:mx-0">
           <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d7b861]">
             Sala {code}
           </p>
-          <h1 className="mt-5 max-w-2xl font-serif text-5xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
+          <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
             A central está montando um caso inédito.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-stone-300">
@@ -146,7 +147,7 @@ export default function CreatingCasePage() {
               ))}
             </div>
             <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {steps.slice(0, 6).map((step, index) => (
+              {steps.map((step, index) => (
                 <div
                   className={`flex items-center gap-2 text-sm ${
                     index === stepIndex
@@ -175,13 +176,13 @@ export default function CreatingCasePage() {
           ) : null}
         </div>
 
-        <div className="relative min-h-[540px]">
-          <div className="case-board-glow absolute inset-x-8 top-0 h-24 rounded-full bg-[#d7b861]/20 blur-3xl" />
-          <div className="relative mx-auto h-[540px] max-w-md overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-6 shadow-2xl shadow-black/40">
+        <div className="relative min-h-[620px] w-full sm:min-h-[680px] lg:min-h-[640px]">
+          <div className="case-board-glow absolute inset-x-4 top-0 h-28 rounded-full bg-[#d7b861]/20 blur-3xl sm:inset-x-14" />
+          <div className="relative mx-auto flex min-h-[620px] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-4 shadow-2xl shadow-black/40 sm:min-h-[680px] sm:p-6 lg:min-h-[640px]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(215,184,97,.16),transparent_18%),radial-gradient(circle_at_80%_70%,rgba(139,30,30,.18),transparent_22%)]" />
             <div className="case-map-lines absolute inset-0 opacity-35" />
             <div className="case-scan-line absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#d7b861]/20 to-transparent" />
-            <div className="flex items-center justify-between border-b border-[#d7b861]/25 pb-4">
+            <div className="relative z-10 flex items-center justify-between border-b border-[#d7b861]/25 pb-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d7b861]">
                   Case file
@@ -193,7 +194,7 @@ export default function CreatingCasePage() {
               <div className="case-seal h-12 w-12 rounded-lg border border-[#d7b861]/40 bg-[#0f120e]" />
             </div>
 
-            <div className="relative mt-6 overflow-hidden rounded-lg border border-stone-700 bg-[#0f120e] p-5">
+            <div className="relative z-10 mt-5 overflow-hidden rounded-lg border border-stone-700 bg-[#0f120e] p-4 sm:p-5">
               <div className="absolute inset-x-0 top-0 h-16 animate-[pulse_1.6s_ease-in-out_infinite] bg-gradient-to-b from-[#d7b861]/25 to-transparent" />
               <div className="space-y-4">
                 {Array.from({ length: 9 }).map((_, index) => (
@@ -208,7 +209,7 @@ export default function CreatingCasePage() {
               </div>
             </div>
 
-            <div className="relative mt-7 h-48 rounded-lg border border-stone-700 bg-[#0f120e]/80">
+            <div className="relative z-10 mt-6 min-h-[300px] flex-1 overflow-hidden rounded-lg border border-[#d7b861]/30 bg-[#0f120e]/80 sm:min-h-[360px]">
               <svg
                 aria-hidden="true"
                 className="absolute inset-0 h-full w-full"
@@ -217,24 +218,37 @@ export default function CreatingCasePage() {
               >
                 <path
                   className="case-thread"
-                  d="M12 18 L68 14 L82 46 L58 82 L28 72 Z"
+                  d="M18 22 L52 14 L78 38 L70 78 L34 74 L18 58 L18 22"
                   fill="none"
+                  pathLength={100}
                   stroke="#d7b861"
                   strokeLinecap="round"
-                  strokeWidth="0.7"
+                  strokeLinejoin="round"
+                  strokeWidth="1.35"
                 />
                 <path
                   className="case-thread case-thread-alt"
-                  d="M12 18 L28 72 M68 14 L28 72 M82 46 L12 18"
+                  d="M18 22 L34 74 M52 14 L34 74 M78 38 L18 58 M70 78 L52 14"
                   fill="none"
+                  pathLength={100}
                   stroke="#8b1e1e"
                   strokeLinecap="round"
-                  strokeWidth="0.6"
+                  strokeLinejoin="round"
+                  strokeWidth="1.1"
+                />
+                <path
+                  className="case-thread case-thread-soft"
+                  d="M18 58 C34 34 54 46 78 38 M34 74 C48 58 62 56 70 78"
+                  fill="none"
+                  pathLength={100}
+                  stroke="#fff3cf"
+                  strokeLinecap="round"
+                  strokeWidth="0.75"
                 />
               </svg>
               {boardPins.map((pin, index) => (
                 <span
-                  className="case-pin absolute h-3 w-3 rounded-full bg-[#d7b861] shadow-[0_0_18px_rgba(215,184,97,.75)]"
+                  className="case-pin absolute z-20 h-4 w-4 rounded-full bg-[#d7b861] shadow-[0_0_18px_rgba(215,184,97,.75)]"
                   key={`${pin.left}-${pin.top}`}
                   style={{
                     left: pin.left,
@@ -242,13 +256,13 @@ export default function CreatingCasePage() {
                     animationDelay: pin.delay,
                   }}
                 >
-                  <span className="absolute inset-[-5px] rounded-full border border-[#d7b861]/40" />
+                  <span className="absolute inset-[-7px] rounded-full border border-[#d7b861]/45" />
                   <span className="sr-only">Ponto {index + 1}</span>
                 </span>
               ))}
               {clueCards.map((card, index) => (
                 <div
-                  className="case-floating-card absolute rounded border border-[#d7b861]/35 bg-[#fff3cf] px-3 py-2 text-[#21170f] shadow-lg"
+                  className="case-floating-card absolute z-30 w-28 rounded border border-[#d7b861]/35 bg-[#fff3cf] px-3 py-2 text-[#21170f] shadow-lg sm:w-32"
                   key={card.label}
                   style={{
                     left: card.left,
@@ -265,7 +279,7 @@ export default function CreatingCasePage() {
               ))}
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="relative z-10 mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
               {["Museu", "Banco", "Docas", "Parque"].map((label, index) => (
                 <div
                   className="case-location-tile rounded-lg border border-stone-700 bg-[#0f120e] px-3 py-4"
@@ -339,15 +353,15 @@ export default function CreatingCasePage() {
 
         @keyframes case-thread {
           0% {
-            stroke-dashoffset: 82;
-            opacity: 0.25;
+            stroke-dashoffset: 100;
+            opacity: 0.45;
           }
           50% {
-            opacity: 0.9;
+            opacity: 1;
           }
           100% {
             stroke-dashoffset: 0;
-            opacity: 0.35;
+            opacity: 0.78;
           }
         }
 
@@ -422,12 +436,19 @@ export default function CreatingCasePage() {
         }
 
         .case-thread {
-          stroke-dasharray: 82;
+          filter: drop-shadow(0 0 5px rgba(215, 184, 97, 0.55));
+          stroke-dasharray: 100;
           animation: case-thread 4.5s ease-in-out infinite;
         }
 
         .case-thread-alt {
           animation-delay: 1.2s;
+          filter: drop-shadow(0 0 5px rgba(139, 30, 30, 0.65));
+        }
+
+        .case-thread-soft {
+          animation-delay: 2s;
+          filter: drop-shadow(0 0 4px rgba(255, 243, 207, 0.45));
         }
 
         .case-pin {
