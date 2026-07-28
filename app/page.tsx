@@ -1,65 +1,333 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+const SESSION_STORAGE_KEY = "scotland-yard-session";
+
+type SavedSession = {
+  roomCode: string;
+  user: {
+    id: string;
+    nickname: string;
+    color: string;
+  };
+};
+
+function readSavedSession() {
+  try {
+    const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+
+    if (!stored) {
+      return null;
+    }
+
+    const session = JSON.parse(stored) as SavedSession;
+
+    if (!/^\d{4}$/.test(session.roomCode) || !session.user?.id) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+
+    return session;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
 
 export default function Home() {
+  const router = useRouter();
+  const [roomCode, setRoomCode] = useState("");
+  const [isJoinOpen, setIsJoinOpen] = useState(false);
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function restoreSession() {
+      const session = readSavedSession();
+
+      if (!session) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/rooms/${session.roomCode}`, {
+          cache: "no-store",
+        });
+        const data = await response.json();
+        const isStillInRoom = data.room?.users?.some(
+          (user: { id: string }) => user.id === session.user.id,
+        );
+
+        if (!isActive) {
+          return;
+        }
+
+        if (response.ok && isStillInRoom) {
+          router.replace(`/sala/${session.roomCode}`);
+          return;
+        }
+
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+      } catch {
+        if (isActive) {
+          localStorage.removeItem(SESSION_STORAGE_KEY);
+        }
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      isActive = false;
+    };
+  }, [router]);
+
+  async function createNewRoom() {
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/rooms", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Nao foi possivel criar a sala.");
+      }
+
+      router.push(`/sala/${data.room.code}`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Nao foi possivel criar a sala.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function enterRoom(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const code = roomCode.trim();
+
+    if (!/^\d{4}$/.test(code)) {
+      setError("Digite um codigo com 4 numeros.");
+      return;
+    }
+
+    setError("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`/api/rooms/${code}`);
+
+      if (!response.ok) {
+        throw new Error("Sala nao encontrada.");
+      }
+
+      router.push(`/sala/${code}`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Nao foi possivel entrar na sala.",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] text-stone-50">
+      <div className="absolute inset-0 opacity-20">
+        <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
+      </div>
+      <div className="absolute inset-x-0 top-0 h-48 bg-gradient-to-b from-[#8b1e1e]/35 to-transparent" />
+      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-center px-6 py-8">
+        <header className="mb-10 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[#c8a24a]/50 bg-[#1b1f18] font-serif text-2xl font-bold text-[#e7c46b] shadow-lg">
+              SY
+            </div>
+            <div>
+              <p className="font-serif text-2xl font-bold tracking-wide text-[#f5e7bd]">
+                Scotland Yard
+              </p>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
+                Case Room
+              </p>
+            </div>
+          </div>
+        </header>
+
+        <section className="grid items-center gap-10 lg:grid-cols-[1.02fr_.98fr]">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.32em] text-[#d7b861]">
+              Uma mesa. Um caso. Quatorze pistas.
+            </p>
+            <h1 className="mt-5 max-w-3xl font-serif text-5xl font-bold leading-[1.02] text-[#fff3cf] sm:text-7xl">
+              Reuna os detetives antes que Londres esfrie as pistas.
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
+              Crie uma sala temporaria, compartilhe o codigo e comece uma
+              investigacao cooperativa inspirada no Scotland Yard classico.
+            </p>
+
+            <div className="mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
+              <button
+                className="group min-h-48 rounded-lg border border-[#d7b861]/60 bg-[#f3dfaa] p-6 text-left text-[#17130d] shadow-2xl shadow-black/25 transition hover:-translate-y-1 hover:bg-[#ffe6a6] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isLoading}
+                onClick={createNewRoom}
+                type="button"
+              >
+                <span className="block text-sm font-bold uppercase tracking-[0.2em] text-[#8b1e1e]">
+                  Novo caso
+                </span>
+                <span className="mt-5 block font-serif text-3xl font-bold">
+                  Criar sala
+                </span>
+                <span className="mt-5 block text-base leading-7 text-[#3a3021]">
+                  Gera um codigo de 4 numeros e abre um lobby para os
+                  jogadores.
+                </span>
+                <span className="mt-6 inline-flex h-10 items-center rounded-full bg-[#17130d] px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#8b1e1e]">
+                  Abrir investigacao
+                </span>
+              </button>
+
+              <button
+                className="group min-h-48 rounded-lg border border-stone-600 bg-[#171b16] p-6 text-left shadow-2xl shadow-black/25 transition hover:-translate-y-1 hover:border-[#d7b861] hover:bg-[#20251d] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isLoading}
+                onClick={() => {
+                  setIsJoinOpen(true);
+                  setRoomCode("");
+                  setError("");
+                }}
+                type="button"
+              >
+                <span className="block text-sm font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+                  Codigo da sala
+                </span>
+                <span className="mt-5 block font-serif text-3xl font-bold text-[#fff3cf]">
+                  Entrar
+                </span>
+                <span className="mt-5 block text-base leading-7 text-stone-300">
+                  Use o codigo recebido para se juntar ao lobby do grupo.
+                </span>
+                <span className="mt-6 inline-flex h-10 items-center rounded-full border border-[#d7b861]/60 px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#d7b861] group-hover:text-[#17130d]">
+                  Inserir codigo
+                </span>
+              </button>
+            </div>
+
+            {error && !isJoinOpen ? (
+              <p className="mt-6 max-w-md rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
+                {error}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="relative hidden min-h-[520px] lg:block">
+            <div className="absolute left-10 top-4 h-72 w-56 rotate-[-8deg] rounded-lg border border-[#d7b861]/40 bg-[#e9d3a0] p-5 text-[#21170f] shadow-2xl">
+              <p className="border-b border-[#6f5533]/30 pb-3 font-serif text-2xl font-bold">
+                Relatorio
+              </p>
+              <div className="mt-5 space-y-3">
+                <span className="block h-3 w-36 rounded-full bg-[#6f5533]/50" />
+                <span className="block h-3 w-44 rounded-full bg-[#6f5533]/35" />
+                <span className="block h-3 w-28 rounded-full bg-[#6f5533]/35" />
+              </div>
+              <div className="mt-8 rounded border border-[#8b1e1e]/30 px-3 py-2 text-center font-mono text-xl font-bold tracking-[0.28em] text-[#8b1e1e]">
+                14 PISTAS
+              </div>
+            </div>
+            <div className="absolute right-2 top-24 h-80 w-72 rotate-6 rounded-lg border border-stone-600 bg-[#20251d] p-5 shadow-2xl">
+              <div className="grid h-full grid-cols-3 grid-rows-4 gap-3">
+                {Array.from({ length: 12 }).map((_, index) => (
+                  <span
+                    className="rounded border border-[#d7b861]/20 bg-[#10130f]"
+                    key={index}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="absolute bottom-0 left-24 h-52 w-80 rotate-[-2deg] rounded-lg border border-[#c8a24a]/40 bg-[#141813] p-6 shadow-2xl">
+              <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#c8a24a]">
+                Evidence Board
+              </p>
+              <div className="mt-6 grid grid-cols-2 gap-4">
+                <div className="h-20 rounded border border-stone-600 bg-stone-900" />
+                <div className="h-20 rounded border border-stone-600 bg-stone-900" />
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {isJoinOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4">
+          <form
+            className="w-full max-w-md rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-6 text-stone-50 shadow-2xl"
+            onSubmit={enterRoom}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d7b861]">
+                  Entrar na sala
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  Codigo do caso
+                </h2>
+              </div>
+              <button
+                aria-label="Fechar"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-200 transition hover:bg-stone-700"
+                onClick={() => {
+                  setIsJoinOpen(false);
+                  setError("");
+                }}
+                type="button"
+              >
+                X
+              </button>
+            </div>
+
+            <input
+              aria-label="Codigo da sala"
+              autoFocus
+              className="mt-6 h-16 w-full rounded-lg border border-[#d7b861]/50 bg-[#0f120e] px-5 text-center font-mono text-3xl font-bold tracking-[0.42em] text-[#fff3cf] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20"
+              inputMode="numeric"
+              maxLength={4}
+              onChange={(event) =>
+                setRoomCode(event.target.value.replace(/\D/g, "").slice(0, 4))
+              }
+              placeholder="0000"
+              value={roomCode}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+            {error ? (
+              <p className="mt-4 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
+                {error}
+              </p>
+            ) : null}
+
+            <button
+              className="mt-6 h-13 w-full rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={isLoading}
+              type="submit"
+            >
+              Entrar na investigacao
+            </button>
+          </form>
         </div>
-      </main>
-    </div>
+      ) : null}
+    </main>
   );
 }

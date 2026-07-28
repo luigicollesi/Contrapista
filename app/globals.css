@@ -24,3 +24,76 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media (prefers-color-scheme: light) {
+  .sy-theme {
+    background: #f4ecd8 !important;
+    color: #201812 !important;
+  }
+
+  .sy-theme [class*="bg-[#10130f]"],
+  .sy-theme [class*="bg-[#171b16]"],
+  .sy-theme [class*="bg-[#0f120e]"],
+  .sy-theme [class*="bg-[#141813]"],
+  .sy-theme [class*="bg-[#20251d]"],
+  .sy-theme [class*="bg-stone-900"],
+  .sy-theme [class*="bg-stone-800"],
+  .sy-theme [class*="bg-zinc-950"],
+  .sy-theme [class*="bg-[#8b1e1e]"],
+  .sy-theme [class*="bg-[#a32929]"],
+  .sy-theme [class*="bg-red-950"] {
+    background-color: #fff8e8 !important;
+    color: #201812 !important;
+  }
+
+  .sy-theme [class*="bg-[#f3dfaa]"],
+  .sy-theme [class*="bg-[#d7b861]"],
+  .sy-theme [class*="bg-[#ffe6a6]"],
+  .sy-theme [class*="bg-[#e9d3a0]"],
+  .sy-theme [class*="bg-white"],
+  .sy-theme [class*="bg-stone-50"],
+  .sy-theme [class*="bg-teal-50"],
+  .sy-theme [class*="bg-zinc-100"] {
+    background-color: #fff8e8 !important;
+    color: #201812 !important;
+  }
+
+  .sy-theme [class*="text-stone-50"],
+  .sy-theme [class*="text-stone-100"],
+  .sy-theme [class*="text-stone-200"],
+  .sy-theme [class*="text-stone-300"],
+  .sy-theme [class*="text-[#fff3cf]"],
+  .sy-theme [class*="text-white"],
+  .sy-theme [class*="text-teal-900"],
+  .sy-theme [class*="text-[#17130d]"] {
+    color: #201812 !important;
+  }
+
+  .sy-theme [class*="text-stone-400"],
+  .sy-theme [class*="text-stone-500"],
+  .sy-theme [class*="text-zinc-500"],
+  .sy-theme [class*="text-zinc-600"],
+  .sy-theme [class*="text-zinc-700"],
+  .sy-theme [class*="text-[#d7b861]"],
+  .sy-theme [class*="text-[#c8a24a]"] {
+    color: #5f5547 !important;
+  }
+
+  .sy-theme [class*="border-stone-"],
+  .sy-theme [class*="border-zinc-"],
+  .sy-theme [class*="border-[#d7b861]"],
+  .sy-theme [class*="border-[#c8a24a]"],
+  .sy-theme [class*="border-[#8b1e1e]"],
+  .sy-theme [class*="border-red-"] {
+    border-color: #d8c49b !important;
+  }
+
+  .sy-theme input {
+    background: #fffdf5 !important;
+    color: #201812 !important;
+  }
+
+  .sy-theme input::placeholder {
+    color: #8b7c65 !important;
+  }
+}
