@@ -257,6 +257,7 @@ async function repairGeneratedJson(text: string, parseError: unknown) {
   const repair = await chatCompletion({
     temperature: 0,
     maxTokens: 4200,
+    sessionId: "contrapista:json-repair:v1",
     responseFormat: { type: "json_object" },
     messages: [
       {
@@ -289,6 +290,27 @@ async function parseCaseResponse(text: string) {
   }
 }
 
+const CASE_GENERATION_SYSTEM_PROMPT = `
+Você gera casos originais em português para Contrapista, um jogo dedutivo familiar.
+Responda somente JSON válido, sem markdown, análise, comentários ou texto fora do objeto.
+
+Contrato:
+- Chaves exatas e nesta ordem: title, case_text, true_clues, false_clues, final_answer.
+- title: começa com "O CASO DO" ou "O CASO DA" e termina com elemento concreto.
+- case_text: 2 ou 3 parágrafos em Londres vitoriana; incidente claro; 3 ou 4 suspeitos; álibis, horários, objetos físicos e despiste.
+- O último parágrafo contém a seção exata "Perguntas centrais do caso:" com 2 a 4 perguntas numeradas.
+- final_answer começa com "Resposta:", responde as perguntas na mesma ordem e depois traz "Contexto:" explicando dedução e pistas falsas.
+- true_clues e false_clues são arrays de strings curtas, concretas e independentes, no máximo 120 caracteres.
+- Não use placeholders, reticências, blocos de código, aspas simples JSON, chaves extras nem quebras de linha literais dentro de strings.
+- Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro das pistas.
+
+Qualidade:
+- A solução depende de cruzar várias pistas, não de uma pista óbvia.
+- Inclua pistas físicas, testemunhais, temporais e alguns jogos de linguagem simples.
+- Pistas falsas devem ser plausíveis e úteis para discussão, mas desviam sem o conjunto completo.
+- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
+`.trim();
+
 function casePrompt({
   playerCount,
   requiredTrueClues,
@@ -306,101 +328,35 @@ function casePrompt({
   cluesPerPlayer: number;
   previousError?: string;
 }) {
-  const retryRules = previousError
-    ? `
-A tentativa anterior foi rejeitada por este motivo:
-${previousError}
-
-Corrija o formato nesta tentativa. Se a mensagem anterior começou com raciocínio em inglês, não continue esse raciocínio. Gere novamente apenas o objeto JSON final.
-`
-    : "";
-  const clueCountRules = Array.from(
-    { length: Math.max(requiredTrueClues, requiredFalseClues) },
-    (_, index) => index + 1,
-  ).join(", ");
   const trueClueNarrativeRules =
     requiredTrueClues >= 2
-      ? "- Pelo menos duas pistas verdadeiras devem inocentar suspeitos."
+      ? "Inclua pelo menos duas pistas confiáveis que inocentem suspeitos."
       : requiredTrueClues === 1
-        ? "- A pista verdadeira deve sustentar uma dedução objetiva importante."
-        : "- Não crie pistas verdadeiras; a solução deve ser deduzida pelo contraste entre o caso e as pistas falsas.";
+        ? "A pista confiável deve sustentar uma dedução objetiva importante."
+        : "Não crie pistas confiáveis; a solução deve ser deduzida pelo contraste entre caso e pistas falsas.";
   const falseClueNarrativeRules =
     requiredFalseClues >= 2
-      ? "- Pelo menos duas pistas falsas devem parecer incriminar alguém errado, mas a resposta final deve explicar por que eram enganosas, incompletas ou plantadas."
+      ? "Inclua pelo menos duas pistas falsas que incriminem alguém errado; explique no Contexto por que desviavam."
       : requiredFalseClues === 1
-        ? "- A pista falsa deve parecer útil, mas a resposta final deve explicar por que ela desvia a interpretação."
-        : "- Não crie pistas falsas; todos os indícios distribuídos devem sustentar a solução.";
+        ? "A pista falsa deve parecer útil; explique no Contexto por que desviava."
+        : "Não crie pistas falsas; todos os indícios distribuídos sustentam a solução.";
 
   return `
-CONTRATO DE SAÍDA OBRIGATÓRIO:
-- A resposta inteira deve ser um único objeto JSON válido para JSON.parse.
-- O primeiro caractere da resposta deve ser "{" e o último caractere deve ser "}".
-- Não escreva markdown, comentários, explicações, análise, raciocínio, introdução ou texto depois do JSON.
-- Não use blocos \`\`\`.
-- Não use trailing commas.
-- Não use aspas simples.
-- Não use quebras de linha literais dentro de strings; quando precisar separar parágrafos, use "\\n\\n".
-- Não use caracteres de controle dentro das strings.
-- Não use reticências como valor. Sequências de três pontos são proibidas em qualquer campo.
-- Não use placeholders, marcadores ou instruções como valor. São proibidas frases genéricas como "pista verdadeira", "pista falsa", "título curto", "string original" e "perguntas numeradas".
-- Use exatamente estas chaves, nesta ordem: ${CASE_JSON_KEYS.join(", ")}.
-- Não adicione chaves extras.
-- title, case_text e final_answer devem ser strings.
-- true_clues deve ser um array JSON com exatamente ${requiredTrueClues} strings. Posições de referência: ${clueCountRules || "nenhuma"}.
-- false_clues deve ser um array JSON com exatamente ${requiredFalseClues} strings. Posições de referência: ${clueCountRules || "nenhuma"}.
-- Cada item dos arrays deve ser string simples, sem objetos internos.
-- Todo conteúdo narrativo deve estar dentro dos valores JSON.
+Configuração da partida:
+- jogadores: ${playerCount}
+- pistas por jogador: ${cluesPerPlayer}
+- pistas confiáveis por jogador: ${trueCluesPerPlayer}
+- pistas falsas por jogador: ${falseCluesPerPlayer}
+- total true_clues: ${requiredTrueClues}
+- total false_clues: ${requiredFalseClues}
 
-Crie um caso original em português, com atmosfera de Londres vitoriana e investigação dedutiva familiar.
-
-Referência de estrutura, inspirada nos casos de exemplo sem copiar personagens, objetos ou soluções:
-- O caso deve narrar os fatos como um relato investigativo recebido por Holmes, Watson, Lestrade ou outro agente da investigação.
-- A narrativa deve apresentar pistas encontradas na cena, suspeitos aparentes e uma hipótese inicial plausível, mas incompleta.
-- O último trecho deve anunciar claramente o que precisa ser descoberto: quem fez, por qual motivo, com que método, que objeto estava em jogo ou qual contradição desmonta o disfarce.
-- A solução deve primeiro funcionar como gabarito direto e só depois explicar a cadeia dedutiva.
-
-Padrão obrigatório do caso:
-- Deve haver um incidente central claro: morte, roubo, desaparecimento, fraude ou sabotagem.
-- Apresente 3 ou 4 suspeitos com motivos aparentes diferentes.
-- Inclua álibis, horários, objetos físicos e pelo menos uma tentativa de despistar os investigadores.
-- A solução deve depender de cruzar várias pistas, não de uma única pista óbvia.
-- Evite finais vagos como "descobrir o que aconteceu". Os jogadores precisam saber exatamente quais perguntas devem responder.
-${trueClueNarrativeRules}
-${falseClueNarrativeRules}
-- Use algumas pistas criativas por linguagem: jogos de palavra, sons parecidos, rimas, duplos sentidos, metáforas de objetos ou fragmentos que apontem para sílabas, formatos, materiais ou partes de uma palavra.
-- As pistas criativas não podem resolver tudo sozinhas. Elas devem sugerir uma peça da solução e precisar de confirmação por outra pista física, testemunhal ou temporal.
-- Não use exemplos literais de armas, rimas, frases ou fragmentos já citados pelo usuário. Crie jogos de palavra originais para o caso gerado.
-- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
-
-Distribuição obrigatória:
-- O jogo terá ${playerCount} jogador(es).
-- Cada jogador receberá ${cluesPerPlayer} pistas no total.
-- Cada jogador deve receber ${trueCluesPerPlayer} pista(s) verdadeira(s) e ${falseCluesPerPlayer} pista(s) falsa(s).
-- Crie exatamente ${requiredTrueClues} pistas verdadeiras em true_clues.
-- Crie exatamente ${requiredFalseClues} pistas falsas em false_clues.
-- Cada pista deve ser independente, concreta e curta, com no máximo 120 caracteres.
-- Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro do texto das pistas.
-- As pistas falsas devem ser plausíveis e úteis para discussão, mas devem levar a interpretações erradas quando vistas sem o conjunto completo.
-- As pistas verdadeiras e falsas devem ter estilos misturados: objetos, horários, depoimentos, contradições, rimas, registros, marcas, recibos, rotas, fragmentos pela metade e falsas associações.
-
-Campos obrigatórios:
-- title: título curto em estilo de manchete investigativa, começando com "O CASO DO" ou "O CASO DA" e terminando com um elemento concreto da história.
-- case_text: 2 ou 3 parágrafos curtos. No último parágrafo, crie uma seção chamada exatamente "Perguntas centrais do caso:".
-- Depois desse título, escreva 2, 3 ou 4 perguntas numeradas com "1.", "2.", "3." e, se necessário, "4.".
-- Cada pergunta deve ser independente, clara e objetiva. Use formulações diretas como "Quem...", "Qual...", "Onde...", "Como..." ou "Por que...".
-- As perguntas devem pedir respostas verificáveis: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
-- Não faça perguntas subjetivas, abertas ou vagas como "o que realmente aconteceu?" sem especificar o item a responder.
-- final_answer: deve começar exatamente com "Resposta:". Logo abaixo, responda cada pergunta na mesma ordem usando "1.", "2.", "3." e, se necessário, "4.".
-- Cada item da resposta deve começar com a resposta curta e clara antes de qualquer explicação. Exemplo de formato, sem copiar conteúdo: "1. Nome do culpado — matou a vítima."
-- Depois do gabarito, escreva um segundo bloco começando exatamente com "Contexto:" e explique como as pistas verdadeiras revelam a solução e por que as falsas desviam o grupo.
-${retryRules}
-Retorne somente um objeto JSON final com estes campos preenchidos:
-- title: string com título original.
-- case_text: string com narrativa completa e perguntas numeradas.
-- true_clues: array com exatamente ${requiredTrueClues} strings de pistas verdadeiras.
-- false_clues: array com exatamente ${requiredFalseClues} strings de pistas falsas.
-- final_answer: string começando com "Resposta:", seguida de respostas numeradas e claras para as perguntas do caso, e contendo depois "Contexto:".
-Antes de responder, verifique internamente: nenhum valor pode ser vazio, genérico, placeholder ou reticências.
+Regras específicas:
+- true_clues deve ter exatamente ${requiredTrueClues} string(s).
+- false_clues deve ter exatamente ${requiredFalseClues} string(s).
+- ${trueClueNarrativeRules}
+- ${falseClueNarrativeRules}
+- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
+${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
 `.trim();
 }
 
@@ -468,7 +424,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
   const requiredFalseClues = playerCount * distribution.falseCluesPerPlayer;
   const maxAttempts = Math.max(
     MIN_CASE_GENERATION_ATTEMPTS,
-    getAvailableAiModelCount(),
+    await getAvailableAiModelCount(),
   );
   const errors: string[] = [];
   let previousError: string | undefined;
@@ -478,6 +434,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
       const chat = await chatCompletion({
         temperature: attempt === 0 ? 0.8 : 0.2,
         maxTokens: 3800,
+        sessionId: "contrapista:case-generation:v2",
         responseFormat: caseResponseFormat({
           requiredTrueClues,
           requiredFalseClues,
@@ -492,8 +449,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
         messages: [
           {
             role: "system",
-            content:
-              'Você é uma API de geração de JSON. Saída obrigatória: apenas o objeto JSON final que satisfaça o schema solicitado. Não escreva raciocínio, planejamento, análise, notas, markdown, desculpas ou frases em inglês. Se precisar revisar internamente, faça isso em silêncio e responda somente JSON. Escape aspas internas, barras invertidas e quebras de linha como \\n.',
+            content: CASE_GENERATION_SYSTEM_PROMPT,
           },
           {
             role: "user",

@@ -36,13 +36,18 @@ export async function POST(
   } catch (error) {
     console.error("[case-generation:error]", error);
     await finishRoomCase({ code }).catch(() => null);
+    const message = error instanceof Error ? error.message : "";
+    const isRateLimit =
+      message.includes("free-models-per-day") ||
+      message.toLowerCase().includes("rate limit");
 
     return Response.json(
       {
-        error:
-          "Os modelos de IA estão indisponíveis no momento. Voltem para a ante-sala e tentem novamente mais tarde.",
+        error: isRateLimit
+          ? "O limite diário dos modelos gratuitos do OpenRouter foi atingido. Voltem para a ante-sala e tentem novamente após o reset diário ou usem uma chave com créditos."
+          : "Os modelos de IA estão indisponíveis no momento. Voltem para a ante-sala e tentem novamente mais tarde.",
       },
-      { status: 503 },
+      { status: isRateLimit ? 429 : 503 },
     );
   }
 }

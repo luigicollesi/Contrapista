@@ -70,13 +70,23 @@ LLM_OPENROUTER_APP_URL=https://...
 LLM_OPENROUTER_ALLOW_FALLBACKS=true
 LLM_OPENROUTER_DATA_COLLECTION=deny
 LLM_OPENROUTER_ZDR=true
+LLM_OPENROUTER_REQUIRE_PARAMETERS=true
 LLM_OPENROUTER_ONLY=openai,google
 LLM_OPENROUTER_IGNORE=...
 ```
 
 O projeto usa os modelos na ordem de `LLM_MODELS`, separados por vírgula. Cada chamada à IA usa somente o primeiro modelo disponível da lista; os demais ficam ignorados até serem necessários. Se esse modelo falhar por erro de API, ele entra em espera por 24 horas no processo atual. Se retornar uma resposta inválida pela validação local, entra em espera por 5 minutos. A próxima chamada passa para o próximo modelo disponível da lista.
 
-Na geração de caso, o backend continua tentando os modelos fora de espera antes de retornar erro. Se nenhum modelo conseguir gerar um caso válido, a sala é resetada para a ante-sala e a UI informa que os modelos de IA estão indisponíveis.
+Na geração de caso, o backend continua tentando os modelos fora de espera antes de retornar erro. Requisições com JSON estruturado usam `provider.require_parameters` para evitar provedores incompatíveis com os parâmetros enviados. Quando um modelo rejeita `response_format` com HTTP 400 ou 404 de incompatibilidade de parâmetros, a mesma chamada é repetida uma vez sem `response_format`, mantendo a validação local do JSON. Erros HTTP 400/404 de parâmetros e respostas inválidas entram em espera curta de 5 minutos. Se nenhum modelo conseguir gerar um caso válido, a sala é resetada para a ante-sala e a UI informa que os modelos de IA estão indisponíveis.
+
+Técnicas de economia e consistência aplicadas:
+
+- `session_id` estável por fluxo de IA para favorecer sticky routing e prompt caching no OpenRouter.
+- Prompt de caso separado entre instruções fixas cacheáveis e configuração variável curta.
+- Filtro por Models API do OpenRouter para ignorar modelos não generativos, como embed, rerank, safety, moderation e guard.
+- Uso de `response_format` apenas quando o modelo anuncia suporte; caso contrário, o backend usa prompt JSON e validação local.
+- Registro de `usage` e métricas de cache quando `LLM_DEBUG=true`.
+- Mensagem específica quando o limite diário gratuito do OpenRouter é atingido.
 
 ## Jornada do Usuário
 

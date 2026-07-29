@@ -109,6 +109,9 @@ export function getAiConfig(): AiConfig {
           process.env.LLM_OPENROUTER_DATA_COLLECTION,
         ),
         zdr: parseOptionalBool(process.env.LLM_OPENROUTER_ZDR),
+        requireParameters: parseOptionalBool(
+          process.env.LLM_OPENROUTER_REQUIRE_PARAMETERS,
+        ),
         only: parseCsv(process.env.LLM_OPENROUTER_ONLY),
         ignore: parseCsv(process.env.LLM_OPENROUTER_IGNORE),
       },

@@ -8,6 +8,7 @@ import {
 import type {
   AiChatCompletionParams,
   AiChatCompletionResult,
+  AiProviderModelInfo,
 } from "@/lib/ai/types";
 
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
@@ -17,30 +18,86 @@ const modelStandoffUntil = new Map<string, number>();
 type ModelSlot = {
   id: string;
   model: string;
+  supportsResponseFormat?: boolean;
 };
 
-function getModelSlots(models: string[]): ModelSlot[] {
-  return models.map((model, index) => ({
-    id: String(index + 1),
-    model,
-  }));
+function looksLikeNonGenerativeModel(model: string) {
+  return /(?:embed|embedding|rerank|safety|moderation|guard)/i.test(model);
 }
 
-function getAvailableModelSlots(models: string[], now: number): ModelSlot[] {
-  return getModelSlots(models).filter(
+function isTextGenerationModel(info?: AiProviderModelInfo) {
+  if (!info) {
+    return true;
+  }
+
+  return (
+    (!info.inputModalities.length || info.inputModalities.includes("text")) &&
+    (!info.outputModalities.length || info.outputModalities.includes("text"))
+  );
+}
+
+async function getModelInfoById() {
+  const client = getAiClient();
+
+  if (!client.listModels) {
+    return new Map<string, AiProviderModelInfo>();
+  }
+
+  try {
+    const models = await client.listModels();
+
+    return new Map(models.map((model) => [model.id, model]));
+  } catch (error) {
+    console.warn(
+      "[AI][models] Não foi possível carregar metadados do OpenRouter; usando lista do ambiente.",
+      error,
+    );
+    return new Map<string, AiProviderModelInfo>();
+  }
+}
+
+async function getModelSlots(models: string[]): Promise<ModelSlot[]> {
+  const modelInfoById = await getModelInfoById();
+
+  return models
+    .map((model, index): ModelSlot | null => {
+      const info = modelInfoById.get(model);
+
+      if (looksLikeNonGenerativeModel(model) || !isTextGenerationModel(info)) {
+        return null;
+      }
+
+      return {
+        id: String(index + 1),
+        model,
+        supportsResponseFormat: info
+          ? info.supportedParameters.includes("response_format")
+          : undefined,
+      };
+    })
+    .filter((slot): slot is ModelSlot => Boolean(slot));
+}
+
+async function getAvailableModelSlots(
+  models: string[],
+  now: number,
+): Promise<ModelSlot[]> {
+  const slots = await getModelSlots(models);
+
+  return slots.filter(
     (slot) => (modelStandoffUntil.get(slot.id) ?? 0) <= now,
   );
 }
 
-export function getAvailableAiModelCount(): number {
-  return getAvailableModelSlots(getAiConfig().models, Date.now()).length;
+export async function getAvailableAiModelCount(): Promise<number> {
+  return (await getAvailableModelSlots(getAiConfig().models, Date.now())).length;
 }
 
-function getNextAvailableModelSlot(
+async function getNextAvailableModelSlot(
   models: string[],
   now: number,
-): ModelSlot | null {
-  return getAvailableModelSlots(models, now)[0] ?? null;
+): Promise<ModelSlot | null> {
+  return (await getAvailableModelSlots(models, now))[0] ?? null;
 }
 
 function putModelSlotInStandoff(
@@ -56,35 +113,31 @@ function shouldPutModelInStandoff(status?: number): boolean {
 }
 
 function getModelStandoffDuration(status?: number): number {
-  return status === 422 ? INVALID_RESPONSE_STANDOFF_MS : MODEL_STANDOFF_MS;
+  return status === 400 || status === 404 || status === 422
+    ? INVALID_RESPONSE_STANDOFF_MS
+    : MODEL_STANDOFF_MS;
 }
 
-export async function chatCompletion(
-  params: AiChatCompletionParams,
-): Promise<AiChatCompletionResult> {
-  const config = getAiConfig();
+async function requestModelCompletion({
+  params,
+  model,
+  supportsResponseFormat,
+}: {
+  params: AiChatCompletionParams;
+  model: string;
+  supportsResponseFormat?: boolean;
+}): Promise<AiChatCompletionResult> {
   const client = getAiClient();
-  const now = Date.now();
-  const modelSlot = getNextAvailableModelSlot(config.models, now);
+  const { validateText, ...providerParams } = params;
+  const initialResponseFormat =
+    supportsResponseFormat === false ? undefined : providerParams.responseFormat;
 
-  if (!modelSlot) {
-    throw new AiModelsUnavailableError(
-      "Todos os modelos LLM configurados estão temporariamente em espera por falhas de API.",
-    );
-  }
-
-  const { id: modelSlotId, model } = modelSlot;
-
-  if (config.debug) {
-    console.debug(
-      `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model}`,
-    );
-    console.debug("[AI][prompt]", params.messages);
-  }
-
-  try {
-    const { validateText, ...providerParams } = params;
-    const response = await client.chatCompletion({ ...providerParams, model });
+  async function request(responseFormat = initialResponseFormat) {
+    const response = await client.chatCompletion({
+      ...providerParams,
+      responseFormat,
+      model,
+    });
 
     try {
       validateText?.(response.text);
@@ -93,8 +146,54 @@ export async function chatCompletion(
       throw error;
     }
 
+    return response;
+  }
+
+  try {
+    return await request();
+  } catch (error) {
+    const status = getErrorStatus(error);
+
+    if ((status === 400 || status === 404) && providerParams.responseFormat) {
+      return request(undefined);
+    }
+
+    throw error;
+  }
+}
+
+export async function chatCompletion(
+  params: AiChatCompletionParams,
+): Promise<AiChatCompletionResult> {
+  const config = getAiConfig();
+  const now = Date.now();
+  const modelSlot = await getNextAvailableModelSlot(config.models, now);
+
+  if (!modelSlot) {
+    throw new AiModelsUnavailableError(
+      "Todos os modelos LLM configurados estão temporariamente em espera por falhas de API.",
+    );
+  }
+
+  const { id: modelSlotId, model, supportsResponseFormat } = modelSlot;
+
+  if (config.debug) {
+    console.debug(
+      `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model} responseFormat=${supportsResponseFormat === false ? "disabled" : params.responseFormat ? "enabled" : "none"} sessionId=${params.sessionId ?? "none"}`,
+    );
+    console.debug("[AI][prompt]", params.messages);
+  }
+
+  try {
+    const response = await requestModelCompletion({
+      params,
+      model,
+      supportsResponseFormat,
+    });
+
     if (config.debug) {
       console.debug("[AI][raw-response]", response.raw);
+      console.debug("[AI][usage]", response.usage);
     }
 
     return response;

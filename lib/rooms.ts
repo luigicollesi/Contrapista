@@ -1441,6 +1441,7 @@ async function evaluateFinalGuess({
   const response = await chatCompletion({
     temperature: 0,
     maxTokens: 8,
+    sessionId: "contrapista:final-guess-judge:v1",
     validateText: (text) => {
       const normalized = text.trim().toLowerCase();
 
