@@ -10,7 +10,7 @@ const steps = [
   "Localizando contradições",
   "Cruzando pistas",
   "Separando falsas pistas",
-  "Montando 14 locais",
+  "Distribuindo fragmentos",
   "Criando charadas",
   "Escrevendo solução",
   "Lacrando o arquivo",
@@ -280,7 +280,7 @@ export default function CreatingCasePage() {
             </div>
 
             <div className="relative z-10 mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {["Museu", "Banco", "Docas", "Parque"].map((label, index) => (
+              {["Álibi", "Ruído", "Rastro", "Versão"].map((label, index) => (
                 <div
                   className="case-location-tile rounded-lg border border-stone-700 bg-[#0f120e] px-3 py-4"
                   key={label}

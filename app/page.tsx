@@ -170,7 +170,7 @@ export default function Home() {
         <section className="grid items-center gap-10 lg:grid-cols-[1.02fr_.98fr]">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.32em] text-[#d7b861]">
-              Uma mesa. Um caso. Quatorze pistas.
+              Uma mesa. Um caso. Pistas em conflito.
             </p>
             <h1 className="mt-5 max-w-3xl font-serif text-5xl font-bold leading-[1.02] text-[#fff3cf] sm:text-7xl">
               Reúna os detetives antes que Londres esfrie as pistas.
@@ -245,7 +245,7 @@ export default function Home() {
                 <span className="block h-3 w-28 rounded-full bg-[#6f5533]/35" />
               </div>
               <div className="mt-8 rounded border border-[#8b1e1e]/30 px-3 py-2 text-center font-mono text-xl font-bold tracking-[0.28em] text-[#8b1e1e]">
-                14 PISTAS
+                PISTAS
               </div>
             </div>
             <div className="absolute right-2 top-24 h-80 w-72 rotate-6 rounded-lg border border-stone-600 bg-[#20251d] p-5 shadow-2xl">

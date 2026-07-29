@@ -1,4 +1,3 @@
-import { CASE_LOCATIONS } from "@/lib/case-locations";
 import { publishRoomEvent } from "@/lib/rooms";
 
 export async function POST(
@@ -8,41 +7,19 @@ export async function POST(
   const { code } = await params;
   const body = (await request.json()) as {
     userId?: string;
-    type?: "clue" | "solution" | "solution_correct";
-    clueKey?: string;
+    type?: "solution" | "solution_correct" | "solution_wrong";
   };
 
-  if (!body.userId || !body.type) {
+  if (
+    !body.userId ||
+    (body.type !== "solution" &&
+      body.type !== "solution_correct" &&
+      body.type !== "solution_wrong")
+  ) {
     return Response.json({ error: "Evento inválido." }, { status: 400 });
   }
 
   try {
-    if (body.type === "clue") {
-      const location = CASE_LOCATIONS.find(
-        (candidate) => candidate.key === body.clueKey,
-      );
-
-      if (!location) {
-        return Response.json({ error: "Dica inválida." }, { status: 400 });
-      }
-
-      const event = await publishRoomEvent({
-        code,
-        userId: body.userId,
-        event: {
-          type: "clue",
-          clueKey: location.key,
-          locationName: location.name,
-        },
-      });
-
-      if (!event) {
-        return Response.json({ error: "Sala não encontrada." }, { status: 404 });
-      }
-
-      return Response.json({ event });
-    }
-
     const event = await publishRoomEvent({
       code,
       userId: body.userId,

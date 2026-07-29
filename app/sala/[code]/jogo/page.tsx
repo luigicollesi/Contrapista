@@ -1,26 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import {
-  CASE_LOCATIONS,
-  type CaseLocationKey,
-} from "@/lib/case-locations";
 
 type RoomEvent =
   | {
       id: string;
-      type: "clue";
+      type: "solution" | "solution_correct";
       actorId: string;
       actorNickname: string;
-      clueKey: CaseLocationKey;
-      locationName: string;
       createdAt: number;
     }
   | {
       id: string;
-      type: "solution" | "solution_correct";
+      type: string;
       actorId: string;
       actorNickname: string;
       createdAt: number;
@@ -31,14 +25,43 @@ type Room = {
   users: Array<{ id: string; nickname: string }>;
   activecase: string | null;
   activeevent: RoomEvent | null;
+  gamestate: GameState | null;
+};
+
+type GameState = {
+  phase: "reading" | "roulette" | "turn" | "shared_clue" | "pause";
+  round: number;
+  order: string[];
+  currentTurnIndex: number;
+  phaseStartedAt: number;
+  phaseEndsAt: number;
+  roulettePool?: string[];
+  rouletteSelectedId?: string;
+  pausedAt?: number;
+  sharedClue?: {
+    id: string;
+    actorId: string;
+    actorNickname: string;
+    clueText: string;
+    clueNumber: number;
+    createdAt: number;
+  };
 };
 
 type GameCase = {
   id: string;
   title: string;
   case_text: string;
-  final_solution: string;
-} & Record<CaseLocationKey, string>;
+  final_answer: string;
+  true_clues: string[];
+  false_clues: string[];
+};
+
+type PlayerClue = {
+  id: string;
+  text: string;
+  number: number;
+};
 
 type SavedSession = {
   roomCode: string;
@@ -49,10 +72,6 @@ type SavedSession = {
 };
 
 const SESSION_STORAGE_KEY = "scotland-yard-session";
-
-function dismissedEventsStorageKey(code: string, userId: string | null) {
-  return `scotland-yard-dismissed-events-${code}-${userId ?? "guest"}`;
-}
 
 function readUserId(code: string) {
   try {
@@ -70,33 +89,54 @@ function readUserId(code: string) {
   }
 }
 
-function readDismissedEventIds(code: string, userId: string | null) {
-  try {
-    const stored = localStorage.getItem(dismissedEventsStorageKey(code, userId));
+function hashString(value: string) {
+  let hash = 2166136261;
 
-    if (!stored) {
-      return new Set<string>();
-    }
-
-    const ids = JSON.parse(stored) as unknown;
-
-    return Array.isArray(ids)
-      ? new Set(ids.filter((id): id is string => typeof id === "string"))
-      : new Set<string>();
-  } catch {
-    return new Set<string>();
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
   }
+
+  return hash >>> 0;
 }
 
-function saveDismissedEventIds(
-  code: string,
-  userId: string | null,
-  ids: Set<string>,
-) {
-  localStorage.setItem(
-    dismissedEventsStorageKey(code, userId),
-    JSON.stringify(Array.from(ids).slice(-50)),
-  );
+function seededShuffle<T>(items: T[], seedValue: string) {
+  const shuffled = [...items];
+  let seed = hashString(seedValue);
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0;
+    const swapIndex = seed % (index + 1);
+    const current = shuffled[index];
+    shuffled[index] = shuffled[swapIndex];
+    shuffled[swapIndex] = current;
+  }
+
+  return shuffled;
+}
+
+function pickClues({
+  clues,
+  start,
+  prefix,
+}: {
+  clues: string[];
+  start: number;
+  prefix: string;
+}): PlayerClue[] {
+  return Array.from({ length: 3 })
+    .map((_, index) => {
+      const clue = clues[(start + index) % clues.length];
+
+      return clue
+        ? {
+            id: `${prefix}-${start + index}`,
+            text: clue,
+            number: index + 1,
+          }
+        : null;
+    })
+    .filter((clue): clue is PlayerClue => Boolean(clue));
 }
 
 export default function GamePage() {
@@ -112,20 +152,15 @@ export default function GamePage() {
   });
   const [room, setRoom] = useState<Room | null>(null);
   const [gameCase, setGameCase] = useState<GameCase | null>(null);
-  const [dismissedEventIds, setDismissedEventIds] = useState<Set<string>>(
-    () => {
-      if (typeof window === "undefined") {
-        return new Set();
-      }
-
-      return readDismissedEventIds(code, readUserId(code));
-    },
-  );
-  const [lockedTimedEvent, setLockedTimedEvent] = useState<RoomEvent | null>(
-    null,
-  );
-  const [queuedEvent, setQueuedEvent] = useState<RoomEvent | null>(null);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const [selectedClue, setSelectedClue] = useState<PlayerClue | null>(null);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 250);
+
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -146,24 +181,6 @@ export default function GamePage() {
 
         if (!isActive) {
           return;
-        }
-
-        const nextEvent = roomData.room.activeevent;
-        const isLockedOwnClue =
-          lockedTimedEvent?.type === "clue" &&
-          lockedTimedEvent.actorId === userId;
-
-        if (nextEvent && !dismissedEventIds.has(nextEvent.id)) {
-          if (isLockedOwnClue && nextEvent.id !== lockedTimedEvent?.id) {
-            setQueuedEvent((current) => current ?? nextEvent);
-          } else if (
-            nextEvent.type === "clue" &&
-            nextEvent.actorId === userId &&
-            nextEvent.id !== lockedTimedEvent?.id
-          ) {
-            setLockedTimedEvent(nextEvent);
-            setQueuedEvent(null);
-          }
         }
 
         setRoom(roomData.room);
@@ -213,30 +230,60 @@ export default function GamePage() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [code, dismissedEventIds, gameCase, lockedTimedEvent, router, userId]);
+  }, [code, gameCase, router]);
 
   const event = room?.activeevent ?? null;
-  const visibleEvent = lockedTimedEvent ?? queuedEvent ?? event;
-  const modalEvent =
-    visibleEvent && !dismissedEventIds.has(visibleEvent.id)
-      ? visibleEvent
-      : null;
+  const modalEvent = event && event.type !== "solution_wrong" ? event : null;
   const isMissingGame =
     error === "Sala não encontrada." || error === "Caso não encontrado.";
+  const playerClues = useMemo(() => {
+    if (!gameCase || !room || !userId) {
+      return [];
+    }
 
-  const dismissEvent = useCallback((eventId: string) => {
-    setDismissedEventIds((current) => {
-      const next = new Set(current);
-      next.add(eventId);
-      saveDismissedEventIds(code, userId, next);
-      return next;
+    const userIndex = Math.max(
+      0,
+      room.users.findIndex((user) => user.id === userId),
+    );
+    const start = userIndex * 3;
+    const trueClues = pickClues({
+      clues: gameCase.true_clues,
+      start,
+      prefix: "true",
+    });
+    const falseClues = pickClues({
+      clues: gameCase.false_clues,
+      start,
+      prefix: "false",
     });
 
-    setQueuedEvent((current) => (current?.id === eventId ? null : current));
-    setLockedTimedEvent((current) =>
-      current?.id === eventId ? null : current,
-    );
-  }, [code, userId]);
+    return seededShuffle(
+      [...trueClues, ...falseClues],
+      `${gameCase.id}:${userId}:player-clues`,
+    ).map((clue, index) => ({ ...clue, number: index + 1 }));
+  }, [gameCase, room, userId]);
+  const gameState = room?.gamestate ?? null;
+  const currentTurnUserId = gameState?.order[gameState.currentTurnIndex] ?? null;
+  const currentTurnUser = room?.users.find((user) => user.id === currentTurnUserId);
+  const isMyTurn =
+    Boolean(userId) &&
+    gameState?.phase === "turn" &&
+    currentTurnUserId === userId &&
+    !gameState.pausedAt;
+  const phaseRemainingSeconds = gameState?.pausedAt
+    ? null
+    : Math.max(0, Math.ceil(((gameState?.phaseEndsAt ?? now) - now) / 1000));
+  const phaseLabel = gameState?.pausedAt
+    ? "Jogo pausado"
+    : gameState?.phase === "reading"
+      ? "Leitura inicial"
+      : gameState?.phase === "roulette"
+        ? "Sorteando ordem"
+        : gameState?.phase === "turn"
+          ? "Vez de compartilhar"
+          : gameState?.phase === "shared_clue"
+            ? "Pista compartilhada"
+            : "Pausa para organizar";
 
   async function publishEvent(body: Record<string, unknown>) {
     if (!userId) {
@@ -257,40 +304,17 @@ export default function GamePage() {
       throw new Error(data.error ?? "Não foi possível publicar evento.");
     }
 
-    setDismissedEventIds((current) => {
-      const next = new Set(current);
-      next.delete(data.event.id);
-      saveDismissedEventIds(code, userId, next);
-      return next;
-    });
-
     return data.event as RoomEvent;
-  }
-
-  async function openClue(clueKey: CaseLocationKey) {
-    setError("");
-
-    try {
-      const event = await publishEvent({ type: "clue", clueKey });
-
-      if (event?.type === "clue" && event.actorId === userId) {
-        setLockedTimedEvent(event);
-        setQueuedEvent(null);
-      }
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Não foi possível abrir a dica.",
-      );
-    }
   }
 
   async function openSolution() {
     setError("");
 
     try {
-      await publishEvent({ type: "solution" });
+      const event = await publishEvent({ type: "solution" });
+      setRoom((current) =>
+        current && event ? { ...current, activeevent: event } : current,
+      );
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -300,11 +324,70 @@ export default function GamePage() {
     }
   }
 
+  async function markWrong() {
+    setError("");
+
+    try {
+      const event = await publishEvent({ type: "solution_wrong" });
+      setRoom((current) =>
+        current && event ? { ...current, activeevent: event } : current,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível retomar o jogo.",
+      );
+    }
+  }
+
+  async function shareClue(clue: PlayerClue) {
+    if (!userId) {
+      setError("Entre na sala novamente para compartilhar pistas.");
+      return;
+    }
+
+    setError("");
+
+    try {
+      const response = await fetch(`/api/rooms/${code}/clues`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          clueText: clue.text,
+          clueNumber: clue.number,
+        }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Não foi possível compartilhar a pista.");
+      }
+
+      setSelectedClue(null);
+      setRoom((current) =>
+        current ? { ...current, gamestate: data.gamestate } : current,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível compartilhar a pista.",
+      );
+    }
+  }
+
   async function markCorrect() {
     setError("");
 
     try {
-      await publishEvent({ type: "solution_correct" });
+      const event = await publishEvent({ type: "solution_correct" });
+      setRoom((current) =>
+        current && event ? { ...current, activeevent: event } : current,
+      );
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -323,48 +406,149 @@ export default function GamePage() {
 
   function renderModal() {
     if (!modalEvent || !gameCase) {
-      return null;
-    }
+      if (gameState?.phase === "roulette") {
+        const pool = gameState.roulettePool ?? [];
+        const selectedPlayer = room?.users.find(
+          (user) => user.id === gameState.rouletteSelectedId,
+        );
 
-    if (modalEvent.type === "clue") {
-      const isActor = modalEvent.actorId === userId;
-      const clueText = gameCase[modalEvent.clueKey];
-
-      return (
-        <Modal>
-          {isActor ? (
-            <TimedClueModal
-              clueText={clueText}
-              locationName={modalEvent.locationName}
-              onDone={() => dismissEvent(modalEvent.id)}
-            />
-          ) : (
-            <>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                    Dica consultada
+        return (
+          <Modal>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+              Roleta de ordem
+            </p>
+            <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+              Sorteando o próximo jogador
+            </h2>
+            <div className="mt-8 flex flex-col items-center gap-6">
+              <div className="relative h-72 w-72 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)]">
+                <div className="roulette-wheel absolute inset-4 rounded-full border border-[#d7b861]/40 bg-[conic-gradient(from_0deg,#2a1711,#d7b861,#171b16,#8b1e1e,#2a1711)]" />
+                <div className="absolute left-1/2 top-2 h-8 w-4 -translate-x-1/2 rounded-b-full bg-[#fff3cf]" />
+                <div className="absolute inset-16 rounded-full border border-[#d7b861]/50 bg-[#171b16] shadow-inner" />
+                <div className="absolute inset-0 flex items-center justify-center px-12 text-center">
+                  <p className="font-serif text-2xl font-bold text-[#fff3cf]">
+                    {selectedPlayer?.nickname ?? "Sorteando..."}
                   </p>
-                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    {modalEvent.actorNickname} abriu uma pista
-                  </h2>
                 </div>
-                <button
-                  aria-label="Fechar"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
-                  onClick={() => dismissEvent(modalEvent.id)}
-                  type="button"
-                >
-                  X
-                </button>
               </div>
-              <p className="mt-5 text-lg leading-8 text-stone-300">
-                Local: <strong>{modalEvent.locationName}</strong>.
-              </p>
-            </>
-          )}
-        </Modal>
-      );
+              <div className="flex flex-wrap justify-center gap-2">
+                {pool.map((playerId) => {
+                  const player = room?.users.find((user) => user.id === playerId);
+                  const isSelected = playerId === gameState.rouletteSelectedId;
+
+                  return (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-bold ${
+                        isSelected
+                          ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
+                          : "border-stone-700 bg-[#0f120e] text-stone-300"
+                      }`}
+                      key={playerId}
+                    >
+                      {player?.nickname ?? "Jogador"}
+                    </span>
+                  );
+                })}
+              </div>
+              {gameState.order.length > 0 ? (
+                <p className="text-sm text-stone-400">
+                  Ordem parcial:{" "}
+                  {gameState.order
+                    .map(
+                      (playerId) =>
+                        room?.users.find((user) => user.id === playerId)
+                          ?.nickname ?? "Jogador",
+                    )
+                    .join(" / ")}
+                </p>
+              ) : null}
+            </div>
+            <style jsx>{`
+              @keyframes roulette-spin {
+                0% {
+                  transform: rotate(0deg);
+                }
+                100% {
+                  transform: rotate(1440deg);
+                }
+              }
+
+              .roulette-wheel {
+                animation: roulette-spin 3s cubic-bezier(0.12, 0.78, 0.22, 1)
+                  both;
+              }
+            `}</style>
+          </Modal>
+        );
+      }
+
+      if (gameState?.phase === "shared_clue" && gameState.sharedClue) {
+        return (
+          <Modal>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+              Pista compartilhada
+            </p>
+            <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+              {gameState.sharedClue.actorNickname} abriu um fragmento
+            </h2>
+            <p className="mt-5 whitespace-pre-line text-xl leading-9 text-stone-200">
+              {gameState.sharedClue.clueText}
+            </p>
+            <p className="mt-5 text-sm font-semibold text-stone-400">
+              O fragmento fecha quando o cronômetro chegar a zero.
+            </p>
+            <div className="mt-6 flex justify-end">
+              <button
+                className="h-11 rounded-lg bg-[#8b1e1e] px-5 font-bold text-white transition hover:bg-[#a32929]"
+                onClick={openSolution}
+                type="button"
+              >
+                Responder agora
+              </button>
+            </div>
+          </Modal>
+        );
+      }
+
+      if (selectedClue) {
+        return (
+          <Modal>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                  Fragmento {String(selectedClue.number).padStart(2, "0")}
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  Leitura privada
+                </h2>
+              </div>
+              <button
+                aria-label="Fechar"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+                onClick={() => setSelectedClue(null)}
+                type="button"
+              >
+                X
+              </button>
+            </div>
+            <p className="mt-5 whitespace-pre-line text-xl leading-9 text-stone-200">
+              {selectedClue.text}
+            </p>
+            <div className="mt-6 flex justify-end">
+              <button
+                className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-45"
+                disabled={!isMyTurn}
+                onClick={() => shareClue(selectedClue)}
+                type="button"
+              >
+                Compartilhar na rodada
+              </button>
+            </div>
+          </Modal>
+        );
+      }
+
+      return null;
     }
 
     if (modalEvent.type === "solution") {
@@ -381,12 +565,12 @@ export default function GamePage() {
                 Confira sua resposta
               </h2>
               <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
-                {gameCase.final_solution}
+                {gameCase.final_answer}
               </p>
               <div className="mt-6 flex flex-wrap justify-end gap-3">
                 <button
                   className="h-11 rounded-lg border border-stone-600 px-5 font-semibold text-stone-100 transition hover:bg-white/10"
-                  onClick={() => dismissEvent(modalEvent.id)}
+                  onClick={markWrong}
                   type="button"
                 >
                   Errou
@@ -411,14 +595,6 @@ export default function GamePage() {
                     {modalEvent.actorNickname} abriu a resposta final
                   </h2>
                 </div>
-                <button
-                  aria-label="Fechar"
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
-                  onClick={() => dismissEvent(modalEvent.id)}
-                  type="button"
-                >
-                  X
-                </button>
               </div>
               <p className="mt-5 text-lg leading-8 text-stone-300">
                 Aguarde a confirmação de acerto ou erro desse jogador.
@@ -427,6 +603,10 @@ export default function GamePage() {
           )}
         </Modal>
       );
+    }
+
+    if (modalEvent.type !== "solution_correct") {
+      return null;
     }
 
     return (
@@ -441,7 +621,7 @@ export default function GamePage() {
           {modalEvent.actorNickname} confirmou a solução do caso.
         </p>
         <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
-          {gameCase.final_solution}
+          {gameCase.final_answer}
         </p>
         <div className="mt-6 flex justify-end">
           <button
@@ -503,13 +683,63 @@ export default function GamePage() {
           </div>
           <div className="rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-6 py-4 shadow-2xl shadow-black/25">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
-              Pistas
+              Cronômetro
             </p>
             <p className="mt-1 font-mono text-4xl font-bold text-[#fff3cf]">
-              14
+              {phaseRemainingSeconds === null
+                ? "--"
+                : String(phaseRemainingSeconds).padStart(2, "0")}
+            </p>
+            <p className="mt-2 text-sm font-semibold text-stone-400">
+              {phaseLabel}
             </p>
           </div>
         </header>
+
+        {gameState ? (
+          <section className="sticky top-0 z-20 -mx-2 mt-5 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-4 shadow-2xl shadow-black/20 backdrop-blur">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                  Rodada {gameState.round}
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-[#fff3cf]">
+                  {phaseLabel}
+                </h2>
+                <p className="mt-1 text-sm text-stone-400">
+                  {gameState.phase === "turn"
+                    ? `Vez de ${currentTurnUser?.nickname ?? "jogador"}`
+                    : gameState.phase === "roulette"
+                      ? "A ordem da rodada está sendo definida."
+                      : gameState.phase === "shared_clue"
+                        ? "Todos analisam o fragmento aberto."
+                        : gameState.phase === "pause"
+                          ? "Organizem hipóteses antes da próxima rodada."
+                          : "Leiam o caso e seus fragmentos em silêncio."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {gameState.order.map((playerId, index) => {
+                  const player = room?.users.find((user) => user.id === playerId);
+                  const isCurrent = index === gameState.currentTurnIndex;
+
+                  return (
+                    <span
+                      className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                        isCurrent
+                          ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
+                          : "border-stone-700 bg-[#0f120e] text-stone-300"
+                      }`}
+                      key={playerId}
+                    >
+                      {player?.nickname ?? "Jogador"}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        ) : null}
 
         {error ? (
           <p className="mt-6 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
@@ -545,32 +775,32 @@ export default function GamePage() {
               <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                    Locais
+                    Fragmentos pessoais
                   </p>
                   <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    Escolha uma pista
+                    Suas seis pistas
                   </h2>
                 </div>
                 <p className="text-sm text-stone-400">
-                  Cada pista abre por 30 segundos para quem consultou.
+                  Três delas sustentam a verdade. Três desviam o caminho.
                 </p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {CASE_LOCATIONS.map((location, index) => (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {playerClues.map((clue, index) => (
                   <button
-                    className="group min-h-24 rounded-lg border border-stone-700 bg-[#171b16] px-4 py-4 text-left shadow-xl shadow-black/10 transition hover:-translate-y-0.5 hover:border-[#d7b861] hover:bg-[#20251d]"
-                    key={location.key}
-                    onClick={() => openClue(location.key)}
+                    className="min-h-48 rotate-[-1deg] rounded border border-[#d7b861]/35 bg-[#f2dfad] p-5 text-left text-[#21170f] shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:rotate-0 hover:border-[#8b1e1e]"
+                    key={clue.id}
+                    onClick={() => setSelectedClue(clue)}
                     type="button"
                   >
-                    <span className="font-mono text-xs font-bold text-[#d7b861]">
+                    <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-[#8b1e1e]">
                       {String(index + 1).padStart(2, "0")}
-                    </span>
-                    <span className="mt-3 block text-lg font-bold text-[#fff3cf]">
-                      {location.name}
-                    </span>
-                    <span className="mt-2 block text-sm text-stone-400 transition group-hover:text-stone-300">
-                      Abrir pista
+                    </p>
+                    <p className="mt-5 line-clamp-4 text-lg leading-8">
+                      {clue.text}
+                    </p>
+                    <span className="mt-5 inline-flex text-sm font-bold text-[#8b1e1e]">
+                      Abrir fragmento
                     </span>
                   </button>
                 ))}
@@ -614,111 +844,5 @@ function Modal({ children }: { children: ReactNode }) {
         {children}
       </section>
     </div>
-  );
-}
-
-function TimedClueModal({
-  clueText,
-  locationName,
-  onDone,
-}: {
-  clueText: string;
-  locationName: string;
-  onDone: () => void;
-}) {
-  const [seconds, setSeconds] = useState(30);
-  const progress = (seconds / 30) * 100;
-  const isUrgent = seconds <= 10;
-
-  useEffect(() => {
-    if (seconds <= 0) {
-      onDone();
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setSeconds((current) => current - 1);
-    }, 1000);
-
-    return () => window.clearTimeout(timeout);
-  }, [onDone, seconds]);
-
-  return (
-    <>
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-            {locationName}
-          </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-            Dica aberta
-          </h2>
-        </div>
-        <button
-          aria-label="Fechar dica"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
-          onClick={onDone}
-          type="button"
-        >
-          X
-        </button>
-      </div>
-
-      <div
-        className={`mt-6 rounded-lg border p-4 ${
-          isUrgent
-            ? "border-red-400/50 bg-red-950/35"
-            : "border-[#d7b861]/35 bg-[#0f120e]"
-        }`}
-      >
-        <div className="flex items-center justify-between gap-5">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-              Tempo de leitura
-            </p>
-            <p className="mt-1 text-sm text-stone-400">
-              O modal fecha quando o contador zerar.
-            </p>
-          </div>
-          <div
-            className={`clue-timer-pulse flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-4 font-mono text-3xl font-black ${
-              isUrgent
-                ? "border-red-400 bg-red-600 text-white shadow-[0_0_28px_rgba(248,113,113,.45)]"
-                : "border-[#d7b861] bg-[#d7b861] text-[#17130d] shadow-[0_0_24px_rgba(215,184,97,.35)]"
-            }`}
-            key={seconds}
-          >
-            {seconds}
-          </div>
-        </div>
-        <div className="mt-4 h-3 overflow-hidden rounded-full bg-black/35">
-          <div
-            className={`h-full rounded-full transition-[width] duration-1000 ease-linear ${
-              isUrgent ? "bg-red-400" : "bg-[#d7b861]"
-            }`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      <p className="mt-5 text-lg leading-8 text-stone-300">{clueText}</p>
-      <style jsx>{`
-        @keyframes clue-timer-pulse {
-          0% {
-            transform: scale(1);
-          }
-          35% {
-            transform: scale(1.14);
-          }
-          100% {
-            transform: scale(1);
-          }
-        }
-
-        .clue-timer-pulse {
-          animation: clue-timer-pulse 0.45s ease-out;
-        }
-      `}</style>
-    </>
   );
 }

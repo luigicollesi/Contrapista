@@ -1,5 +1,4 @@
 import { chatCompletion } from "@/lib/ai";
-import { CASE_LOCATIONS, type CaseLocationKey } from "@/lib/case-locations";
 import { pool } from "@/lib/db";
 import { setRoomActiveCase } from "@/lib/rooms";
 
@@ -7,47 +6,120 @@ export type GameCase = {
   id: string;
   title: string;
   case_text: string;
-  final_solution: string;
+  final_answer: string;
+  true_clues: string[];
+  false_clues: string[];
   created_at?: string;
-} & Record<CaseLocationKey, string>;
+};
 
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
+const CLUES_PER_PLAYER_BY_KIND = 3;
+const CASE_GENERATION_ATTEMPTS = 5;
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
 
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
 
-  if (fenced?.[1]) {
+  if (fenced?.[1]?.trim().startsWith("{")) {
     return fenced[1].trim();
   }
 
   const firstBrace = text.indexOf("{");
-  const lastBrace = text.lastIndexOf("}");
 
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return text.slice(firstBrace, lastBrace + 1);
+  if (firstBrace < 0) {
+    throw new Error(
+      `A IA respondeu texto em vez de JSON: ${text.slice(0, 80)}`,
+    );
   }
 
-  return text;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = firstBrace; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) {
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return text.slice(firstBrace, index + 1);
+      }
+    }
+  }
+
+  throw new Error("A IA retornou um objeto JSON incompleto.");
 }
 
-function assertGeneratedCase(value: unknown): GeneratedCase {
-  const data = value as Partial<Record<keyof GeneratedCase, unknown>>;
-  const requiredKeys = [
-    "title",
-    "case_text",
-    ...CASE_LOCATIONS.map((location) => location.key),
-    "final_solution",
-  ] as const;
+function normalizeClueArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
 
-  for (const key of requiredKeys) {
+  return value
+    .map((clue) => String(clue ?? "").trim())
+    .filter(Boolean);
+}
+
+function countRoomUsers(users: unknown) {
+  return Array.isArray(users) ? Math.max(1, users.length) : 1;
+}
+
+function assertGeneratedCase(
+  value: unknown,
+  requiredCluesByKind: number,
+): GeneratedCase {
+  const data = value as Partial<Record<keyof GeneratedCase, unknown>>;
+  const trueClues = normalizeClueArray(data.true_clues);
+  const falseClues = normalizeClueArray(data.false_clues);
+
+  for (const key of ["title", "case_text", "final_answer"] as const) {
     if (typeof data[key] !== "string" || !data[key]?.trim()) {
       throw new Error(`Resposta da IA sem campo válido: ${key}`);
     }
   }
 
-  return data as GeneratedCase;
+  if (trueClues.length < requiredCluesByKind) {
+    throw new Error("Resposta da IA sem pistas verdadeiras suficientes.");
+  }
+
+  if (falseClues.length < requiredCluesByKind) {
+    throw new Error("Resposta da IA sem pistas falsas suficientes.");
+  }
+
+  const title = data.title as string;
+  const caseText = data.case_text as string;
+  const finalAnswer = data.final_answer as string;
+
+  return {
+    title: title.trim(),
+    case_text: caseText.trim(),
+    final_answer: finalAnswer.trim(),
+    true_clues: trueClues.slice(0, requiredCluesByKind),
+    false_clues: falseClues.slice(0, requiredCluesByKind),
+  };
 }
 
 function parseGeneratedJson(text: string) {
@@ -69,7 +141,7 @@ async function repairGeneratedJson(text: string, parseError: unknown) {
       {
         role: "system",
         content:
-          "Você corrige respostas para JSON válido. Não invente conteúdo novo. Preserve todos os campos, textos e valores recebidos. Responda somente um objeto JSON válido, sem markdown.",
+          'Você corrige respostas para JSON válido. Não invente conteúdo novo. Preserve todos os campos, textos e valores recebidos. Responda somente um objeto JSON válido. O primeiro caractere deve ser "{". Não escreva análise, markdown ou explicações.',
       },
       {
         role: "user",
@@ -85,16 +157,7 @@ ${jsonText}
     ],
   });
 
-  try {
-    return parseGeneratedJson(repair.text);
-  } catch (repairError) {
-    const repairMessage =
-      repairError instanceof Error ? repairError.message : "erro desconhecido";
-
-    throw new Error(
-      `A IA retornou um JSON inválido e o reparo automático falhou: ${repairMessage}`,
-    );
-  }
+  return parseGeneratedJson(repair.text);
 }
 
 async function parseCaseResponse(text: string) {
@@ -105,24 +168,39 @@ async function parseCaseResponse(text: string) {
   }
 }
 
-async function generateCaseWithAi() {
-  const locationList = CASE_LOCATIONS.map(
-    (location, index) => `${index + 1}. ${location.name}: ${location.key}`,
-  ).join("\n");
+function casePrompt({
+  playerCount,
+  requiredCluesByKind,
+  attempt,
+  previousError,
+}: {
+  playerCount: number;
+  requiredCluesByKind: number;
+  attempt: number;
+  previousError?: string;
+}) {
+  const strictJsonRules =
+    attempt === 0
+      ? ""
+      : `
+Regras extras de formato:
+- Responda com o caractere "{" como primeiro caractere.
+- Não explique raciocínio.
+- Não use markdown.
+- Não escreva texto antes ou depois do objeto JSON.
+- Não use aspas sem escape dentro das strings.
+- true_clues e false_clues devem ser arrays JSON reais, não texto.
+`;
+  const retryRules = previousError
+    ? `
+A tentativa anterior foi rejeitada por este motivo:
+${previousError}
 
-  const chat = await chatCompletion({
-    temperature: 0.85,
-    maxTokens: 4200,
-    responseFormat: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "Você cria casos investigativos para um jogo de tabuleiro inspirado no Scotland Yard clássico. Responda somente um objeto JSON válido, sem markdown. Todos os valores devem ser strings JSON válidas; escape aspas internas e quebras de linha como \\n. Construa mistérios dedutivos com perguntas objetivas, pistas curtas, falsas pistas plausíveis e uma solução que responda claramente cada pergunta.",
-      },
-      {
-        role: "user",
-        content: `
+Corrija o formato nesta tentativa. Se a mensagem anterior começou com raciocínio em inglês, não continue esse raciocínio. Gere novamente apenas o objeto JSON final.
+`
+    : "";
+
+  return `
 Crie um caso original em português, com atmosfera de Londres vitoriana e investigação dedutiva familiar.
 
 Padrão obrigatório do caso:
@@ -130,70 +208,133 @@ Padrão obrigatório do caso:
 - Apresente 3 ou 4 suspeitos com motivos aparentes diferentes.
 - Inclua álibis, horários, objetos físicos e pelo menos uma tentativa de despistar os investigadores.
 - A solução deve depender de cruzar várias pistas, não de uma única pista óbvia.
-- Pelo menos duas pistas devem inocentar suspeitos.
-- Pelo menos duas pistas devem parecer incriminar alguém errado, mas a solução deve explicar por que elas eram enganosas, incompletas ou plantadas.
-- Pelo menos três dicas devem vir em fragmentos complementares: metades no mesmo local, partes numeradas espalhadas por locais diferentes ou pistas que só façam sentido quando cruzadas com outra dica.
-- As dicas devem ser curtas, concretas e criativas: registros, objetos, testemunhos, marcas, horários, fibras, recibos, chaves, rotas, contradições, charadas, rimas ou trocadilhos.
-- Use algumas dicas cifradas por linguagem: jogos de palavra, sons parecidos, rimas, duplos sentidos, descrições metafóricas de objetos ou pistas incompletas que apontem para sílabas, formatos, materiais ou partes de uma palavra.
-- As dicas criativas não podem resolver tudo sozinhas. Elas devem sugerir uma peça da solução e precisar de confirmação por outra pista física, testemunhal ou temporal.
+- Pelo menos duas pistas verdadeiras devem inocentar suspeitos.
+- Pelo menos duas pistas falsas devem parecer incriminar alguém errado, mas a resposta final deve explicar por que eram enganosas, incompletas ou plantadas.
+- Use algumas pistas criativas por linguagem: jogos de palavra, sons parecidos, rimas, duplos sentidos, metáforas de objetos ou fragmentos que apontem para sílabas, formatos, materiais ou partes de uma palavra.
+- As pistas criativas não podem resolver tudo sozinhas. Elas devem sugerir uma peça da solução e precisar de confirmação por outra pista física, testemunhal ou temporal.
 - Não use exemplos literais de armas, rimas, frases ou fragmentos já citados pelo usuário. Crie jogos de palavra originais para o caso gerado.
 - Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
-- Não copie personagens, objetos ou soluções de exemplos anteriores.
+
+Distribuição obrigatória:
+- O jogo terá ${playerCount} jogador(es).
+- Crie exatamente ${requiredCluesByKind} pistas verdadeiras em true_clues.
+- Crie exatamente ${requiredCluesByKind} pistas falsas em false_clues.
+- Cada pista deve ser independente e curta, pois cada jogador receberá apenas 3 verdadeiras e 3 falsas.
+- Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro do texto das pistas.
+- As pistas falsas devem ser plausíveis e úteis para discussão, mas devem levar a interpretações erradas quando vistas sem o conjunto completo.
+- As pistas verdadeiras e falsas devem ter estilos misturados: objetos, horários, depoimentos, contradições, rimas, registros, marcas, recibos, rotas, fragmentos pela metade e falsas associações.
 
 Campos obrigatórios:
 - title: título curto em estilo "O CASO DO ..." ou "O CASO DA ...".
-- case_text: 2 a 4 parágrafos curtos. No último parágrafo, faça perguntas explícitas e objetivas que os jogadores devem responder.
-- As perguntas do case_text devem ser numeradas. Elas precisam apontar para conclusões dedutivas, não para opiniões.
-- Faça 2, 3 ou 4 perguntas adequadas ao caso. Cada pergunta deve pedir uma resposta objetiva: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
-- Evite perguntas vagas como "o que aconteceu?", "qual é o mistério?" ou "quem parece suspeito?". Prefira formatos como: "Quem cometeu o crime?", "Qual arma foi usada?", "Qual foi o motivo?", "Onde o objeto foi escondido?", "Que álibi era falso?"
-- Todas as perguntas devem ter resposta direta no primeiro parágrafo de final_solution, na mesma ordem em que aparecerem no case_text.
-- final_solution: o primeiro parágrafo deve começar com "Resposta:" e responder cada pergunta de forma simples, direta e numerada quando houver mais de uma pergunta. O segundo parágrafo deve começar com "Contexto:" e explicar como as pistas se conectam.
-
-Locais e chaves obrigatórias:
-${locationList}
-
+- case_text: 2 a 4 parágrafos curtos. No último parágrafo, faça 2, 3 ou 4 perguntas explícitas e numeradas que os jogadores devem responder.
+- As perguntas devem pedir respostas objetivas: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
+- final_answer: o primeiro parágrafo deve começar com "Resposta:" e responder cada pergunta em ordem. O segundo parágrafo deve começar com "Contexto:" e explicar como as pistas verdadeiras revelam a solução e por que as falsas desviam o grupo.
+${strictJsonRules}
+${retryRules}
 Formato obrigatório:
 {
   "title": "...",
   "case_text": "...",
-  "museum_clue": "...",
-  "bar_clue": "...",
-  "pharmacy_clue": "...",
-  "pawn_shop_clue": "...",
-  "theater_clue": "...",
-  "bank_clue": "...",
-  "bookstore_clue": "...",
-  "locksmith_clue": "...",
-  "docks_clue": "...",
-  "hotel_clue": "...",
-  "tobacconist_clue": "...",
-  "carriage_station_clue": "...",
-  "scotland_yard_clue": "...",
-  "park_clue": "...",
-  "final_solution": "..."
+  "true_clues": ["...", "..."],
+  "false_clues": ["...", "..."],
+  "final_answer": "..."
 }
-`.trim(),
-      },
-    ],
-  });
+`.trim();
+}
 
-  return assertGeneratedCase(await parseCaseResponse(chat.text));
+async function ensureCaseSchema() {
+  await pool.query(`
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+    CREATE TABLE IF NOT EXISTS cases (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      title text NOT NULL CHECK (btrim(title) <> ''),
+      case_text text NOT NULL CHECK (btrim(case_text) <> ''),
+      final_answer text NOT NULL CHECK (btrim(final_answer) <> ''),
+      true_clues jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(true_clues) = 'array'),
+      false_clues jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(false_clues) = 'array'),
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+}
+
+async function generateCaseWithAi(playerCount: number) {
+  const requiredCluesByKind = playerCount * CLUES_PER_PLAYER_BY_KIND;
+  const errors: string[] = [];
+  let previousError: string | undefined;
+
+  for (let attempt = 0; attempt < CASE_GENERATION_ATTEMPTS; attempt += 1) {
+    try {
+      const chat = await chatCompletion({
+        temperature: attempt === 0 ? 0.8 : 0.2,
+        maxTokens: 5200,
+        responseFormat: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              'Você cria casos investigativos e responde exclusivamente com JSON válido para JSON.parse. O primeiro caractere da resposta deve ser "{". Não explique seu raciocínio. Não escreva planejamento, análise, markdown ou texto antes/depois do JSON. Todos os valores devem ser strings JSON válidas; escape aspas internas e quebras de linha como \\n.',
+          },
+          {
+            role: "user",
+            content: casePrompt({
+              playerCount,
+              requiredCluesByKind,
+              attempt,
+              previousError,
+            }),
+          },
+        ],
+      });
+
+      return assertGeneratedCase(
+        await parseCaseResponse(chat.text),
+        requiredCluesByKind,
+      );
+    } catch (error) {
+      previousError = error instanceof Error ? error.message : String(error);
+      errors.push(previousError);
+    }
+  }
+
+  throw new Error(
+    `Não foi possível gerar um caso em JSON válido após ${CASE_GENERATION_ATTEMPTS} tentativas: ${errors.join(" | ")}`,
+  );
 }
 
 export async function getCase(caseId: string) {
+  await ensureCaseSchema();
+
   const result = await pool.query<GameCase>(
     `
-      SELECT *
+      SELECT
+        id::text AS id,
+        title,
+        case_text,
+        final_answer,
+        true_clues,
+        false_clues,
+        created_at
       FROM cases
       WHERE id = $1
     `,
     [caseId],
   );
 
-  return result.rows[0] ?? null;
+  const row = result.rows[0];
+
+  return row
+    ? {
+        ...row,
+        true_clues: normalizeClueArray(row.true_clues),
+        false_clues: normalizeClueArray(row.false_clues),
+      }
+    : null;
 }
 
 export async function createCaseForRoom(roomCode: string) {
+  await ensureCaseSchema();
+
   const existing = caseGenerationLocks.get(roomCode);
 
   if (existing) {
@@ -201,15 +342,19 @@ export async function createCaseForRoom(roomCode: string) {
   }
 
   const generation = (async () => {
-    const activeRoom = await pool.query<{ activecase: string | null }>(
+    const activeRoom = await pool.query<{
+      activecase: string | null;
+      users: unknown;
+    }>(
       `
-        SELECT activecase::text AS activecase
+        SELECT activecase::text AS activecase, users
         FROM game_rooms
         WHERE room_code = $1
       `,
       [roomCode],
     );
-    const activeCaseId = activeRoom.rows[0]?.activecase;
+    const room = activeRoom.rows[0];
+    const activeCaseId = room?.activecase;
 
     if (activeCaseId) {
       const existingCase = await getCase(activeCaseId);
@@ -219,59 +364,44 @@ export async function createCaseForRoom(roomCode: string) {
       }
     }
 
-    const generatedCase = await generateCaseWithAi();
+    const playerCount = countRoomUsers(room?.users);
+    const generatedCase = await generateCaseWithAi(playerCount);
     const result = await pool.query<GameCase>(
       `
         INSERT INTO cases (
           title,
           case_text,
-          museum_clue,
-          bar_clue,
-          pharmacy_clue,
-          pawn_shop_clue,
-          theater_clue,
-          bank_clue,
-          bookstore_clue,
-          locksmith_clue,
-          docks_clue,
-          hotel_clue,
-          tobacconist_clue,
-          carriage_station_clue,
-          scotland_yard_clue,
-          park_clue,
-          final_solution
+          final_answer,
+          true_clues,
+          false_clues
         )
-        VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8,
-          $9, $10, $11, $12, $13, $14, $15, $16, $17
-        )
-        RETURNING *
+        VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+        RETURNING
+          id::text AS id,
+          title,
+          case_text,
+          final_answer,
+          true_clues,
+          false_clues,
+          created_at
       `,
       [
         generatedCase.title,
         generatedCase.case_text,
-        generatedCase.museum_clue,
-        generatedCase.bar_clue,
-        generatedCase.pharmacy_clue,
-        generatedCase.pawn_shop_clue,
-        generatedCase.theater_clue,
-        generatedCase.bank_clue,
-        generatedCase.bookstore_clue,
-        generatedCase.locksmith_clue,
-        generatedCase.docks_clue,
-        generatedCase.hotel_clue,
-        generatedCase.tobacconist_clue,
-        generatedCase.carriage_station_clue,
-        generatedCase.scotland_yard_clue,
-        generatedCase.park_clue,
-        generatedCase.final_solution,
+        generatedCase.final_answer,
+        JSON.stringify(generatedCase.true_clues),
+        JSON.stringify(generatedCase.false_clues),
       ],
     );
     const createdCase = result.rows[0];
 
     await setRoomActiveCase({ code: roomCode, caseId: createdCase.id });
 
-    return createdCase;
+    return {
+      ...createdCase,
+      true_clues: normalizeClueArray(createdCase.true_clues),
+      false_clues: normalizeClueArray(createdCase.false_clues),
+    };
   })();
 
   caseGenerationLocks.set(roomCode, generation);
