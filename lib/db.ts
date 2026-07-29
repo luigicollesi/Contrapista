@@ -1,4 +1,11 @@
-import { Pool } from "pg";
+import "server-only";
+
+import {
+  Pool,
+  type PoolClient,
+  type QueryResult,
+  type QueryResultRow,
+} from "pg";
 
 const connectionString = process.env.DATABASE;
 
@@ -11,13 +18,27 @@ const requiresSsl = databaseUrl.searchParams.get("sslmode") === "require";
 
 databaseUrl.searchParams.delete("sslmode");
 
+export type DatabaseClient = Pick<PoolClient, "query">;
+export type DatabaseConnection = DatabaseClient & Pick<PoolClient, "release">;
+
 const globalForPg = globalThis as typeof globalThis & {
-  __scotlandYardPgPool?: Pool;
+  __contrapistaPgPool?: Pool;
 };
 
-export const pool =
-  globalForPg.__scotlandYardPgPool ??
-  (globalForPg.__scotlandYardPgPool = new Pool({
+const pool =
+  globalForPg.__contrapistaPgPool ??
+  (globalForPg.__contrapistaPgPool = new Pool({
     connectionString: databaseUrl.toString(),
     ssl: requiresSsl ? { rejectUnauthorized: false } : undefined,
   }));
+
+export async function dbQuery<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  values?: unknown[],
+): Promise<QueryResult<T>> {
+  return pool.query<T>(text, values);
+}
+
+export async function getDbClient(): Promise<DatabaseConnection> {
+  return pool.connect();
+}

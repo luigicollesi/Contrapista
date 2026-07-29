@@ -13,9 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Scotland Yard | Ecos de Baker Street",
+  title: "Contrapista | Arquivo sob suspeita",
   description:
-    "Entre névoa, lampiões e segredos, cada silêncio deixa uma pista.",
+    "Toda versão deixa uma falha. Toda falha abre um caso.",
+  icons: {
+    icon: "/contrapista-icon.png",
+    apple: "/contrapista-icon.png",
+  },
 };
 
 export default function RootLayout({

@@ -5,11 +5,19 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const room = await getRoom(code);
 
-  if (!room) {
-    return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+  try {
+    const room = await getRoom(code);
+
+    if (!room) {
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    }
+
+    return Response.json({ room });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Erro ao carregar sala.";
+
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  return Response.json({ room });
 }

@@ -148,7 +148,7 @@ export default function CreatingCasePage() {
   }, [code, router]);
 
   return (
-    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-8 text-stone-50 sm:px-6 lg:py-10">
+    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
@@ -158,7 +158,7 @@ export default function CreatingCasePage() {
         <div className="case-fog case-fog-b absolute bottom-[10%] right-[-10%] h-56 w-[44rem] rotate-[10deg] rounded-full border border-[#8b1e1e]/25" />
         <div className="case-ticker absolute bottom-8 left-0 flex min-w-full gap-6 font-mono text-xs font-bold uppercase tracking-[0.32em] text-[#d7b861]/35">
           {Array.from({ length: 10 }).map((_, index) => (
-            <span key={index}>Pistas em análise</span>
+            <span key={index}>Evidências em análise</span>
           ))}
         </div>
       </div>
@@ -168,16 +168,16 @@ export default function CreatingCasePage() {
             Sala {code}
           </p>
           <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
-            A central está montando um caso inédito.
+            A mesa está consolidando um dossiê inédito.
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-8 text-stone-300">
-            A IA está preparando a narrativa, as pistas por local e a solução
+            A IA está estruturando narrativa, evidências conflitantes e resposta
             final. Esta etapa pode levar alguns instantes.
           </p>
 
-          <div className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/25">
+          <div className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/25">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-              Status atual
+              Andamento do dossiê
             </p>
             <div className="mt-4 flex items-center gap-4">
               <span className="relative flex h-4 w-4">
@@ -242,9 +242,9 @@ export default function CreatingCasePage() {
           ) : null}
         </div>
 
-        <div className="relative min-h-[620px] w-full sm:min-h-[680px] lg:min-h-[640px]">
+        <div className="relative min-h-[620px] w-full sm:min-h-[640px] lg:min-h-[640px]">
           <div className="case-board-glow absolute inset-x-4 top-0 h-28 rounded-full bg-[#d7b861]/20 blur-3xl sm:inset-x-14" />
-          <div className="relative mx-auto flex min-h-[620px] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-4 shadow-2xl shadow-black/40 sm:min-h-[680px] sm:p-6 lg:min-h-[640px]">
+          <div className="relative mx-auto flex min-h-[560px] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-4 shadow-2xl shadow-black/40 sm:min-h-[640px] sm:p-6 lg:min-h-[640px]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(215,184,97,.16),transparent_18%),radial-gradient(circle_at_80%_70%,rgba(139,30,30,.18),transparent_22%)]" />
             <div className="case-map-lines absolute inset-0 opacity-35" />
             <div className="case-scan-line absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#d7b861]/20 to-transparent" />

@@ -12,6 +12,7 @@ import type {
 } from "@/lib/ai/types";
 
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
+const INVALID_OUTPUT_STANDOFF_MS = 2 * 60 * 1000;
 
 const modelStandoffUntil = new Map<string, number>();
 
@@ -19,8 +20,12 @@ function getAvailableModels(models: string[], now: number): string[] {
   return models.filter((model) => (modelStandoffUntil.get(model) ?? 0) <= now);
 }
 
-function putModelInStandoff(model: string, now: number): void {
-  modelStandoffUntil.set(model, now + MODEL_STANDOFF_MS);
+function putModelInStandoff(
+  model: string,
+  now: number,
+  duration = MODEL_STANDOFF_MS,
+): void {
+  modelStandoffUntil.set(model, now + duration);
 }
 
 export async function chatCompletion(
@@ -46,7 +51,15 @@ export async function chatCompletion(
     }
 
     try {
-      const response = await client.chatCompletion({ ...params, model });
+      const { validateText, ...providerParams } = params;
+      const response = await client.chatCompletion({ ...providerParams, model });
+
+      try {
+        validateText?.(response.text);
+      } catch (error) {
+        (error as { status?: number }).status = 422;
+        throw error;
+      }
 
       if (config.debug) {
         console.debug("[AI][raw-response]", response.raw);
@@ -55,10 +68,15 @@ export async function chatCompletion(
       return response;
     } catch (error) {
       const failedAt = Date.now();
-      putModelInStandoff(model, failedAt);
+      const status = getErrorStatus(error);
+      putModelInStandoff(
+        model,
+        failedAt,
+        status === 422 ? INVALID_OUTPUT_STANDOFF_MS : MODEL_STANDOFF_MS,
+      );
       failures.push({
         model,
-        status: getErrorStatus(error),
+        status,
         message: getErrorMessage(error),
       });
 

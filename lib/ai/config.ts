@@ -2,7 +2,6 @@ import type { AiConfig, LlmProvider } from "@/lib/ai/types";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_MODEL = "openai/gpt-4o-mini";
-const MAX_LLM_MODELS = 5;
 
 function isTruthy(value?: string): boolean {
   if (!value) return false;
@@ -60,11 +59,27 @@ function parseProvider(rawProvider?: string): LlmProvider {
 }
 
 function parseModels(): string[] {
-  const models = Array.from({ length: MAX_LLM_MODELS }, (_, index) =>
-    process.env[`LLM_MODEL${index + 1}`]?.trim(),
-  ).filter((model): model is string => Boolean(model));
+  const listedModels = parseCsv(process.env.LLM_MODELS);
 
-  return models.length ? models : [DEFAULT_MODEL];
+  if (listedModels?.length) {
+    return listedModels;
+  }
+
+  const legacyModels = Object.entries(process.env)
+    .map(([key, value]) => {
+      const match = key.match(/^LLM_MODEL(\d+)$/);
+      const position = match ? Number(match[1]) : Number.NaN;
+
+      return { position, value: value?.trim() };
+    })
+    .filter(
+      (item): item is { position: number; value: string } =>
+        Number.isInteger(item.position) && Boolean(item.value),
+    )
+    .sort((left, right) => left.position - right.position)
+    .map((item) => item.value);
+
+  return legacyModels.length ? legacyModels : [DEFAULT_MODEL];
 }
 
 let cachedConfig: AiConfig | null = null;

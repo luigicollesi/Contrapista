@@ -9,6 +9,7 @@ export async function POST(
     userId?: string;
     clueText?: string;
     clueNumber?: number;
+    clueId?: string;
   };
 
   if (!body.userId || !body.clueText || typeof body.clueNumber !== "number") {
@@ -21,6 +22,7 @@ export async function POST(
       userId: body.userId,
       clueText: body.clueText,
       clueNumber: body.clueNumber,
+      clueId: body.clueId,
     });
 
     if (!gamestate) {

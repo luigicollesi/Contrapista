@@ -7,14 +7,14 @@ export async function POST(
   const { code } = await params;
   const body = (await request.json()) as {
     userId?: string;
-    type?: "solution" | "solution_correct" | "solution_wrong";
+    type?: "solution" | "solution_guess";
+    guess?: string;
   };
 
   if (
     !body.userId ||
-    (body.type !== "solution" &&
-      body.type !== "solution_correct" &&
-      body.type !== "solution_wrong")
+    (body.type !== "solution" && body.type !== "solution_guess") ||
+    (body.type === "solution_guess" && typeof body.guess !== "string")
   ) {
     return Response.json({ error: "Evento inválido." }, { status: 400 });
   }
@@ -23,7 +23,10 @@ export async function POST(
     const event = await publishRoomEvent({
       code,
       userId: body.userId,
-      event: { type: body.type },
+      event:
+        body.type === "solution_guess"
+          ? { type: body.type, guess: body.guess ?? "" }
+          : { type: body.type },
     });
 
     if (!event) {

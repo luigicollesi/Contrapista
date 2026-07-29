@@ -11,12 +11,25 @@ export type AiChatCompletionParams = {
   messages: AiChatMessage[];
   temperature?: number;
   maxTokens?: number;
-  responseFormat?: {
-    type: "json_object";
-  };
+  validateText?: (text: string) => void;
+  responseFormat?:
+    | {
+        type: "json_object";
+      }
+    | {
+        type: "json_schema";
+        json_schema: {
+          name: string;
+          strict?: boolean;
+          schema: Record<string, unknown>;
+        };
+      };
 };
 
-export type AiProviderChatCompletionParams = AiChatCompletionParams & {
+export type AiProviderChatCompletionParams = Omit<
+  AiChatCompletionParams,
+  "validateText"
+> & {
   model: string;
 };
 

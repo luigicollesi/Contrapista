@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { PLAYER_COLORS, type PlayerColor } from "@/lib/player-colors";
 
 type RoomEvent =
   | {
@@ -11,6 +12,7 @@ type RoomEvent =
       actorId: string;
       actorNickname: string;
       createdAt: number;
+      guess?: string;
     }
   | {
       id: string;
@@ -18,18 +20,30 @@ type RoomEvent =
       actorId: string;
       actorNickname: string;
       createdAt: number;
+      guess?: string;
     };
+
+type RoomConfig = {
+  readingTimeSeconds: number;
+  clueSelectionTimeSeconds: number;
+  revealedClueAnalysisTimeSeconds: number;
+  roundAnalysisTimeSeconds: number;
+  finalGuessTimeSeconds: number;
+  trueCluesPerPlayer: number;
+  cluesPerPlayer: number;
+};
 
 type Room = {
   code: string;
-  users: Array<{ id: string; nickname: string }>;
+  users: Array<{ id: string; nickname: string; color: PlayerColor; ready: boolean }>;
   activecase: string | null;
   activeevent: RoomEvent | null;
   gamestate: GameState | null;
+  config: RoomConfig;
 };
 
 type GameState = {
-  phase: "reading" | "roulette" | "turn" | "shared_clue" | "pause";
+  phase: "ready" | "reading" | "roulette" | "turn" | "shared_clue" | "pause";
   round: number;
   order: string[];
   currentTurnIndex: number;
@@ -38,12 +52,22 @@ type GameState = {
   roulettePool?: string[];
   rouletteSelectedId?: string;
   pausedAt?: number;
+  readyUserIds?: string[];
+  eliminatedUserIds?: string[];
+  returnedToLobbyUserIds?: string[];
+  skipVotes?: {
+    phaseKey: string;
+    userIds: string[];
+  };
+  sharedClueIds?: Record<string, string[]>;
   sharedClue?: {
     id: string;
     actorId: string;
     actorNickname: string;
     clueText: string;
     clueNumber: number;
+    clueId?: string;
+    autoShared?: boolean;
     createdAt: number;
   };
 };
@@ -71,7 +95,32 @@ type SavedSession = {
   };
 };
 
-const SESSION_STORAGE_KEY = "scotland-yard-session";
+const SESSION_STORAGE_KEY = "contrapista-session";
+
+function leftCaseStorageKey(code: string) {
+  return `contrapista-left-case-${code}`;
+}
+
+function getPlayerColorHex(color?: PlayerColor) {
+  return color ? PLAYER_COLORS[color]?.hex ?? "#d7b861" : "#d7b861";
+}
+
+function getClueDistribution(config?: RoomConfig) {
+  const cluesPerPlayer = Math.min(
+    10,
+    Math.max(2, Math.round(config?.cluesPerPlayer ?? 6)),
+  );
+  const trueCluesPerPlayer = Math.min(
+    cluesPerPlayer,
+    Math.max(0, Math.round(config?.trueCluesPerPlayer ?? 3)),
+  );
+
+  return {
+    cluesPerPlayer,
+    trueCluesPerPlayer,
+    falseCluesPerPlayer: cluesPerPlayer - trueCluesPerPlayer,
+  };
+}
 
 function readUserId(code: string) {
   try {
@@ -118,13 +167,15 @@ function seededShuffle<T>(items: T[], seedValue: string) {
 function pickClues({
   clues,
   start,
+  count,
   prefix,
 }: {
   clues: string[];
   start: number;
+  count: number;
   prefix: string;
 }): PlayerClue[] {
-  return Array.from({ length: 3 })
+  return Array.from({ length: count })
     .map((_, index) => {
       const clue = clues[(start + index) % clues.length];
 
@@ -155,6 +206,10 @@ export default function GamePage() {
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [selectedClue, setSelectedClue] = useState<PlayerClue | null>(null);
+  const [dismissedSharedClueId, setDismissedSharedClueId] = useState<string | null>(null);
+  const [finalGuess, setFinalGuess] = useState("");
+  const finalGuessRef = useRef("");
+  const [isSubmittingGuess, setIsSubmittingGuess] = useState(false);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 250);
@@ -217,7 +272,7 @@ export default function GamePage() {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível carregar o jogo.",
+              : "Não foi possível carregar o dossiê.",
           );
         }
       }
@@ -245,15 +300,19 @@ export default function GamePage() {
       0,
       room.users.findIndex((user) => user.id === userId),
     );
-    const start = userIndex * 3;
+    const distribution = getClueDistribution(room.config);
+    const trueStart = userIndex * distribution.trueCluesPerPlayer;
+    const falseStart = userIndex * distribution.falseCluesPerPlayer;
     const trueClues = pickClues({
       clues: gameCase.true_clues,
-      start,
+      start: trueStart,
+      count: distribution.trueCluesPerPlayer,
       prefix: "true",
     });
     const falseClues = pickClues({
       clues: gameCase.false_clues,
-      start,
+      start: falseStart,
+      count: distribution.falseCluesPerPlayer,
       prefix: "false",
     });
 
@@ -270,14 +329,23 @@ export default function GamePage() {
     gameState?.phase === "turn" &&
     currentTurnUserId === userId &&
     !gameState.pausedAt;
+  const mySharedClueIds = userId
+    ? gameState?.sharedClueIds?.[userId] ?? []
+    : [];
+  const hasUnsharedClues = playerClues.some(
+    (clue) => !mySharedClueIds.includes(clue.id),
+  );
+
   const phaseRemainingSeconds = gameState?.pausedAt
     ? null
     : Math.max(0, Math.ceil(((gameState?.phaseEndsAt ?? now) - now) / 1000));
   const phaseLabel = gameState?.pausedAt
     ? "Jogo pausado"
-    : gameState?.phase === "reading"
-      ? "Leitura inicial"
-      : gameState?.phase === "roulette"
+    : gameState?.phase === "ready"
+      ? "Preparação"
+      : gameState?.phase === "reading"
+        ? "Leitura inicial"
+        : gameState?.phase === "roulette"
         ? "Sorteando ordem"
         : gameState?.phase === "turn"
           ? "Vez de compartilhar"
@@ -285,9 +353,91 @@ export default function GamePage() {
             ? "Pista compartilhada"
             : "Pausa para organizar";
 
+  const gameStarted = Boolean(gameState && gameState.phase !== "ready");
+  const readyUserIds = gameState?.readyUserIds ?? [];
+  const currentPhaseKey = gameState
+    ? `${gameState.phase}:${gameState.round}:${gameState.currentTurnIndex}:${gameState.phaseStartedAt}`
+    : "";
+  const skipVoteIds =
+    gameState?.skipVotes?.phaseKey === currentPhaseKey
+      ? gameState.skipVotes.userIds
+      : [];
+  const canSkipPhase = Boolean(
+    userId &&
+      gameStarted &&
+      !gameState?.pausedAt &&
+      (gameState?.phase === "reading" ||
+        gameState?.phase === "pause" ||
+        gameState?.phase === "shared_clue"),
+  );
+  const hasVotedToSkip = Boolean(userId && skipVoteIds.includes(userId));
+
+  const isEliminated = Boolean(
+    userId && gameState?.eliminatedUserIds?.includes(userId),
+  );
+  const finalGuessEvent = modalEvent?.type === "solution" ? modalEvent : null;
+  const isGuessActor = Boolean(
+    finalGuessEvent && userId && finalGuessEvent.actorId === userId,
+  );
+  const finalGuessDurationMs = (room?.config.finalGuessTimeSeconds ?? 30) * 1000;
+  const guessRemainingSeconds = finalGuessEvent
+    ? Math.max(
+        0,
+        Math.ceil((finalGuessEvent.createdAt + finalGuessDurationMs - now) / 1000),
+      )
+    : 0;
+
+  async function postGameAction(path: "ready" | "skip") {
+    if (!userId) {
+      setError("Entre na sala novamente para continuar.");
+      return;
+    }
+
+    setError("");
+
+    try {
+      const response = await fetch(`/api/rooms/${code}/game/${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Não foi possível atualizar o jogo.");
+      }
+
+      setRoom((current) =>
+        current ? { ...current, gamestate: data.gamestate } : current,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível atualizar o jogo.",
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (!finalGuessEvent || !isGuessActor) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void submitFinalGuess();
+    }, Math.max(0, finalGuessEvent.createdAt + finalGuessDurationMs - Date.now()));
+
+    return () => window.clearTimeout(timeout);
+    // submitFinalGuess reads the latest textarea value from finalGuessRef at timeout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finalGuessEvent?.id, finalGuessDurationMs, isGuessActor]);
+
   async function publishEvent(body: Record<string, unknown>) {
     if (!userId) {
-      setError("Entre na sala novamente para interagir com o jogo.");
+      setError("Entre na sala novamente para interagir com o dossiê.");
       return null;
     }
 
@@ -311,6 +461,9 @@ export default function GamePage() {
     setError("");
 
     try {
+      finalGuessRef.current = "";
+      setFinalGuess("");
+      setIsSubmittingGuess(false);
       const event = await publishEvent({ type: "solution" });
       setRoom((current) =>
         current && event ? { ...current, activeevent: event } : current,
@@ -320,23 +473,6 @@ export default function GamePage() {
         caughtError instanceof Error
           ? caughtError.message
           : "Não foi possível abrir a solução.",
-      );
-    }
-  }
-
-  async function markWrong() {
-    setError("");
-
-    try {
-      const event = await publishEvent({ type: "solution_wrong" });
-      setRoom((current) =>
-        current && event ? { ...current, activeevent: event } : current,
-      );
-    } catch (caughtError) {
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Não foi possível retomar o jogo.",
       );
     }
   }
@@ -359,6 +495,7 @@ export default function GamePage() {
           userId,
           clueText: clue.text,
           clueNumber: clue.number,
+          clueId: clue.id,
         }),
       });
       const data = await response.json();
@@ -380,11 +517,19 @@ export default function GamePage() {
     }
   }
 
-  async function markCorrect() {
+  async function submitFinalGuess() {
+    if (!finalGuessEvent || !isGuessActor || isSubmittingGuess) {
+      return;
+    }
+
     setError("");
+    setIsSubmittingGuess(true);
 
     try {
-      const event = await publishEvent({ type: "solution_correct" });
+      const event = await publishEvent({
+        type: "solution_guess",
+        guess: finalGuessRef.current,
+      });
       setRoom((current) =>
         current && event ? { ...current, activeevent: event } : current,
       );
@@ -392,15 +537,27 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível confirmar a resposta.",
+          : "Não foi possível enviar o palpite.",
       );
+      setIsSubmittingGuess(false);
     }
   }
 
   async function backToLobby() {
-    await fetch(`/api/rooms/${code}/case/finish`, {
-      method: "POST",
-    });
+    if (gameCase?.id) {
+      localStorage.setItem(leftCaseStorageKey(code), gameCase.id);
+    }
+
+    try {
+      await fetch(`/api/rooms/${code}/case/return`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+    } catch {
+      // O marcador local impede que este jogador seja puxado de volta ao caso.
+    }
+
     router.push(`/sala/${code}`);
   }
 
@@ -411,6 +568,25 @@ export default function GamePage() {
         const selectedPlayer = room?.users.find(
           (user) => user.id === gameState.rouletteSelectedId,
         );
+        const wheelPlayers = pool
+          .map((playerId) => room?.users.find((user) => user.id === playerId))
+          .filter((player): player is NonNullable<typeof player> => Boolean(player));
+        const selectedIndex = Math.max(
+          0,
+          wheelPlayers.findIndex(
+            (player) => player.id === gameState.rouletteSelectedId,
+          ),
+        );
+        const segmentAngle = 360 / Math.max(1, wheelPlayers.length);
+        const wheelStops = wheelPlayers
+          .map((player, index) => {
+            const start = index * segmentAngle;
+            const end = (index + 1) * segmentAngle;
+
+            return `${getPlayerColorHex(player.color)} ${start}deg ${end}deg`;
+          })
+          .join(", ");
+        const targetRotation = 1440 - (selectedIndex * segmentAngle + segmentAngle / 2);
 
         return (
           <Modal>
@@ -420,10 +596,18 @@ export default function GamePage() {
             <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
               Sorteando o próximo jogador
             </h2>
-            <div className="mt-8 flex flex-col items-center gap-6">
-              <div className="relative h-72 w-72 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)]">
-                <div className="roulette-wheel absolute inset-4 rounded-full border border-[#d7b861]/40 bg-[conic-gradient(from_0deg,#2a1711,#d7b861,#171b16,#8b1e1e,#2a1711)]" />
-                <div className="absolute left-1/2 top-2 h-8 w-4 -translate-x-1/2 rounded-b-full bg-[#fff3cf]" />
+            <div className="mt-6 flex flex-col items-center gap-6">
+              <div
+                className="relative h-72 w-72 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)]"
+                style={{ "--target-rotation": `${targetRotation}deg` } as CSSProperties}
+              >
+                <div
+                  className="roulette-wheel absolute inset-4 rounded-full border border-[#d7b861]/40"
+                  style={{
+                    background: `conic-gradient(from -90deg, ${wheelStops || "#d7b861 0deg 360deg"})`,
+                  }}
+                />
+                <div className="absolute left-1/2 top-0 h-10 w-5 -translate-x-1/2 rounded-b-full bg-[#fff3cf] shadow-lg" />
                 <div className="absolute inset-16 rounded-full border border-[#d7b861]/50 bg-[#171b16] shadow-inner" />
                 <div className="absolute inset-0 flex items-center justify-center px-12 text-center">
                   <p className="font-serif text-2xl font-bold text-[#fff3cf]">
@@ -450,18 +634,6 @@ export default function GamePage() {
                   );
                 })}
               </div>
-              {gameState.order.length > 0 ? (
-                <p className="text-sm text-stone-400">
-                  Ordem parcial:{" "}
-                  {gameState.order
-                    .map(
-                      (playerId) =>
-                        room?.users.find((user) => user.id === playerId)
-                          ?.nickname ?? "Jogador",
-                    )
-                    .join(" / ")}
-                </p>
-              ) : null}
             </div>
             <style jsx>{`
               @keyframes roulette-spin {
@@ -469,7 +641,7 @@ export default function GamePage() {
                   transform: rotate(0deg);
                 }
                 100% {
-                  transform: rotate(1440deg);
+                  transform: rotate(var(--target-rotation));
                 }
               }
 
@@ -482,30 +654,38 @@ export default function GamePage() {
         );
       }
 
-      if (gameState?.phase === "shared_clue" && gameState.sharedClue) {
+      if (gameState?.phase === "shared_clue" && gameState.sharedClue && dismissedSharedClueId !== gameState.sharedClue.id) {
         return (
           <Modal>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-              Pista compartilhada
-            </p>
-            <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-              {gameState.sharedClue.actorNickname} abriu um fragmento
-            </h2>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                  Pista compartilhada
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  {gameState.sharedClue.actorNickname} abriu um fragmento
+                </h2>
+              </div>
+              <button
+                aria-label="Fechar fragmento compartilhado"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+                onClick={() => setDismissedSharedClueId(gameState.sharedClue?.id ?? null)}
+                type="button"
+              >
+                X
+              </button>
+            </div>
+            {gameState.sharedClue.autoShared ? (
+              <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-bold text-[#fff3cf]">
+                O tempo de escolha foi excedido. Uma pista verdadeira foi compartilhada automaticamente.
+              </p>
+            ) : null}
             <p className="mt-5 whitespace-pre-line text-xl leading-9 text-stone-200">
               {gameState.sharedClue.clueText}
             </p>
             <p className="mt-5 text-sm font-semibold text-stone-400">
               O fragmento fecha quando o cronômetro chegar a zero.
             </p>
-            <div className="mt-6 flex justify-end">
-              <button
-                className="h-11 rounded-lg bg-[#8b1e1e] px-5 font-bold text-white transition hover:bg-[#a32929]"
-                onClick={openSolution}
-                type="button"
-              >
-                Responder agora
-              </button>
-            </div>
           </Modal>
         );
       }
@@ -537,11 +717,16 @@ export default function GamePage() {
             <div className="mt-6 flex justify-end">
               <button
                 className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-45"
-                disabled={!isMyTurn}
+                disabled={
+                  !isMyTurn ||
+                  (mySharedClueIds.includes(selectedClue.id) && hasUnsharedClues)
+                }
                 onClick={() => shareClue(selectedClue)}
                 type="button"
               >
-                Compartilhar na rodada
+                {mySharedClueIds.includes(selectedClue.id) && hasUnsharedClues
+                  ? "Fragmento já compartilhado"
+                  : "Compartilhar na rodada"}
               </button>
             </div>
           </Modal>
@@ -559,45 +744,45 @@ export default function GamePage() {
           {isActor ? (
             <>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                Solução final
+                Palpite final
               </p>
               <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                Confira sua resposta
+                Escreva sua tese
               </h2>
-              <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
-                {gameCase.final_answer}
+              <p className="mt-3 text-sm font-semibold text-stone-400">
+                Envio automático em {String(guessRemainingSeconds).padStart(2, "0")}s.
               </p>
-              <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <textarea
+                className="mt-5 min-h-64 w-full rounded-lg border border-[#d7b861]/35 bg-[#0f120e] p-4 text-lg leading-8 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20"
+                disabled={isSubmittingGuess}
+                onChange={(event) => {
+                  finalGuessRef.current = event.target.value;
+                  setFinalGuess(event.target.value);
+                }}
+                placeholder="Descreva culpado, método, motivo e as respostas centrais do caso."
+                value={finalGuess}
+              />
+              <div className="mt-6 flex justify-end">
                 <button
-                  className="h-11 rounded-lg border border-stone-600 px-5 font-semibold text-stone-100 transition hover:bg-white/10"
-                  onClick={markWrong}
+                  className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isSubmittingGuess}
+                  onClick={submitFinalGuess}
                   type="button"
                 >
-                  Errou
-                </button>
-                <button
-                  className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
-                  onClick={markCorrect}
-                  type="button"
-                >
-                  Acertou
+                  {isSubmittingGuess ? "Enviando" : "Enviar palpite"}
                 </button>
               </div>
             </>
           ) : (
             <>
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                    Solução consultada
-                  </p>
-                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    {modalEvent.actorNickname} abriu a resposta final
-                  </h2>
-                </div>
-              </div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                Palpite em curso
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                {modalEvent.actorNickname} está registrando uma tese
+              </h2>
               <p className="mt-5 text-lg leading-8 text-stone-300">
-                Aguarde a confirmação de acerto ou erro desse jogador.
+                O jogo está pausado até o envio ou fim do cronômetro.
               </p>
             </>
           )}
@@ -629,7 +814,7 @@ export default function GamePage() {
             onClick={backToLobby}
             type="button"
           >
-            Voltar ao lobby
+            Voltar à ante-sala
           </button>
         </div>
       </Modal>
@@ -649,7 +834,7 @@ export default function GamePage() {
             Sala {code}
           </p>
           <h1 className="mt-4 font-serif text-5xl font-bold text-[#fff3cf]">
-            Jogo não encontrado
+            Dossiê não encontrado
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base leading-7 text-stone-300">
             A sala ou o caso ativo não está mais disponível. Volte ao início
@@ -667,17 +852,32 @@ export default function GamePage() {
   }
 
   return (
-    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-6 py-8 text-stone-50">
+    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
-      <section className="relative mx-auto w-full max-w-6xl">
+      {canSkipPhase ? (
+        <button
+          className="fixed right-4 top-4 z-[80] flex h-12 items-center gap-2 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-4 font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70"
+          disabled={hasVotedToSkip}
+          onClick={() => postGameAction("skip")}
+          title="Pular fase por consenso"
+          type="button"
+        >
+          <span aria-hidden="true" className="text-lg">⏩</span>
+          <span>{hasVotedToSkip ? "Aguardando" : "Pular"}</span>
+          <span className="rounded-full bg-[#17130d]/15 px-2 py-0.5 text-xs">
+            {skipVoteIds.length}/{room?.users.length ?? 0}
+          </span>
+        </button>
+      ) : null}
+      <section className="relative mx-auto w-full max-w-7xl">
         <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
               Investigação ativa
             </p>
-            <h1 className="mt-2 font-serif text-5xl font-bold text-[#fff3cf]">
+            <h1 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf] sm:text-5xl">
               Sala {code}
             </h1>
           </div>
@@ -696,8 +896,8 @@ export default function GamePage() {
           </div>
         </header>
 
-        {gameState ? (
-          <section className="sticky top-0 z-20 -mx-2 mt-5 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-4 shadow-2xl shadow-black/20 backdrop-blur">
+        {gameState && gameStarted ? (
+          <section className="sticky top-2 z-20 mt-5 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-4 shadow-2xl shadow-black/20 backdrop-blur">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
@@ -707,36 +907,40 @@ export default function GamePage() {
                   {phaseLabel}
                 </h2>
                 <p className="mt-1 text-sm text-stone-400">
-                  {gameState.phase === "turn"
-                    ? `Vez de ${currentTurnUser?.nickname ?? "jogador"}`
-                    : gameState.phase === "roulette"
+                  {gameState.phase === "ready"
+                    ? "Todos precisam confirmar prontidão para abrir o dossiê."
+                    : gameState.phase === "turn"
+                      ? `Vez de ${currentTurnUser?.nickname ?? "jogador"}`
+                      : gameState.phase === "roulette"
                       ? "A ordem da rodada está sendo definida."
                       : gameState.phase === "shared_clue"
                         ? "Todos analisam o fragmento aberto."
                         : gameState.phase === "pause"
                           ? "Organizem hipóteses antes da próxima rodada."
-                          : "Leiam o caso e seus fragmentos em silêncio."}
+                          : "Leiam o dossiê e seus fragmentos sem revelar conclusões."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {gameState.order.map((playerId, index) => {
-                  const player = room?.users.find((user) => user.id === playerId);
-                  const isCurrent = index === gameState.currentTurnIndex;
+              {gameState.phase !== "roulette" ? (
+                <div className="flex flex-wrap gap-2">
+                  {gameState.order.map((playerId, index) => {
+                    const player = room?.users.find((user) => user.id === playerId);
+                    const isCurrent = index === gameState.currentTurnIndex;
 
-                  return (
-                    <span
-                      className={`rounded-full border px-3 py-1 text-sm font-semibold ${
-                        isCurrent
-                          ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
-                          : "border-stone-700 bg-[#0f120e] text-stone-300"
-                      }`}
-                      key={playerId}
-                    >
-                      {player?.nickname ?? "Jogador"}
-                    </span>
-                  );
-                })}
-              </div>
+                    return (
+                      <span
+                        className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                          isCurrent
+                            ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
+                            : "border-stone-700 bg-[#0f120e] text-stone-300"
+                        }`}
+                        key={playerId}
+                      >
+                        {player?.nickname ?? "Jogador"}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
           </section>
         ) : null}
@@ -749,16 +953,70 @@ export default function GamePage() {
 
         {!gameCase && !error ? (
           <p className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-6 text-stone-300 shadow-2xl shadow-black/20">
-            Carregando caso...
+            Carregando dossiê...
           </p>
         ) : null}
 
-        {gameCase ? (
+        {!gameStarted && gameCase && gameState?.phase === "ready" ? (
+          <section className="mt-8 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/25">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+              Preparação da investigação
+            </p>
+            <h2 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf]">
+              Confirme presença para abrir o dossiê
+            </h2>
+            <p className="mt-3 max-w-2xl text-stone-300">
+              A leitura inicial começa somente quando todos estiverem prontos.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {room?.users.map((user) => {
+                const isReady = readyUserIds.includes(user.id);
+
+                return (
+                  <article
+                    className="rounded-lg border bg-[#0f120e] p-4"
+                    key={user.id}
+                    style={{ borderColor: `${getPlayerColorHex(user.color)}66` }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="h-9 w-9 rounded-full border border-white/35"
+                        style={{ backgroundColor: getPlayerColorHex(user.color) }}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-lg font-bold text-[#fff3cf]">
+                          {user.nickname}
+                        </p>
+                        <p className="text-sm text-stone-400">
+                          {isReady ? "Pronto" : "Aguardando"}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                className="h-12 rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={Boolean(userId && readyUserIds.includes(userId))}
+                onClick={() => postGameAction("ready")}
+                type="button"
+              >
+                {userId && readyUserIds.includes(userId)
+                  ? "Prontidão confirmada"
+                  : "Estou pronto"}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {gameCase && gameStarted ? (
           <>
-            <article className="mt-8 overflow-hidden rounded-lg border border-[#d7b861]/35 bg-[#171b16] shadow-2xl shadow-black/25">
+            <article className="mt-7 overflow-hidden rounded-lg border border-[#d7b861]/35 bg-[#171b16] shadow-2xl shadow-black/25">
               <div className="border-b border-[#d7b861]/25 bg-[#0f120e] px-6 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d7b861]">
-                  Arquivo principal
+                  Dossiê principal
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
                   {gameCase.title}
@@ -775,49 +1033,95 @@ export default function GamePage() {
               <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-                    Fragmentos pessoais
+                    Fragmentos reservados
                   </p>
                   <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    Suas seis pistas
+                    Fragmentos sob sua custódia
                   </h2>
                 </div>
                 <p className="text-sm text-stone-400">
-                  Três delas sustentam a verdade. Três desviam o caminho.
+                  A proporção entre fragmentos corretos e falsos segue a configuração da sala.
                 </p>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {playerClues.map((clue, index) => (
-                  <button
-                    className="min-h-48 rotate-[-1deg] rounded border border-[#d7b861]/35 bg-[#f2dfad] p-5 text-left text-[#21170f] shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:rotate-0 hover:border-[#8b1e1e]"
-                    key={clue.id}
-                    onClick={() => setSelectedClue(clue)}
-                    type="button"
-                  >
-                    <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-[#8b1e1e]">
-                      {String(index + 1).padStart(2, "0")}
-                    </p>
-                    <p className="mt-5 line-clamp-4 text-lg leading-8">
-                      {clue.text}
-                    </p>
-                    <span className="mt-5 inline-flex text-sm font-bold text-[#8b1e1e]">
-                      Abrir fragmento
-                    </span>
-                  </button>
-                ))}
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {playerClues.map((clue, index) => {
+                  const wasShared = mySharedClueIds.includes(clue.id);
+
+                  return (
+                    <button
+                      className={`relative min-h-48 rounded border p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:rotate-0 ${
+                        wasShared
+                          ? "rotate-0 border-[#8b1e1e]/70 bg-[#c8b37d] text-[#4b3724] opacity-75"
+                          : "rotate-[-1deg] border-[#d7b861]/35 bg-[#f2dfad] text-[#21170f] hover:border-[#8b1e1e]"
+                      }`}
+                      key={clue.id}
+                      onClick={() => setSelectedClue(clue)}
+                      type="button"
+                    >
+                      {wasShared ? (
+                        <span className="absolute right-3 top-3 rounded-full border border-[#8b1e1e]/40 bg-[#8b1e1e] px-2 py-1 text-xs font-black uppercase tracking-[0.16em] text-white">
+                          Compartilhada
+                        </span>
+                      ) : null}
+                      <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-[#8b1e1e]">
+                        {String(index + 1).padStart(2, "0")}
+                      </p>
+                      <p className="mt-5 line-clamp-4 text-lg leading-8">
+                        {clue.text}
+                      </p>
+                      <span className="mt-5 inline-flex text-sm font-bold text-[#8b1e1e]">
+                        {wasShared ? "Reabrir fragmento" : "Abrir fragmento"}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
-            <section className="mt-8 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-6 shadow-2xl shadow-black/20">
+            {isEliminated ? (
+              <section className="mt-8 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/20">
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                  Fora da disputa
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  Arquivo completo liberado
+                </h2>
+                <p className="mt-2 text-stone-400">
+                  Seu palpite falhou. Você pode consultar todas as pistas e suas classificações.
+                </p>
+                <div className="mt-6 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border border-emerald-500/35 bg-[#0f120e] p-4">
+                    <h3 className="font-bold text-emerald-300">Pistas verdadeiras</h3>
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-300">
+                      {gameCase.true_clues.map((clue, index) => (
+                        <li key={`true-${index}`}>{clue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="rounded-lg border border-red-500/35 bg-[#0f120e] p-4">
+                    <h3 className="font-bold text-red-300">Pistas falsas</h3>
+                    <ul className="mt-3 space-y-2 text-sm leading-6 text-stone-300">
+                      {gameCase.false_clues.map((clue, index) => (
+                        <li key={`false-${index}`}>{clue}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </section>
+            ) : null}
+
+            {!isEliminated ? (
+            <section className="mt-8 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/20">
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
                     Encerramento
                   </p>
                   <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-                    Solução final
+                    Conclusão final
                   </h2>
                   <p className="mt-2 text-stone-400">
-                    Abra somente quando estiver pronto para responder.
+                    Abra somente quando estiver disposto a sustentar uma tese.
                   </p>
                 </div>
                 <button
@@ -829,6 +1133,7 @@ export default function GamePage() {
                 </button>
               </div>
             </section>
+            ) : null}
           </>
         ) : null}
       </section>
@@ -840,7 +1145,7 @@ export default function GamePage() {
 function Modal({ children }: { children: ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <section className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-6 text-stone-50 shadow-2xl">
+      <section className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 text-stone-50 shadow-2xl sm:p-6">
         {children}
       </section>
     </div>

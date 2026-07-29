@@ -1,6 +1,6 @@
-# Scotland Yard
+# Contrapista
 
-Aplicação web em Next.js para criar salas temporárias e jogar uma investigação cooperativa inspirada no Scotland Yard clássico.
+Aplicação web em Next.js para criar salas temporárias e jogar Contrapista, um jogo online de investigação baseado em versões conflitantes, evidências e dedução coletiva.
 
 ## Visão Geral
 
@@ -9,7 +9,7 @@ O projeto permite:
 - criar sala com código aleatório de 4 números;
 - entrar em uma sala por código;
 - escolher nickname e cor exclusiva por jogador;
-- marcar jogadores como prontos no lobby;
+- marcar participantes como prontos na ante-sala;
 - gerar um caso automaticamente com IA via OpenRouter;
 - salvar o caso na tabela `cases`;
 - vincular o caso ativo na sala por `game_rooms.activecase`;
@@ -49,15 +49,11 @@ DATABASE=postgresql://...
 LLM_PROVIDER=openrouter
 LLM_OPENROUTER_API_KEY=...
 LLM_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-LLM_MODEL1=...
-LLM_MODEL2=...
-LLM_MODEL3=...
-LLM_MODEL4=...
-LLM_MODEL5=...
+LLM_MODELS=openai/gpt-4o-mini,google/gemini-2.0-flash-001,meta-llama/llama-3.1-70b-instruct
 LLM_DEBUG=false
 ```
 
-O projeto tenta os modelos configurados em ordem. Quando um modelo falha, ele entra em standoff por 24 horas no processo atual.
+O projeto tenta os modelos na ordem da lista `LLM_MODELS`. Se um modelo falhar, ele entra em standby por 24 horas no processo atual e o próximo modelo da lista assume.
 
 ## Banco de Dados
 
@@ -125,7 +121,7 @@ Campos usados:
 10. Os outros jogadores veem um modal informando quem abriu a pista.
 11. A solução final abre apenas para quem clicou.
 12. Se esse jogador clicar em `Acertou`, todos veem o modal final.
-13. Ao voltar ao lobby, o caso ativo é limpo e jogadores ficam como não prontos.
+13. Ao voltar à ante-sala, o caso ativo é limpo e jogadores ficam como não prontos.
 
 ## Cores dos Jogadores
 

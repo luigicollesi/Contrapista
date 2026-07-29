@@ -1,6 +1,9 @@
 import { createCaseForRoom } from "@/lib/cases";
 import { getRoom } from "@/lib/rooms";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function POST(
   _request: Request,
   { params }: { params: Promise<{ code: string }> },
