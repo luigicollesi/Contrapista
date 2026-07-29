@@ -1,5 +1,3 @@
-import OpenAI from "openai";
-
 import { getAiConfig } from "@/lib/ai/config";
 import type {
   AiChatCompletionResult,
@@ -18,12 +16,6 @@ export function createOpenRouterClient(): AiProviderClient {
   if (config.openRouter.appName) {
     defaultHeaders["X-Title"] = config.openRouter.appName;
   }
-
-  const client = new OpenAI({
-    apiKey: config.openRouter.apiKey,
-    baseURL: config.openRouter.baseUrl,
-    defaultHeaders,
-  });
 
   return {
     async chatCompletion(
@@ -58,14 +50,47 @@ export function createOpenRouterClient(): AiProviderClient {
         requestBody.provider = provider;
       }
 
-      const response = await client.chat.completions.create(
-        requestBody as never,
-      );
-      const text = response.choices?.[0]?.message?.content?.trim() || "";
+      const response = await fetch(`${config.openRouter.baseUrl}/chat/completions`, {
+        body: JSON.stringify(requestBody),
+        headers: {
+          ...defaultHeaders,
+          Authorization: `Bearer ${config.openRouter.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        const error = new Error(
+          `OpenRouter retornou HTTP ${response.status}: ${responseText.slice(0, 240)}`,
+        );
+
+        (error as { status?: number }).status = response.status;
+        throw error;
+      }
+
+      let data: {
+        choices?: Array<{
+          message?: {
+            content?: string | null;
+          };
+        }>;
+      };
+
+      try {
+        data = JSON.parse(responseText) as typeof data;
+      } catch {
+        throw new Error(
+          `OpenRouter retornou uma resposta não JSON: ${responseText.slice(0, 240)}`,
+        );
+      }
+
+      const text = data.choices?.[0]?.message?.content?.trim() || "";
 
       return {
         text,
-        raw: response,
+        raw: data,
       };
     },
   };

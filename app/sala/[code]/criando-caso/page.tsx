@@ -32,6 +32,22 @@ const clueCards = [
   { label: "Álibi", left: "8%", top: "72%", rotate: "5deg" },
 ];
 
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as { error?: string };
+  } catch {
+    return {
+      error: `O servidor retornou uma resposta inesperada: ${text.slice(0, 160)}`,
+    };
+  }
+}
+
 export default function CreatingCasePage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
@@ -56,7 +72,7 @@ export default function CreatingCasePage() {
         const response = await fetch(`/api/rooms/${code}/case/start`, {
           method: "POST",
         });
-        const data = await response.json();
+        const data = await readJsonResponse(response);
 
         if (!isActive) {
           return;

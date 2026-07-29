@@ -17,6 +17,13 @@ type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 const CLUES_PER_PLAYER_BY_KIND = 3;
 const CASE_GENERATION_ATTEMPTS = 5;
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
+const CASE_JSON_KEYS = [
+  "title",
+  "case_text",
+  "true_clues",
+  "false_clues",
+  "final_answer",
+] as const;
 
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -101,12 +108,16 @@ function assertGeneratedCase(
     }
   }
 
-  if (trueClues.length < requiredCluesByKind) {
-    throw new Error("Resposta da IA sem pistas verdadeiras suficientes.");
+  if (trueClues.length !== requiredCluesByKind) {
+    throw new Error(
+      `Resposta da IA deveria ter exatamente ${requiredCluesByKind} pistas verdadeiras, mas retornou ${trueClues.length}.`,
+    );
   }
 
-  if (falseClues.length < requiredCluesByKind) {
-    throw new Error("Resposta da IA sem pistas falsas suficientes.");
+  if (falseClues.length !== requiredCluesByKind) {
+    throw new Error(
+      `Resposta da IA deveria ter exatamente ${requiredCluesByKind} pistas falsas, mas retornou ${falseClues.length}.`,
+    );
   }
 
   const title = data.title as string;
@@ -171,26 +182,12 @@ async function parseCaseResponse(text: string) {
 function casePrompt({
   playerCount,
   requiredCluesByKind,
-  attempt,
   previousError,
 }: {
   playerCount: number;
   requiredCluesByKind: number;
-  attempt: number;
   previousError?: string;
 }) {
-  const strictJsonRules =
-    attempt === 0
-      ? ""
-      : `
-Regras extras de formato:
-- Responda com o caractere "{" como primeiro caractere.
-- Não explique raciocínio.
-- Não use markdown.
-- Não escreva texto antes ou depois do objeto JSON.
-- Não use aspas sem escape dentro das strings.
-- true_clues e false_clues devem ser arrays JSON reais, não texto.
-`;
   const retryRules = previousError
     ? `
 A tentativa anterior foi rejeitada por este motivo:
@@ -199,8 +196,33 @@ ${previousError}
 Corrija o formato nesta tentativa. Se a mensagem anterior começou com raciocínio em inglês, não continue esse raciocínio. Gere novamente apenas o objeto JSON final.
 `
     : "";
+  const trueClueTemplate = Array.from(
+    { length: requiredCluesByKind },
+    (_, index) => `"<pista verdadeira ${index + 1}>"`,
+  ).join(", ");
+  const falseClueTemplate = Array.from(
+    { length: requiredCluesByKind },
+    (_, index) => `"<pista falsa ${index + 1}>"`,
+  ).join(", ");
 
   return `
+CONTRATO DE SAÍDA OBRIGATÓRIO:
+- A resposta inteira deve ser um único objeto JSON válido para JSON.parse.
+- O primeiro caractere da resposta deve ser "{" e o último caractere deve ser "}".
+- Não escreva markdown, comentários, explicações, análise, raciocínio, introdução ou texto depois do JSON.
+- Não use blocos \`\`\`.
+- Não use trailing commas.
+- Não use aspas simples.
+- Não use quebras de linha literais dentro de strings; quando precisar separar parágrafos, use "\\n\\n".
+- Não use caracteres de controle dentro das strings.
+- Use exatamente estas chaves, nesta ordem: ${CASE_JSON_KEYS.join(", ")}.
+- Não adicione chaves extras.
+- title, case_text e final_answer devem ser strings.
+- true_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings.
+- false_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings.
+- Cada item dos arrays deve ser string simples, sem objetos internos.
+- Todo conteúdo narrativo deve estar dentro dos valores JSON.
+
 Crie um caso original em português, com atmosfera de Londres vitoriana e investigação dedutiva familiar.
 
 Padrão obrigatório do caso:
@@ -229,15 +251,14 @@ Campos obrigatórios:
 - case_text: 2 a 4 parágrafos curtos. No último parágrafo, faça 2, 3 ou 4 perguntas explícitas e numeradas que os jogadores devem responder.
 - As perguntas devem pedir respostas objetivas: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
 - final_answer: o primeiro parágrafo deve começar com "Resposta:" e responder cada pergunta em ordem. O segundo parágrafo deve começar com "Contexto:" e explicar como as pistas verdadeiras revelam a solução e por que as falsas desviam o grupo.
-${strictJsonRules}
 ${retryRules}
-Formato obrigatório:
+Preencha exatamente este template JSON. Substitua apenas os valores entre <...>. Não mantenha os sinais < ou >:
 {
-  "title": "...",
-  "case_text": "...",
-  "true_clues": ["...", "..."],
-  "false_clues": ["...", "..."],
-  "final_answer": "..."
+  "title": "<título curto>",
+  "case_text": "<2 a 4 parágrafos curtos com perguntas numeradas no final>",
+  "true_clues": [${trueClueTemplate}],
+  "false_clues": [${falseClueTemplate}],
+  "final_answer": "<Resposta: ...\\n\\nContexto: ...>"
 }
 `.trim();
 }
@@ -273,14 +294,13 @@ async function generateCaseWithAi(playerCount: number) {
           {
             role: "system",
             content:
-              'Você cria casos investigativos e responde exclusivamente com JSON válido para JSON.parse. O primeiro caractere da resposta deve ser "{". Não explique seu raciocínio. Não escreva planejamento, análise, markdown ou texto antes/depois do JSON. Todos os valores devem ser strings JSON válidas; escape aspas internas e quebras de linha como \\n.',
+              'Você é um gerador de dados JSON para uma API. Responda somente com um objeto JSON válido para JSON.parse, sem markdown e sem texto fora do JSON. O primeiro caractere deve ser "{" e o último deve ser "}". Não explique raciocínio, não escreva planejamento e não peça desculpas. Se não conseguir cumprir alguma regra, ainda assim devolva o melhor objeto JSON possível no schema pedido. Escape aspas internas, barras invertidas e quebras de linha como \\n.',
           },
           {
             role: "user",
             content: casePrompt({
               playerCount,
               requiredCluesByKind,
-              attempt,
               previousError,
             }),
           },
