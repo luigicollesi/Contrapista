@@ -94,6 +94,36 @@ function countRoomUsers(users: unknown) {
   return Array.isArray(users) ? Math.max(1, users.length) : 1;
 }
 
+function hasPlaceholderText(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized === "..." ||
+    normalized.includes("<") ||
+    normalized.includes(">") ||
+    normalized.includes("pista verdadeira") ||
+    normalized.includes("pista falsa") ||
+    normalized.includes("título curto") ||
+    normalized.includes("perguntas numeradas") ||
+    normalized.includes("resposta: ...") ||
+    normalized.includes("string original") ||
+    normalized.includes("string com") ||
+    normalized.includes("array com") ||
+    normalized.includes("sem placeholder") ||
+    /\.{3,}/.test(normalized)
+  );
+}
+
+function assertNoPlaceholders(label: string, values: string[]) {
+  const invalidValue = values.find(hasPlaceholderText);
+
+  if (invalidValue) {
+    throw new Error(
+      `Resposta da IA manteve placeholder em ${label}: ${invalidValue.slice(0, 80)}`,
+    );
+  }
+}
+
 function assertGeneratedCase(
   value: unknown,
   requiredCluesByKind: number,
@@ -123,6 +153,10 @@ function assertGeneratedCase(
   const title = data.title as string;
   const caseText = data.case_text as string;
   const finalAnswer = data.final_answer as string;
+
+  assertNoPlaceholders("campos principais", [title, caseText, finalAnswer]);
+  assertNoPlaceholders("pistas verdadeiras", trueClues);
+  assertNoPlaceholders("pistas falsas", falseClues);
 
   return {
     title: title.trim(),
@@ -196,13 +230,9 @@ ${previousError}
 Corrija o formato nesta tentativa. Se a mensagem anterior começou com raciocínio em inglês, não continue esse raciocínio. Gere novamente apenas o objeto JSON final.
 `
     : "";
-  const trueClueTemplate = Array.from(
+  const clueCountRules = Array.from(
     { length: requiredCluesByKind },
-    (_, index) => `"<pista verdadeira ${index + 1}>"`,
-  ).join(", ");
-  const falseClueTemplate = Array.from(
-    { length: requiredCluesByKind },
-    (_, index) => `"<pista falsa ${index + 1}>"`,
+    (_, index) => index + 1,
   ).join(", ");
 
   return `
@@ -215,11 +245,13 @@ CONTRATO DE SAÍDA OBRIGATÓRIO:
 - Não use aspas simples.
 - Não use quebras de linha literais dentro de strings; quando precisar separar parágrafos, use "\\n\\n".
 - Não use caracteres de controle dentro das strings.
+- Não use reticências como valor. Sequências de três pontos são proibidas em qualquer campo.
+- Não use placeholders, marcadores ou instruções como valor. São proibidas frases genéricas como "pista verdadeira", "pista falsa", "título curto", "string original" e "perguntas numeradas".
 - Use exatamente estas chaves, nesta ordem: ${CASE_JSON_KEYS.join(", ")}.
 - Não adicione chaves extras.
 - title, case_text e final_answer devem ser strings.
-- true_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings.
-- false_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings.
+- true_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings, uma para cada posição: ${clueCountRules}.
+- false_clues deve ser um array JSON com exatamente ${requiredCluesByKind} strings, uma para cada posição: ${clueCountRules}.
 - Cada item dos arrays deve ser string simples, sem objetos internos.
 - Todo conteúdo narrativo deve estar dentro dos valores JSON.
 
@@ -247,19 +279,18 @@ Distribuição obrigatória:
 - As pistas verdadeiras e falsas devem ter estilos misturados: objetos, horários, depoimentos, contradições, rimas, registros, marcas, recibos, rotas, fragmentos pela metade e falsas associações.
 
 Campos obrigatórios:
-- title: título curto em estilo "O CASO DO ..." ou "O CASO DA ...".
+- title: título curto em estilo de manchete investigativa, começando com "O CASO DO" ou "O CASO DA" e terminando com um elemento concreto da história.
 - case_text: 2 a 4 parágrafos curtos. No último parágrafo, faça 2, 3 ou 4 perguntas explícitas e numeradas que os jogadores devem responder.
 - As perguntas devem pedir respostas objetivas: culpado, método, arma, motivo, local, cúmplice, objeto escondido, rota usada, contradição decisiva ou identidade real.
 - final_answer: o primeiro parágrafo deve começar com "Resposta:" e responder cada pergunta em ordem. O segundo parágrafo deve começar com "Contexto:" e explicar como as pistas verdadeiras revelam a solução e por que as falsas desviam o grupo.
 ${retryRules}
-Preencha exatamente este template JSON. Substitua apenas os valores entre <...>. Não mantenha os sinais < ou >:
-{
-  "title": "<título curto>",
-  "case_text": "<2 a 4 parágrafos curtos com perguntas numeradas no final>",
-  "true_clues": [${trueClueTemplate}],
-  "false_clues": [${falseClueTemplate}],
-  "final_answer": "<Resposta: ...\\n\\nContexto: ...>"
-}
+Retorne somente um objeto JSON final com estes campos preenchidos:
+- title: string com título original.
+- case_text: string com narrativa completa e perguntas numeradas.
+- true_clues: array com exatamente ${requiredCluesByKind} strings de pistas verdadeiras.
+- false_clues: array com exatamente ${requiredCluesByKind} strings de pistas falsas.
+- final_answer: string começando com "Resposta:" e contendo depois "Contexto:".
+Antes de responder, verifique internamente: nenhum valor pode ser vazio, genérico, placeholder ou reticências.
 `.trim();
 }
 
