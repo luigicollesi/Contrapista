@@ -32,6 +32,13 @@ const clueCards = [
   { label: "Álibi", left: "8%", top: "72%", rotate: "5deg" },
 ];
 
+const CASE_CREATION_FETCH_ATTEMPTS = 5;
+const CASE_CREATION_RETRY_DELAY_MS = 2500;
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 async function readJsonResponse(response: Response) {
   const text = await response.text();
 
@@ -53,6 +60,7 @@ export default function CreatingCasePage() {
   const router = useRouter();
   const code = params.code;
   const [error, setError] = useState("");
+  const [retryNotice, setRetryNotice] = useState("");
   const [stepIndex, setStepIndex] = useState(0);
   const progress = ((stepIndex + 1) / steps.length) * 100;
 
@@ -69,14 +77,50 @@ export default function CreatingCasePage() {
 
     async function startCaseCreation() {
       try {
-        const response = await fetch(`/api/rooms/${code}/case/start`, {
-          method: "POST",
-        });
-        const data = await readJsonResponse(response);
+        let response: Response | null = null;
+
+        for (
+          let attempt = 1;
+          attempt <= CASE_CREATION_FETCH_ATTEMPTS;
+          attempt += 1
+        ) {
+          try {
+            response = await fetch(`/api/rooms/${code}/case/start`, {
+              method: "POST",
+            });
+            break;
+          } catch (caughtError) {
+            if (!isActive) {
+              return;
+            }
+
+            if (
+              !(caughtError instanceof TypeError) ||
+              attempt === CASE_CREATION_FETCH_ATTEMPTS
+            ) {
+              throw new Error(
+                "A conexão com o servidor caiu durante a criação do caso. Verifique se o servidor ainda está rodando e tente novamente.",
+              );
+            }
+
+            setRetryNotice(
+              `A conexão oscilou. Tentando novamente (${attempt + 1}/${CASE_CREATION_FETCH_ATTEMPTS})...`,
+            );
+            await wait(CASE_CREATION_RETRY_DELAY_MS);
+          }
+        }
+
+        if (!response) {
+          throw new Error("Não foi possível conectar ao servidor.");
+        }
 
         if (!isActive) {
           return;
         }
+
+        setRetryNotice("");
+
+        const data = await readJsonResponse(response);
 
         if (!response.ok) {
           throw new Error(data.error ?? "Não foi possível criar o caso.");
@@ -184,6 +228,12 @@ export default function CreatingCasePage() {
               ))}
             </div>
           </div>
+
+          {retryNotice ? (
+            <p className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#2d2818]/80 px-4 py-3 text-sm font-medium text-[#fff3cf]">
+              {retryNotice}
+            </p>
+          ) : null}
 
           {error ? (
             <p className="mt-6 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
