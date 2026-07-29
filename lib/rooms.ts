@@ -711,7 +711,7 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS empty_since timestamptz,
         ADD COLUMN IF NOT EXISTS config_id uuid;
 
-      DO $
+      DO $$
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'game_rooms_config_id_fkey'
