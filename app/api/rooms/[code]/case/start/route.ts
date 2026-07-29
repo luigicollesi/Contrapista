@@ -1,8 +1,8 @@
 import { createCaseForRoom, getLastCaseCreationDurationSeconds } from "@/lib/cases";
-import { getRoom } from "@/lib/rooms";
+import { finishRoomCase, getRoom } from "@/lib/rooms";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function GET() {
   return Response.json({
@@ -34,9 +34,15 @@ export async function POST(
 
     return Response.json({ case: gameCase });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao criar caso.";
+    console.error("[case-generation:error]", error);
+    await finishRoomCase({ code }).catch(() => null);
 
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json(
+      {
+        error:
+          "Os modelos de IA estão indisponíveis no momento. Voltem para a ante-sala e tentem novamente mais tarde.",
+      },
+      { status: 503 },
+    );
   }
 }

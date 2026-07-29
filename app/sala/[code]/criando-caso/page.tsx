@@ -55,6 +55,7 @@ const clueCards = [
 
 const CASE_CREATION_FETCH_ATTEMPTS = 5;
 const CASE_CREATION_RETRY_DELAY_MS = 2500;
+const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -208,11 +209,18 @@ export default function CreatingCasePage() {
           return;
         }
 
-        setError(
+        const message =
           caughtError instanceof Error
             ? caughtError.message
-            : "Não foi possível criar o caso.",
+            : "Os modelos de IA estão indisponíveis. Tente novamente mais tarde.";
+
+        sessionStorage.setItem(
+          CASE_CREATION_NOTICE_KEY,
+          message || "Os modelos de IA estão indisponíveis. Tente novamente mais tarde.",
         );
+
+        setError(message);
+        router.replace(`/sala/${code}`);
       }
     }
 

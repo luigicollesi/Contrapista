@@ -32,6 +32,10 @@ function getAvailableModelSlots(models: string[], now: number): ModelSlot[] {
   );
 }
 
+export function getAvailableAiModelCount(): number {
+  return getAvailableModelSlots(getAiConfig().models, Date.now()).length;
+}
+
 function getNextAvailableModelSlot(
   models: string[],
   now: number,
@@ -123,7 +127,7 @@ export async function chatCompletion(
           message: getErrorMessage(error),
         },
       ],
-      status === 429 ? 429 : status && status >= 500 ? 503 : 502,
+      status ?? 502,
     );
   }
 }

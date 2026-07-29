@@ -35,6 +35,7 @@ type Room = {
 };
 
 const SESSION_STORAGE_KEY = "contrapista-session";
+const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
 function leftCaseStorageKey(code: string) {
   return `contrapista-left-case-${code}`;
@@ -242,6 +243,19 @@ export default function RoomPage() {
   const [color, setColor] = useState<PlayerColor>("red");
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState("");
+  const [notice] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    const storedNotice = sessionStorage.getItem(CASE_CREATION_NOTICE_KEY);
+
+    if (storedNotice) {
+      sessionStorage.removeItem(CASE_CREATION_NOTICE_KEY);
+    }
+
+    return storedNotice ?? "";
+  });
   const [isSaving, setIsSaving] = useState(false);
   const [isRoomMissing, setIsRoomMissing] = useState(false);
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
@@ -817,6 +831,12 @@ export default function RoomPage() {
         {error ? (
           <p className="mt-5 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
             {error}
+          </p>
+        ) : null}
+
+        {notice ? (
+          <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2d2818]/80 px-4 py-3 text-sm font-medium text-[#fff3cf]">
+            {notice}
           </p>
         ) : null}
 

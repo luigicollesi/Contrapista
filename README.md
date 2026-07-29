@@ -76,6 +76,8 @@ LLM_OPENROUTER_IGNORE=...
 
 O projeto usa os modelos na ordem de `LLM_MODELS`, separados por vírgula. Cada chamada à IA usa somente o primeiro modelo disponível da lista; os demais ficam ignorados até serem necessários. Se esse modelo falhar por erro de API, ele entra em espera por 24 horas no processo atual. Se retornar uma resposta inválida pela validação local, entra em espera por 5 minutos. A próxima chamada passa para o próximo modelo disponível da lista.
 
+Na geração de caso, o backend continua tentando os modelos fora de espera antes de retornar erro. Se nenhum modelo conseguir gerar um caso válido, a sala é resetada para a ante-sala e a UI informa que os modelos de IA estão indisponíveis.
+
 ## Jornada do Usuário
 
 1. Na home, o jogador cria uma sala ou informa um código de 4 números.

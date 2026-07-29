@@ -1,4 +1,5 @@
-import { chatCompletion } from "@/lib/ai";
+import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
+import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { dbQuery } from "@/lib/db";
 import {
   DEFAULT_ROOM_CONFIG,
@@ -18,7 +19,7 @@ export type GameCase = {
 
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
-const CASE_GENERATION_ATTEMPTS = 3;
+const MIN_CASE_GENERATION_ATTEMPTS = 3;
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
 const CASE_JSON_KEYS = [
   "title",
@@ -465,10 +466,14 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
   const distribution = getClueDistribution(config);
   const requiredTrueClues = playerCount * distribution.trueCluesPerPlayer;
   const requiredFalseClues = playerCount * distribution.falseCluesPerPlayer;
+  const maxAttempts = Math.max(
+    MIN_CASE_GENERATION_ATTEMPTS,
+    getAvailableAiModelCount(),
+  );
   const errors: string[] = [];
   let previousError: string | undefined;
 
-  for (let attempt = 0; attempt < CASE_GENERATION_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const chat = await chatCompletion({
         temperature: attempt === 0 ? 0.8 : 0.2,
@@ -513,11 +518,19 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
     } catch (error) {
       previousError = error instanceof Error ? error.message : String(error);
       errors.push(previousError);
+
+      if (
+        error instanceof AiModelsUnavailableError &&
+        (error.failures.length === 0 ||
+          error.failures.some((failure) => failure.status === 401 || failure.status === 403))
+      ) {
+        break;
+      }
     }
   }
 
   throw new Error(
-    `Não foi possível gerar um caso em JSON válido após ${CASE_GENERATION_ATTEMPTS} tentativas: ${errors.join(" | ")}`,
+    `Não foi possível gerar um caso em JSON válido após ${errors.length} tentativa(s): ${errors.join(" | ")}`,
   );
 }
 
