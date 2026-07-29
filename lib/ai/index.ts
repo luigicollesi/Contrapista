@@ -4,7 +4,6 @@ import {
   AiModelsUnavailableError,
   getErrorMessage,
   getErrorStatus,
-  type AiModelFailure,
 } from "@/lib/ai/errors";
 import type {
   AiChatCompletionParams,
@@ -12,6 +11,7 @@ import type {
 } from "@/lib/ai/types";
 
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
+const INVALID_RESPONSE_STANDOFF_MS = 5 * 60 * 1000;
 const modelStandoffUntil = new Map<string, number>();
 
 type ModelSlot = {
@@ -32,6 +32,13 @@ function getAvailableModelSlots(models: string[], now: number): ModelSlot[] {
   );
 }
 
+function getNextAvailableModelSlot(
+  models: string[],
+  now: number,
+): ModelSlot | null {
+  return getAvailableModelSlots(models, now)[0] ?? null;
+}
+
 function putModelSlotInStandoff(
   slotId: string,
   now: number,
@@ -41,17 +48,11 @@ function putModelSlotInStandoff(
 }
 
 function shouldPutModelInStandoff(status?: number): boolean {
-  if (status === undefined) {
-    return true;
-  }
+  return status !== 401 && status !== 403;
+}
 
-  return (
-    status === 408 ||
-    status === 409 ||
-    status === 425 ||
-    status === 429 ||
-    status >= 500
-  );
+function getModelStandoffDuration(status?: number): number {
+  return status === 422 ? INVALID_RESPONSE_STANDOFF_MS : MODEL_STANDOFF_MS;
 }
 
 export async function chatCompletion(
@@ -60,75 +61,69 @@ export async function chatCompletion(
   const config = getAiConfig();
   const client = getAiClient();
   const now = Date.now();
-  const modelSlots = getAvailableModelSlots(config.models, now);
+  const modelSlot = getNextAvailableModelSlot(config.models, now);
 
-  if (!modelSlots.length) {
+  if (!modelSlot) {
     throw new AiModelsUnavailableError(
       "Todos os modelos LLM configurados estão temporariamente em espera por falhas de API.",
     );
   }
 
-  const failures: AiModelFailure[] = [];
+  const { id: modelSlotId, model } = modelSlot;
 
-  for (const { id: modelSlotId, model } of modelSlots) {
-    if (config.debug) {
-      console.debug(
-        `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model}`,
-      );
-      console.debug("[AI][prompt]", params.messages);
-    }
-
-    try {
-      const { validateText, ...providerParams } = params;
-      const response = await client.chatCompletion({ ...providerParams, model });
-
-      try {
-        validateText?.(response.text);
-      } catch (error) {
-        (error as { status?: number }).status = 422;
-        throw error;
-      }
-
-      if (config.debug) {
-        console.debug("[AI][raw-response]", response.raw);
-      }
-
-      return response;
-    } catch (error) {
-      const failedAt = Date.now();
-      const status = getErrorStatus(error);
-      if (shouldPutModelInStandoff(status)) {
-        putModelSlotInStandoff(modelSlotId, failedAt);
-      }
-      failures.push({
-        model,
-        status,
-        message: getErrorMessage(error),
-      });
-
-      if (config.debug) {
-        const standoffUntil =
-          shouldPutModelInStandoff(status)
-            ? new Date(failedAt + MODEL_STANDOFF_MS).toISOString()
-            : "not-applied";
-        console.error(
-          `[AI][error] modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
-          error,
-        );
-      }
-    }
+  if (config.debug) {
+    console.debug(
+      `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model}`,
+    );
+    console.debug("[AI][prompt]", params.messages);
   }
 
-  const allRateLimited =
-    failures.length > 0 && failures.every((failure) => failure.status === 429);
-  const hasRateLimit = failures.some((failure) => failure.status === 429);
-  const status = allRateLimited ? 429 : hasRateLimit ? 503 : 502;
+  try {
+    const { validateText, ...providerParams } = params;
+    const response = await client.chatCompletion({ ...providerParams, model });
 
-  throw new AiModelsUnavailableError(
-    `Todos os modelos LLM disponíveis falharam: ${failures
-      .map(({ model }) => model)
-      .join(", ")}`,
-    failures,
-    status,
-  );
+    try {
+      validateText?.(response.text);
+    } catch (error) {
+      (error as { status?: number }).status = 422;
+      throw error;
+    }
+
+    if (config.debug) {
+      console.debug("[AI][raw-response]", response.raw);
+    }
+
+    return response;
+  } catch (error) {
+    const failedAt = Date.now();
+    const status = getErrorStatus(error);
+    const shouldStandoff = shouldPutModelInStandoff(status);
+    const standoffDuration = getModelStandoffDuration(status);
+
+    if (shouldStandoff) {
+      putModelSlotInStandoff(modelSlotId, failedAt, standoffDuration);
+    }
+
+    if (config.debug) {
+      const standoffUntil = shouldStandoff
+        ? new Date(failedAt + standoffDuration).toISOString()
+        : "not-applied";
+      console.error(
+        `[AI][error] modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
+        error,
+      );
+    }
+
+    throw new AiModelsUnavailableError(
+      `Modelo LLM falhou${shouldStandoff ? " e entrou em espera" : ""}: ${model}`,
+      [
+        {
+          model,
+          status,
+          message: getErrorMessage(error),
+        },
+      ],
+      status === 429 ? 429 : status && status >= 500 ? 503 : 502,
+    );
+  }
 }
