@@ -1,8 +1,14 @@
-import { createCaseForRoom } from "@/lib/cases";
+import { createCaseForRoom, getLastCaseCreationDurationSeconds } from "@/lib/cases";
 import { getRoom } from "@/lib/rooms";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+export async function GET() {
+  return Response.json({
+    estimatedSeconds: getLastCaseCreationDurationSeconds(),
+  });
+}
 
 export async function POST(
   _request: Request,

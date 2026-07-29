@@ -105,6 +105,20 @@ function getPlayerColorHex(color?: PlayerColor) {
   return color ? PLAYER_COLORS[color]?.hex ?? "#d7b861" : "#d7b861";
 }
 
+function formatTimer(totalSeconds: number | null) {
+  if (totalSeconds === null) {
+    return "--";
+  }
+
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+
+  if (seconds < 60) {
+    return String(seconds).padStart(2, "0");
+  }
+
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
 function getClueDistribution(config?: RoomConfig) {
   const cluesPerPlayer = Math.min(
     10,
@@ -386,6 +400,10 @@ export default function GamePage() {
         Math.ceil((finalGuessEvent.createdAt + finalGuessDurationMs - now) / 1000),
       )
     : 0;
+  const fixedTimerSeconds = finalGuessEvent
+    ? guessRemainingSeconds
+    : phaseRemainingSeconds;
+  const fixedTimerLabel = finalGuessEvent ? "Palpite final" : phaseLabel;
 
   async function postGameAction(path: "ready" | "skip") {
     if (!userId) {
@@ -565,18 +583,22 @@ export default function GamePage() {
     if (!modalEvent || !gameCase) {
       if (gameState?.phase === "roulette") {
         const pool = gameState.roulettePool ?? [];
-        const selectedPlayer = room?.users.find(
-          (user) => user.id === gameState.rouletteSelectedId,
-        );
+        const rouletteSpinKey = [
+          gameState.phaseStartedAt,
+          gameState.rouletteSelectedId,
+          pool.join("-"),
+        ].join(":");
+        const shouldRevealRouletteResult = now >= gameState.phaseEndsAt - 250;
+        const selectedPlayer = shouldRevealRouletteResult
+          ? room?.users.find((user) => user.id === gameState.rouletteSelectedId)
+          : null;
         const wheelPlayers = pool
           .map((playerId) => room?.users.find((user) => user.id === playerId))
           .filter((player): player is NonNullable<typeof player> => Boolean(player));
-        const selectedIndex = Math.max(
-          0,
-          wheelPlayers.findIndex(
-            (player) => player.id === gameState.rouletteSelectedId,
-          ),
+        const rawSelectedIndex = wheelPlayers.findIndex(
+          (player) => player.id === gameState.rouletteSelectedId,
         );
+        const selectedIndex = rawSelectedIndex >= 0 ? rawSelectedIndex : 0;
         const segmentAngle = 360 / Math.max(1, wheelPlayers.length);
         const wheelStops = wheelPlayers
           .map((player, index) => {
@@ -599,6 +621,7 @@ export default function GamePage() {
             <div className="mt-6 flex flex-col items-center gap-6">
               <div
                 className="relative h-72 w-72 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)]"
+                key={rouletteSpinKey}
                 style={{ "--target-rotation": `${targetRotation}deg` } as CSSProperties}
               >
                 <div
@@ -618,7 +641,9 @@ export default function GamePage() {
               <div className="flex flex-wrap justify-center gap-2">
                 {pool.map((playerId) => {
                   const player = room?.users.find((user) => user.id === playerId);
-                  const isSelected = playerId === gameState.rouletteSelectedId;
+                  const isSelected =
+                    shouldRevealRouletteResult &&
+                    playerId === gameState.rouletteSelectedId;
 
                   return (
                     <span
@@ -648,6 +673,7 @@ export default function GamePage() {
               .roulette-wheel {
                 animation: roulette-spin 3s cubic-bezier(0.12, 0.78, 0.22, 1)
                   both;
+                will-change: transform;
               }
             `}</style>
           </Modal>
@@ -750,7 +776,7 @@ export default function GamePage() {
                 Escreva sua tese
               </h2>
               <p className="mt-3 text-sm font-semibold text-stone-400">
-                Envio automático em {String(guessRemainingSeconds).padStart(2, "0")}s.
+                Envio automático em {formatTimer(guessRemainingSeconds)}.
               </p>
               <textarea
                 className="mt-5 min-h-64 w-full rounded-lg border border-[#d7b861]/35 bg-[#0f120e] p-4 text-lg leading-8 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20"
@@ -856,20 +882,32 @@ export default function GamePage() {
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
-      {canSkipPhase ? (
-        <button
-          className="fixed right-4 top-4 z-[80] flex h-12 items-center gap-2 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-4 font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70"
-          disabled={hasVotedToSkip}
-          onClick={() => postGameAction("skip")}
-          title="Pular fase por consenso"
-          type="button"
-        >
-          <span aria-hidden="true" className="text-lg">⏩</span>
-          <span>{hasVotedToSkip ? "Aguardando" : "Pular"}</span>
-          <span className="rounded-full bg-[#17130d]/15 px-2 py-0.5 text-xs">
-            {skipVoteIds.length}/{room?.users.length ?? 0}
-          </span>
-        </button>
+      {gameState && gameStarted ? (
+        <div className="fixed right-4 top-4 z-[90] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
+          <div className="rounded-full border border-[#d7b861]/45 bg-[#171b16]/95 px-4 py-2 text-right shadow-2xl shadow-black/35 backdrop-blur">
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c8a24a]">
+              {fixedTimerLabel}
+            </p>
+            <p className="mt-0.5 font-mono text-2xl font-black leading-none text-[#fff3cf]">
+              {formatTimer(fixedTimerSeconds)}
+            </p>
+          </div>
+          {canSkipPhase ? (
+            <button
+              className="flex h-12 items-center gap-2 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-4 font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70"
+              disabled={hasVotedToSkip}
+              onClick={() => postGameAction("skip")}
+              title="Pular fase por consenso"
+              type="button"
+            >
+              <span aria-hidden="true" className="text-lg">⏩</span>
+              <span>{hasVotedToSkip ? "Aguardando" : "Pular"}</span>
+              <span className="rounded-full bg-[#17130d]/15 px-2 py-0.5 text-xs">
+                {skipVoteIds.length}/{room?.users.length ?? 0}
+              </span>
+            </button>
+          ) : null}
+        </div>
       ) : null}
       <section className="relative mx-auto w-full max-w-7xl">
         <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
@@ -881,19 +919,7 @@ export default function GamePage() {
               Sala {code}
             </h1>
           </div>
-          <div className="rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-6 py-4 shadow-2xl shadow-black/25">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
-              Cronômetro
-            </p>
-            <p className="mt-1 font-mono text-4xl font-bold text-[#fff3cf]">
-              {phaseRemainingSeconds === null
-                ? "--"
-                : String(phaseRemainingSeconds).padStart(2, "0")}
-            </p>
-            <p className="mt-2 text-sm font-semibold text-stone-400">
-              {phaseLabel}
-            </p>
-          </div>
+
         </header>
 
         {gameState && gameStarted ? (

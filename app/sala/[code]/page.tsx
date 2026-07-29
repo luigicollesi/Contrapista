@@ -117,7 +117,7 @@ const configFields = [
     description: "Tempo para registrar o palpite quando alguém decide responder.",
     group: "ritmo",
     suffix: "s",
-    min: 5,
+    min: 20,
     max: 180,
     step: 5,
   },

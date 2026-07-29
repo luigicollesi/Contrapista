@@ -16,14 +16,35 @@ const steps = [
   "Lacrando o arquivo",
 ];
 
+const BOARD_THREAD_OFFSET = { x: 2, y: 2 };
+
 const boardPins = [
-  { left: "18%", top: "22%", delay: "0s" },
-  { left: "52%", top: "14%", delay: ".35s" },
-  { left: "78%", top: "38%", delay: ".7s" },
-  { left: "34%", top: "74%", delay: "1.05s" },
-  { left: "70%", top: "78%", delay: "1.4s" },
-  { left: "18%", top: "58%", delay: "1.75s" },
+  { x: 18, y: 22, delay: "0s" },
+  { x: 52, y: 14, delay: ".35s" },
+  { x: 78, y: 38, delay: ".7s" },
+  { x: 34, y: 74, delay: "1.05s" },
+  { x: 70, y: 78, delay: "1.4s" },
+  { x: 18, y: 58, delay: "1.75s" },
 ];
+
+function pinPoint(index: number) {
+  const pin = boardPins[index];
+
+  return {
+    x: pin.x + BOARD_THREAD_OFFSET.x,
+    y: pin.y + BOARD_THREAD_OFFSET.y,
+  };
+}
+
+function pinPath(indexes: number[]) {
+  return indexes
+    .map((index, pathIndex) => {
+      const point = pinPoint(index);
+
+      return `${pathIndex === 0 ? "M" : "L"}${point.x} ${point.y}`;
+    })
+    .join(" ");
+}
 
 const clueCards = [
   { label: "Depoimento", left: "7%", top: "6%", rotate: "-5deg" },
@@ -37,6 +58,36 @@ const CASE_CREATION_RETRY_DELAY_MS = 2500;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function formatElapsedTime(totalSeconds: number) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+}
+
+async function readEstimatedCreationTime(code: string) {
+  try {
+    const response = await fetch(`/api/rooms/${code}/case/start`, {
+      method: "GET",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { estimatedSeconds?: number | null };
+
+    return typeof data.estimatedSeconds === "number"
+      ? data.estimatedSeconds
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 async function readJsonResponse(response: Response) {
@@ -62,12 +113,37 @@ export default function CreatingCasePage() {
   const [error, setError] = useState("");
   const [retryNotice, setRetryNotice] = useState("");
   const [stepIndex, setStepIndex] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const progress = ((stepIndex + 1) / steps.length) * 100;
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       setStepIndex((current) => (current + 1) % steps.length);
     }, 1700);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let isActive = true;
+
+    readEstimatedCreationTime(code).then((seconds) => {
+      if (isActive) {
+        setEstimatedSeconds(seconds);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [code]);
+
+  useEffect(() => {
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
 
     return () => window.clearInterval(interval);
   }, []);
@@ -174,6 +250,30 @@ export default function CreatingCasePage() {
             A IA está estruturando narrativa, evidências conflitantes e resposta
             final. Esta etapa pode levar alguns instantes.
           </p>
+
+          <div className="mt-6 inline-flex flex-wrap items-center gap-4 rounded-lg border border-[#d7b861]/40 bg-[#171b16]/95 px-5 py-4 shadow-2xl shadow-black/25 backdrop-blur">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d7b861]/35 bg-[#0f120e] font-mono text-sm font-black text-[#d7b861]">
+              ⏱
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+                Tempo de criação
+              </p>
+              <p className="mt-1 font-mono text-3xl font-black text-[#fff3cf]">
+                {formatElapsedTime(elapsedSeconds)}
+              </p>
+            </div>
+            {estimatedSeconds !== null ? (
+              <div className="border-l border-[#d7b861]/25 pl-4">
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+                  Estimativa
+                </p>
+                <p className="mt-1 font-mono text-2xl font-black text-[#fff3cf]">
+                  {formatElapsedTime(estimatedSeconds)}
+                </p>
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/25">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
@@ -284,7 +384,7 @@ export default function CreatingCasePage() {
               >
                 <path
                   className="case-thread"
-                  d="M18 22 L52 14 L78 38 L70 78 L34 74 L18 58 L18 22"
+                  d={pinPath([0, 1, 2, 4, 3, 5, 0])}
                   fill="none"
                   pathLength={100}
                   stroke="#d7b861"
@@ -294,7 +394,7 @@ export default function CreatingCasePage() {
                 />
                 <path
                   className="case-thread case-thread-alt"
-                  d="M18 22 L34 74 M52 14 L34 74 M78 38 L18 58 M70 78 L52 14"
+                  d={`${pinPath([0, 3])} ${pinPath([1, 3])} ${pinPath([2, 5])} ${pinPath([4, 1])}`}
                   fill="none"
                   pathLength={100}
                   stroke="#8b1e1e"
@@ -304,7 +404,7 @@ export default function CreatingCasePage() {
                 />
                 <path
                   className="case-thread case-thread-soft"
-                  d="M18 58 C34 34 54 46 78 38 M34 74 C48 58 62 56 70 78"
+                  d={`${pinPath([5])} C32 32 52 44 ${pinPoint(2).x} ${pinPoint(2).y} ${pinPath([3])} C46 56 60 54 ${pinPoint(4).x} ${pinPoint(4).y}`}
                   fill="none"
                   pathLength={100}
                   stroke="#fff3cf"
@@ -315,10 +415,10 @@ export default function CreatingCasePage() {
               {boardPins.map((pin, index) => (
                 <span
                   className="case-pin absolute z-20 h-4 w-4 rounded-full bg-[#d7b861] shadow-[0_0_18px_rgba(215,184,97,.75)]"
-                  key={`${pin.left}-${pin.top}`}
+                  key={`${pin.x}-${pin.y}`}
                   style={{
-                    left: pin.left,
-                    top: pin.top,
+                    left: `${pin.x}%`,
+                    top: `${pin.y}%`,
                     animationDelay: pin.delay,
                   }}
                 >

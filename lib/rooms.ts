@@ -91,7 +91,7 @@ const ROOM_CONFIG_LIMITS = {
   clueSelectionTimeSeconds: { min: 5, max: 60 },
   revealedClueAnalysisTimeSeconds: { min: 10, max: 120 },
   roundAnalysisTimeSeconds: { min: 0, max: 180 },
-  finalGuessTimeSeconds: { min: 5, max: 180 },
+  finalGuessTimeSeconds: { min: 20, max: 180 },
   trueCluesPerPlayer: { min: 0, max: 10 },
   cluesPerPlayer: { min: 2, max: 10 },
 } satisfies Record<keyof RoomConfig, { min: number; max: number }>;
@@ -693,7 +693,7 @@ async function ensureSchema() {
         clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
-        final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 5 AND 180),
+        final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 20 AND 180),
         true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
         clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         created_at timestamptz NOT NULL DEFAULT now(),
@@ -711,7 +711,7 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS empty_since timestamptz,
         ADD COLUMN IF NOT EXISTS config_id uuid;
 
-      DO $$
+      DO $
       BEGIN
         IF NOT EXISTS (
           SELECT 1 FROM pg_constraint WHERE conname = 'game_rooms_config_id_fkey'
@@ -727,11 +727,20 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         ADD COLUMN IF NOT EXISTS revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         ADD COLUMN IF NOT EXISTS round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
-        ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 5 AND 180),
+        ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 20 AND 180),
         ADD COLUMN IF NOT EXISTS true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
         ADD COLUMN IF NOT EXISTS clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+      UPDATE game_rooms_config
+      SET final_guess_time_seconds = 20
+      WHERE final_guess_time_seconds < 20;
+
+      ALTER TABLE game_rooms_config
+        DROP CONSTRAINT IF EXISTS game_rooms_config_final_guess_time_seconds_check,
+        ADD CONSTRAINT game_rooms_config_final_guess_time_seconds_check
+          CHECK (final_guess_time_seconds BETWEEN 20 AND 180);
 
       DO $$
       BEGIN

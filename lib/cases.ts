@@ -28,6 +28,19 @@ const CASE_JSON_KEYS = [
   "final_answer",
 ] as const;
 
+let lastCaseCreationDurationSeconds: number | null = null;
+
+export function getLastCaseCreationDurationSeconds() {
+  return lastCaseCreationDurationSeconds;
+}
+
+function rememberCaseCreationDuration(startedAt: number) {
+  lastCaseCreationDurationSeconds = Math.max(
+    1,
+    Math.round((Date.now() - startedAt) / 1000),
+  );
+}
+
 function extractJson(text: string) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
 
@@ -582,6 +595,7 @@ export async function createCaseForRoom(roomCode: string) {
 
     const playerCount = countRoomUsers(room?.users);
     const roomConfig = normalizeCaseConfig(room);
+    const caseCreationStartedAt = Date.now();
     const generatedCase = await generateCaseWithAi(playerCount, roomConfig);
     const result = await dbQuery<GameCase>(
       `
@@ -613,6 +627,7 @@ export async function createCaseForRoom(roomCode: string) {
     const createdCase = result.rows[0];
 
     await setRoomActiveCase({ code: roomCode, caseId: createdCase.id });
+    rememberCaseCreationDuration(caseCreationStartedAt);
 
     return {
       ...createdCase,
