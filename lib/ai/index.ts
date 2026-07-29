@@ -12,20 +12,46 @@ import type {
 } from "@/lib/ai/types";
 
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
-const INVALID_OUTPUT_STANDOFF_MS = 2 * 60 * 1000;
-
 const modelStandoffUntil = new Map<string, number>();
 
-function getAvailableModels(models: string[], now: number): string[] {
-  return models.filter((model) => (modelStandoffUntil.get(model) ?? 0) <= now);
+type ModelSlot = {
+  id: string;
+  model: string;
+};
+
+function getModelSlots(models: string[]): ModelSlot[] {
+  return models.map((model, index) => ({
+    id: String(index + 1),
+    model,
+  }));
 }
 
-function putModelInStandoff(
-  model: string,
+function getAvailableModelSlots(models: string[], now: number): ModelSlot[] {
+  return getModelSlots(models).filter(
+    (slot) => (modelStandoffUntil.get(slot.id) ?? 0) <= now,
+  );
+}
+
+function putModelSlotInStandoff(
+  slotId: string,
   now: number,
   duration = MODEL_STANDOFF_MS,
 ): void {
-  modelStandoffUntil.set(model, now + duration);
+  modelStandoffUntil.set(slotId, now + duration);
+}
+
+function shouldPutModelInStandoff(status?: number): boolean {
+  if (status === undefined) {
+    return true;
+  }
+
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500
+  );
 }
 
 export async function chatCompletion(
@@ -34,19 +60,21 @@ export async function chatCompletion(
   const config = getAiConfig();
   const client = getAiClient();
   const now = Date.now();
-  const models = getAvailableModels(config.models, now);
+  const modelSlots = getAvailableModelSlots(config.models, now);
 
-  if (!models.length) {
+  if (!modelSlots.length) {
     throw new AiModelsUnavailableError(
-      "Todos os modelos LLM configurados estão em stand off de 24 horas.",
+      "Todos os modelos LLM configurados estão temporariamente em espera por falhas de API.",
     );
   }
 
   const failures: AiModelFailure[] = [];
 
-  for (const model of models) {
+  for (const { id: modelSlotId, model } of modelSlots) {
     if (config.debug) {
-      console.debug(`[AI][request] provider=${config.provider} model=${model}`);
+      console.debug(
+        `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model}`,
+      );
       console.debug("[AI][prompt]", params.messages);
     }
 
@@ -69,11 +97,9 @@ export async function chatCompletion(
     } catch (error) {
       const failedAt = Date.now();
       const status = getErrorStatus(error);
-      putModelInStandoff(
-        model,
-        failedAt,
-        status === 422 ? INVALID_OUTPUT_STANDOFF_MS : MODEL_STANDOFF_MS,
-      );
+      if (shouldPutModelInStandoff(status)) {
+        putModelSlotInStandoff(modelSlotId, failedAt);
+      }
       failures.push({
         model,
         status,
@@ -81,11 +107,12 @@ export async function chatCompletion(
       });
 
       if (config.debug) {
-        const standoffUntil = new Date(
-          failedAt + MODEL_STANDOFF_MS,
-        ).toISOString();
+        const standoffUntil =
+          shouldPutModelInStandoff(status)
+            ? new Date(failedAt + MODEL_STANDOFF_MS).toISOString()
+            : "not-applied";
         console.error(
-          `[AI][error] model=${model} standoffUntil=${standoffUntil}`,
+          `[AI][error] modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
           error,
         );
       }
