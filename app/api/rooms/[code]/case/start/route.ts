@@ -46,7 +46,40 @@ function isAiFormatError(message: string) {
     normalized.includes("resposta da ia") ||
     normalized.includes("objeto json") ||
     normalized.includes("sem campo válido") ||
-    normalized.includes("placeholder")
+    normalized.includes("placeholder") ||
+    normalized.includes("perguntas centrais") ||
+    normalized.includes("resposta final precisa") ||
+    normalized.includes("pistas verdadeiras") ||
+    normalized.includes("pistas falsas")
+  );
+}
+
+function isRoomStateError(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("sala não encontrada durante") ||
+    normalized.includes("não há jogadores") ||
+    normalized.includes("sala mudou de estado") ||
+    normalized.includes("todos os jogadores precisam estar prontos")
+  );
+}
+
+function isDatabaseError(message: string) {
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("database") ||
+    normalized.includes("banco") ||
+    normalized.includes("relation") ||
+    normalized.includes("column") ||
+    normalized.includes("constraint") ||
+    normalized.includes("duplicate key") ||
+    normalized.includes("violates") ||
+    normalized.includes("invalid input syntax") ||
+    normalized.includes("null value") ||
+    normalized.includes("syntax error at or near") ||
+    normalized.includes("permission denied")
   );
 }
 
@@ -78,7 +111,14 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
     };
   }
 
-  if (message.includes("DATABASE") || message.includes("banco")) {
+  if (isRoomStateError(message)) {
+    return {
+      status: 409,
+      error: `${message} Voltem para a ante-sala e tentem novamente.`,
+    };
+  }
+
+  if (isDatabaseError(message)) {
     return {
       status: 500,
       error: `Não foi possível salvar o caso no banco de dados. Código do erro: ${errorId}.`,
@@ -123,11 +163,17 @@ export async function POST(
     return Response.json({ case: gameCase });
   } catch (error) {
     const errorId = createErrorId();
-    console.error(`[case-generation:error:${errorId}]`, error);
+    const originalMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[case-generation:error:${errorId}] code=${code} message=${originalMessage}`,
+      error,
+    );
     const room = await finishRoomCase({ code }).catch(() => null);
     const classifiedError = classifyCaseCreationError(error, errorId);
     const debugDetails =
-      process.env.LLM_DEBUG === "true" || process.env.LLM_DEBUG === "1"
+      process.env.LLM_DEBUG === "true" ||
+      process.env.LLM_DEBUG === "1" ||
+      process.env.NODE_ENV !== "production"
         ? error instanceof Error
           ? error.message
           : String(error)
