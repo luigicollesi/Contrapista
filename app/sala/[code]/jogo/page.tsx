@@ -8,7 +8,12 @@ import { PLAYER_COLORS, type PlayerColor } from "@/lib/player-colors";
 type RoomEvent =
   | {
       id: string;
-      type: "solution" | "solution_pending" | "solution_correct" | "solution_wrong";
+      type:
+        | "solution"
+        | "solution_pending"
+        | "solution_manual_review"
+        | "solution_correct"
+        | "solution_wrong";
       actorId: string;
       actorNickname: string;
       createdAt: number;
@@ -35,7 +40,7 @@ type RoomConfig = {
 
 type Room = {
   code: string;
-  users: Array<{ id: string; nickname: string; color: PlayerColor; ready: boolean }>;
+  users: Array<{ id: string; browserId: string; nickname: string | null; color: PlayerColor | null; ready: boolean }>;
   activecase: string | null;
   activeevent: RoomEvent | null;
   gamestate: GameState | null;
@@ -92,7 +97,8 @@ type SavedSession = {
   roomCode: string;
   user: {
     id: string;
-    nickname: string;
+    browserId?: string;
+    nickname: string | null;
   };
 };
 
@@ -103,8 +109,12 @@ function leftCaseStorageKey(code: string) {
   return `contrapista-left-case-${code}`;
 }
 
-function getPlayerColorHex(color?: PlayerColor) {
+function getPlayerColorHex(color?: PlayerColor | null) {
   return color ? PLAYER_COLORS[color]?.hex ?? "#d7b861" : "#d7b861";
+}
+
+function getPlayerName(player?: { nickname: string | null }) {
+  return player?.nickname ?? "Investigador";
 }
 
 function formatTimer(totalSeconds: number | null) {
@@ -245,17 +255,12 @@ export default function GamePage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
   const code = params.code;
-  const [userId] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    return readUserId(code);
-  });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
   const [room, setRoom] = useState<Room | null>(null);
   const [gameCase, setGameCase] = useState<GameCase | null>(null);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(0);
   const [selectedClue, setSelectedClue] = useState<PlayerClue | null>(null);
   const [dismissedSharedClueId, setDismissedSharedClueId] = useState<string | null>(null);
   const [dismissedWrongEventId, setDismissedWrongEventId] = useState<string | null>(null);
@@ -264,12 +269,29 @@ export default function GamePage() {
   const [isSubmittingGuess, setIsSubmittingGuess] = useState(false);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => setNow(Date.now()), 0);
     const interval = window.setInterval(() => setNow(Date.now()), 250);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setUserId(readUserId(code));
+      setIsSessionLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [code]);
+
+  useEffect(() => {
+    if (!isSessionLoaded) {
+      return;
+    }
+
     let isActive = true;
 
     async function loadRoomAndCase() {
@@ -291,6 +313,16 @@ export default function GamePage() {
         }
 
         setRoom(roomData.room);
+
+        const isCurrentUserInRoom = Boolean(
+          userId && roomData.room.users.some((user) => user.id === userId),
+        );
+
+        if (!isCurrentUserInRoom) {
+          throw new Error(
+            "A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.",
+          );
+        }
 
         if (!roomData.room.activecase) {
           router.replace(`/sala/${code}`);
@@ -337,7 +369,42 @@ export default function GamePage() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [code, gameCase, router]);
+  }, [code, gameCase, isSessionLoaded, router, userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function heartbeat() {
+      try {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }),
+        });
+        const data = await response.json();
+
+        if (isActive && response.ok && data.room) {
+          setRoom(data.room);
+        }
+      } catch {
+        // A leitura periódica da sala mostra a falha quando necessário.
+      }
+    }
+
+    void heartbeat();
+    const interval = window.setInterval(heartbeat, 30_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [code, userId]);
 
   const event = room?.activeevent ?? null;
   const modalEvent =
@@ -636,6 +703,26 @@ export default function GamePage() {
     }
   }
 
+  async function submitManualJudgement(correct: boolean) {
+    setError("");
+
+    try {
+      const event = await publishEvent({
+        type: "solution_manual_result",
+        correct,
+      });
+      setRoom((current) =>
+        current && event ? { ...current, activeevent: event } : current,
+      );
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível registrar a avaliação manual.",
+      );
+    }
+  }
+
   async function backToLobby() {
     if (gameCase?.id) {
       localStorage.setItem(leftCaseStorageKey(code), gameCase.id);
@@ -709,7 +796,7 @@ export default function GamePage() {
                 <div className="absolute inset-16 rounded-full border border-[#d7b861]/50 bg-[#171b16] shadow-inner" />
                 <div className="absolute inset-0 flex items-center justify-center px-12 text-center">
                   <p className="font-serif text-2xl font-bold text-[#fff3cf]">
-                    {selectedPlayer?.nickname ?? "Sorteando..."}
+                    {selectedPlayer ? getPlayerName(selectedPlayer) : "Sorteando..."}
                   </p>
                 </div>
               </div>
@@ -729,7 +816,7 @@ export default function GamePage() {
                       }`}
                       key={playerId}
                     >
-                      {player?.nickname ?? "Jogador"}
+                      {getPlayerName(player)}
                     </span>
                   );
                 })}
@@ -927,6 +1014,80 @@ export default function GamePage() {
       );
     }
 
+    if (modalEvent.type === "solution_manual_review") {
+      const isActor = modalEvent.actorId === userId;
+
+      return (
+        <Modal>
+          {isActor ? (
+            <>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                Revisão manual
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                Precisamos da sua honestidade
+              </h2>
+              <p className="mt-4 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
+                Desculpe pelo inconveniente. Os modelos de IA estão indisponíveis para avaliar sua tese agora. Compare sua resposta com a solução oficial e indique honestamente se você acertou.
+              </p>
+              <div className="mt-5 rounded-lg border border-stone-700 bg-[#0f120e] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+                  Sua tese
+                </p>
+                <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+                  {modalEvent.guess?.trim() || "Nenhuma resposta foi escrita."}
+                </p>
+              </div>
+              <div className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+                  Resposta oficial
+                </p>
+                <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+                  {gameCase.final_answer}
+                </p>
+              </div>
+              <div className="mt-6 flex flex-wrap justify-end gap-3">
+                <button
+                  className="h-11 rounded-lg border border-red-400/45 bg-red-950/40 px-5 font-bold text-red-100 transition hover:bg-red-900/60"
+                  onClick={() => submitManualJudgement(false)}
+                  type="button"
+                >
+                  Eu errei
+                </button>
+                <button
+                  className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+                  onClick={() => submitManualJudgement(true)}
+                  type="button"
+                >
+                  Eu acertei
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                Avaliação indisponível
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                {modalEvent.actorNickname} está revisando a própria tese
+              </h2>
+              <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
+                Os modelos de IA estão indisponíveis no momento. A resposta será avaliada pelo jogador que enviou a tese, comparando com a solução oficial.
+              </p>
+              <div className="mt-5 rounded-lg border border-stone-700 bg-[#0f120e] p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+                  Resposta enviada
+                </p>
+                <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+                  {modalEvent.guess?.trim() || "Nenhuma resposta foi escrita."}
+                </p>
+              </div>
+            </>
+          )}
+        </Modal>
+      );
+    }
+
     if (modalEvent.type === "solution_wrong") {
       return (
         <Modal>
@@ -1083,7 +1244,7 @@ export default function GamePage() {
                   {gameState.phase === "ready"
                     ? "Todos precisam confirmar prontidão para abrir o dossiê."
                     : gameState.phase === "turn"
-                      ? `Vez de ${currentTurnUser?.nickname ?? "jogador"}`
+                      ? `Vez de ${getPlayerName(currentTurnUser)}`
                       : gameState.phase === "roulette"
                       ? "A ordem da rodada está sendo definida."
                       : gameState.phase === "shared_clue"
@@ -1108,7 +1269,7 @@ export default function GamePage() {
                         }`}
                         key={playerId}
                       >
-                        {player?.nickname ?? "Jogador"}
+                        {getPlayerName(player)}
                       </span>
                     );
                   })}
@@ -1158,7 +1319,7 @@ export default function GamePage() {
                       />
                       <div className="min-w-0">
                         <p className="truncate text-lg font-bold text-[#fff3cf]">
-                          {user.nickname}
+                          {getPlayerName(user)}
                         </p>
                         <p className="text-sm text-stone-400">
                           {isReady ? "Pronto" : "Aguardando"}
@@ -1271,7 +1432,7 @@ export default function GamePage() {
                       key={player.id}
                     >
                       <h3 className="font-bold text-[#fff3cf]">
-                        Fragmentos de {player.nickname}
+                        Fragmentos de {getPlayerName(player)}
                       </h3>
                       <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {clues.map((clue) => (

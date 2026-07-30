@@ -7,14 +7,18 @@ export async function POST(
   const { code } = await params;
   const body = (await request.json()) as {
     userId?: string;
-    type?: "solution" | "solution_guess";
+    type?: "solution" | "solution_guess" | "solution_manual_result";
     guess?: string;
+    correct?: boolean;
   };
 
   if (
     !body.userId ||
-    (body.type !== "solution" && body.type !== "solution_guess") ||
-    (body.type === "solution_guess" && typeof body.guess !== "string")
+    (body.type !== "solution" &&
+      body.type !== "solution_guess" &&
+      body.type !== "solution_manual_result") ||
+    (body.type === "solution_guess" && typeof body.guess !== "string") ||
+    (body.type === "solution_manual_result" && typeof body.correct !== "boolean")
   ) {
     return Response.json({ error: "Evento inválido." }, { status: 400 });
   }
@@ -26,6 +30,8 @@ export async function POST(
       event:
         body.type === "solution_guess"
           ? { type: body.type, guess: body.guess ?? "" }
+          : body.type === "solution_manual_result"
+            ? { type: body.type, correct: body.correct ?? false }
           : { type: body.type },
     });
 

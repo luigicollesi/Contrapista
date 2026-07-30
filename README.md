@@ -88,32 +88,37 @@ Técnicas de economia e consistência aplicadas:
 - Prompt de caso separado entre instruções fixas cacheáveis e configuração variável curta.
 - Filtro por Models API do OpenRouter para ignorar modelos não generativos, como embed, rerank, safety, moderation e guard.
 - Uso de `response_format` apenas quando o modelo anuncia suporte; caso contrário, o backend usa prompt JSON e validação local.
-- Registro de `usage` e métricas de cache quando `LLM_DEBUG=true`.
+- Logs de lifecycle de IA para acompanhar seleção, envio, retry, sucesso, falha e ação de standoff por `requestId`, `apiKeySlot`, `modelSlot` e modelo, sem expor valores de chaves.
+- Registro de prompt, resposta bruta, `usage` e métricas de cache quando `LLM_DEBUG=true`.
 - Mensagem específica quando o limite diário gratuito do OpenRouter é atingido.
 
 ## Jornada do Usuário
 
 1. Na home, o jogador cria uma sala ou informa um código de 4 números.
-2. Ao criar, a API grava uma sala vazia em `game_rooms`, cria a configuração padrão em `game_rooms_config` e redireciona para `/sala/[code]`.
-3. Na ante-sala, cada participante entra com nickname e cor exclusiva.
-4. O primeiro participante da sala atua como líder e pode alterar os parâmetros do dossiê antes de existir um caso ativo.
-5. Alterar identificação ou configuração coloca jogadores como não prontos.
-6. Quando todos ficam prontos, os clientes redirecionam para `/sala/[code]/criando-caso`.
-7. A tela de criação chama `POST /api/rooms/[code]/case/start`.
-8. O backend valida a sala, gera um caso com IA, salva em `cases` e grava o id em `game_rooms.activecase`.
-9. Todos são enviados para `/sala/[code]/jogo`.
-10. No jogo, todos confirmam prontidão novamente para iniciar a leitura.
-11. A fase de leitura mostra o dossiê principal e os fragmentos privados de cada jogador.
-12. A roleta define a ordem da rodada.
-13. Em cada turno, o jogador da vez compartilha um fragmento. Se o tempo acaba, uma pista verdadeira desse jogador é compartilhada automaticamente.
-14. Após cada pista, todos têm uma janela de análise coletiva.
-15. Ao final da ordem, há uma pausa entre rodadas e o ciclo continua.
-16. Em fases coletivas, todos podem votar para pular; a fase só avança quando todos votam.
-17. Um jogador pode abrir a conclusão final, pausando o jogo para registrar um palpite cronometrado.
-18. O backend compara o palpite com a solução oficial usando IA e publica o resultado.
-19. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue e esse jogador passa a ver todas as pistas classificadas.
-20. Se o palpite estiver certo, todos veem a solução oficial e podem voltar à ante-sala.
-21. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
+2. Ao criar uma sala, o navegador gera/reutiliza um `browserId` em UUID e envia para a API. A API grava `game_rooms`, cria a configuração padrão em `game_rooms_config`, adiciona o primeiro usuário como participante pendente sem nickname/cor e redireciona para `/sala/[code]`.
+3. Ao informar um código, o mesmo `browserId` é enviado para `/join`. Se esse navegador já estiver na sala, o backend reutiliza o participante existente; caso contrário, só adiciona um novo participante pendente se a sala ainda estiver na ante-sala. Salas criando caso ou com jogo ativo recusam novos participantes.
+4. Na ante-sala, o participante pendente escolhe nickname e cor exclusiva. O botão de pronto só aparece depois dessa identificação, e o backend recusa prontidão sem nome/cor.
+5. O primeiro participante da sala atua como líder e pode alterar os parâmetros do dossiê antes de existir um caso ativo.
+6. Alterar identificação ou configuração coloca jogadores como não prontos.
+7. Clientes na ante-sala, na criação de caso e no jogo enviam heartbeat; se um participante fica 2 minutos sem contato, ele é considerado desconectado.
+8. Na ante-sala, desconectados saem da sala. No jogo, desconectados são eliminados como se tivessem errado um palpite final: saem da ordem, não votam e suas pistas ficam expostas aos demais.
+9. Quando todos ficam prontos, os clientes redirecionam para `/sala/[code]/criando-caso`.
+10. A tela de criação chama `POST /api/rooms/[code]/case/start`.
+11. O backend valida a sala, gera um caso com IA, salva em `cases` e grava o id em `game_rooms.activecase`.
+12. Todos são enviados para `/sala/[code]/jogo`.
+13. No jogo, todos confirmam prontidão novamente para iniciar a leitura.
+14. A fase de leitura mostra o dossiê principal e os fragmentos privados de cada jogador.
+15. A roleta define a ordem da rodada.
+16. Em cada turno, o jogador da vez compartilha um fragmento. Se o tempo acaba, uma pista verdadeira desse jogador é compartilhada automaticamente.
+17. Após cada pista, todos têm uma janela de análise coletiva.
+18. Ao final da ordem, há uma pausa entre rodadas e o ciclo continua.
+19. Em fases coletivas, todos podem votar para pular; a fase só avança quando todos votam.
+20. Um jogador pode abrir a conclusão final, pausando o jogo para registrar um palpite cronometrado.
+21. O backend compara o palpite com a solução oficial usando IA e publica o resultado.
+22. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue e esse jogador passa a ver todas as pistas classificadas.
+23. Se o palpite estiver certo, todos veem a solução oficial e podem voltar à ante-sala.
+24. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
+25. Se todos os participantes saírem ou forem removidos por desconexão na ante-sala, a sala é excluída de `game_rooms`.
 
 ## Arquitetura
 
@@ -135,6 +140,7 @@ app/not-found.tsx                     Página 404
 POST  /api/rooms                         Cria sala
 GET   /api/rooms/[code]                  Lê sala e avança fases expiradas
 POST  /api/rooms/[code]/join             Entra na sala
+POST  /api/rooms/[code]/heartbeat        Atualiza presença do participante
 POST  /api/rooms/[code]/leave            Sai da sala
 PATCH /api/rooms/[code]/users/[userId]   Atualiza nickname e cor
 POST  /api/rooms/[code]/ready            Marca pronto na ante-sala

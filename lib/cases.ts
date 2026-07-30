@@ -200,7 +200,7 @@ function normalizeClueArray(value: unknown): string[] {
 }
 
 function countRoomUsers(users: unknown) {
-  return Array.isArray(users) ? Math.max(1, users.length) : 1;
+  return Array.isArray(users) ? users.length : 0;
 }
 
 function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
@@ -322,7 +322,7 @@ function assertGeneratedCase(
     throw new Error('A resposta final precisa começar com "Resposta:" e conter "Contexto:".');
   }
 
-  if (!/(?:^|\n)\s*(?:1[).]|a[).])/i.test(finalAnswer)) {
+  if (!/(?:^|\n)\s*(?:(?:1|a)\s*[).:-]|(?:culpado|método|metodo|motivo|local|objeto|cúmplice|cumplice|rota|contradição|contradicao)\s*:)/i.test(finalAnswer)) {
     throw new Error("A resposta final precisa trazer um gabarito numerado ou letrado.");
   }
 
@@ -392,17 +392,21 @@ function roomCaseGenerationSessionId(roomCode: string) {
 
 const CASE_GENERATION_SYSTEM_PROMPT = `
 Você gera casos originais em português para Contrapista, um jogo dedutivo familiar.
-Responda somente JSON válido, sem markdown, análise, comentários ou texto fora do objeto.
+Saída obrigatória: um único objeto JSON válido. O primeiro caractere deve ser "{" e o último deve ser "}". Não use markdown, cerca de código, análise, comentários nem texto antes/depois do JSON.
 
 Contrato:
 - Chaves exatas e nesta ordem: title, case_text, true_clues, false_clues, final_answer.
 - title: começa com "O CASO DO" ou "O CASO DA" e termina com elemento concreto.
 - case_text: 2 ou 3 parágrafos em Londres vitoriana; incidente claro; 3 ou 4 suspeitos; álibis, horários, objetos físicos e despiste.
-- O último parágrafo contém a seção exata "Perguntas centrais do caso:" com 2 a 4 perguntas numeradas.
-- final_answer começa com "Resposta:", responde as perguntas na mesma ordem e depois traz "Contexto:" explicando dedução e pistas falsas.
+- O último parágrafo de case_text termina com a seção exata "Perguntas centrais do caso:" e 2 a 4 perguntas numeradas "1.", "2.", "3.", "4.".
+- final_answer deve ter este formato exato: começa com "Resposta:", depois linhas numeradas "1. ...", "2. ..." respondendo as perguntas na mesma ordem, depois uma linha "Contexto:" explicando dedução e pistas falsas.
 - true_clues e false_clues são arrays de strings curtas, concretas e independentes, no máximo 120 caracteres.
-- Não use placeholders, reticências, blocos de código, aspas simples JSON, chaves extras nem quebras de linha literais dentro de strings.
+- Use aspas duplas JSON. Escape quebras de linha dentro das strings como "\\n"; não escreva quebras literais dentro de strings.
+- Não use placeholders, reticências, blocos de código, aspas simples JSON, chaves extras nem comentários.
 - Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro das pistas.
+
+Modelo de final_answer:
+"Resposta:\\n1. Culpado/resposta da pergunta 1.\\n2. Método/resposta da pergunta 2.\\nContexto: Explique em poucas frases como as pistas sustentam o gabarito e por que os desvios eram plausíveis."
 
 Qualidade:
 - A solução depende de cruzar várias pistas, não de uma pista óbvia.
@@ -456,6 +460,7 @@ Regras específicas:
 - ${trueClueNarrativeRules}
 - ${falseClueNarrativeRules}
 - As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
+- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
 ${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
 `.trim();
 }
@@ -477,21 +482,50 @@ function caseResponseFormat({
         additionalProperties: false,
         required: CASE_JSON_KEYS,
         properties: {
-          title: { type: "string", minLength: 12 },
-          case_text: { type: "string", minLength: 240 },
+          title: {
+            type: "string",
+            description:
+              'Título curto em português, começando com "O CASO DO" ou "O CASO DA".',
+            minLength: 12,
+          },
+          case_text: {
+            type: "string",
+            description:
+              'Narrativa do caso em 2 ou 3 parágrafos; termina com "Perguntas centrais do caso:" e perguntas numeradas.',
+            minLength: 240,
+          },
           true_clues: {
             type: "array",
+            description:
+              "Lista com exatamente a quantidade pedida de pistas confiáveis, sem rotular como verdadeiras.",
             minItems: requiredTrueClues,
             maxItems: requiredTrueClues,
-            items: { type: "string", minLength: 12, maxLength: 160 },
+            items: {
+              type: "string",
+              description: "Pista curta, concreta e independente.",
+              minLength: 12,
+              maxLength: 160,
+            },
           },
           false_clues: {
             type: "array",
+            description:
+              "Lista com exatamente a quantidade pedida de pistas plausíveis de desvio, sem rotular como falsas.",
             minItems: requiredFalseClues,
             maxItems: requiredFalseClues,
-            items: { type: "string", minLength: 12, maxLength: 160 },
+            items: {
+              type: "string",
+              description: "Pista curta, concreta, plausível e independente.",
+              minLength: 12,
+              maxLength: 160,
+            },
           },
-          final_answer: { type: "string", minLength: 180 },
+          final_answer: {
+            type: "string",
+            description:
+              'Gabarito em português. Começa com "Resposta:", contém linhas numeradas "1.", "2." e depois "Contexto:".',
+            minLength: 180,
+          },
         },
       },
     },
@@ -536,8 +570,8 @@ async function generateCaseWithAi(
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
       const chat = await chatCompletion({
-        temperature: attempt === 0 ? 0.8 : 0.2,
-        maxTokens: 3800,
+        temperature: attempt === 0 ? 0.35 : 0.1,
+        maxTokens: 4600,
         sessionId,
         responseFormat: caseResponseFormat({
           requiredTrueClues,
@@ -655,6 +689,11 @@ export async function createCaseForRoom(roomCode: string) {
       [roomCode],
     );
     const room = activeRoom.rows[0];
+
+    if (!room) {
+      throw new Error("Sala não encontrada durante a criação do caso.");
+    }
+
     const activeCaseId = room?.activecase;
 
     if (activeCaseId) {
@@ -666,6 +705,11 @@ export async function createCaseForRoom(roomCode: string) {
     }
 
     const playerCount = countRoomUsers(room?.users);
+
+    if (playerCount < 1) {
+      throw new Error("Não há jogadores na sala para criar o caso.");
+    }
+
     const roomConfig = normalizeCaseConfig(room);
     const caseCreationStartedAt = Date.now();
     const generatedCase = await generateCaseWithAi(
@@ -702,7 +746,21 @@ export async function createCaseForRoom(roomCode: string) {
     );
     const createdCase = result.rows[0];
 
-    await setRoomActiveCase({ code: roomCode, caseId: createdCase.id });
+    if (!createdCase?.id) {
+      throw new Error("O banco de dados não retornou o caso criado.");
+    }
+
+    const activated = await setRoomActiveCase({
+      code: roomCode,
+      caseId: createdCase.id,
+    });
+
+    if (!activated) {
+      throw new Error(
+        "A sala mudou de estado antes de receber o caso criado. Voltem para a ante-sala e tentem novamente.",
+      );
+    }
+
     rememberCaseCreationDuration(caseCreationStartedAt);
 
     return {

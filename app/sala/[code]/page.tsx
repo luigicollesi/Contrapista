@@ -10,8 +10,9 @@ import {
 
 type RoomUser = {
   id: string;
-  nickname: string;
-  color: PlayerColor;
+  browserId: string;
+  nickname: string | null;
+  color: PlayerColor | null;
   ready: boolean;
 };
 
@@ -35,6 +36,7 @@ type Room = {
 };
 
 const SESSION_STORAGE_KEY = "contrapista-session";
+const BROWSER_ID_STORAGE_KEY = "contrapista-browser-id";
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
 function leftCaseStorageKey(code: string) {
@@ -179,6 +181,22 @@ type SavedSession = {
   user: RoomUser;
 };
 
+function hasCompleteProfile(user: RoomUser | null | undefined) {
+  return Boolean(user?.nickname && user.color);
+}
+
+function getUserName(user: RoomUser) {
+  return user.nickname ?? "Sem identificação";
+}
+
+function getUserColorHex(color: PlayerColor | null | undefined) {
+  return color ? PLAYER_COLORS[color]?.hex ?? "#d7b861" : "#6b7280";
+}
+
+function getUserColorName(color: PlayerColor | null | undefined) {
+  return color ? PLAYER_COLORS[color]?.name ?? "Cor indisponível" : "Sem cor";
+}
+
 function readSavedSession(code: string): SavedSession | null {
   try {
     const stored = localStorage.getItem(SESSION_STORAGE_KEY);
@@ -199,11 +217,23 @@ function readSavedSession(code: string): SavedSession | null {
 }
 
 function saveSession(session: SavedSession) {
+  localStorage.setItem(BROWSER_ID_STORAGE_KEY, session.user.browserId);
   localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
   localStorage.setItem(
     `contrapista-room-${session.roomCode}`,
     JSON.stringify(session),
   );
+}
+
+function getBrowserId() {
+  let browserId = localStorage.getItem(BROWSER_ID_STORAGE_KEY);
+
+  if (!browserId) {
+    browserId = crypto.randomUUID();
+    localStorage.setItem(BROWSER_ID_STORAGE_KEY, browserId);
+  }
+
+  return browserId;
 }
 
 function clearSession(code: string) {
@@ -232,37 +262,48 @@ export default function RoomPage() {
   const router = useRouter();
   const code = params.code;
   const [room, setRoom] = useState<Room | null>(null);
-  const [userId, setUserId] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    return readSavedSession(code)?.user.id ?? null;
-  });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
   const [nickname, setNickname] = useState("");
-  const [color, setColor] = useState<PlayerColor>("red");
+  const [color, setColor] = useState<PlayerColor | "">("");
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState("");
-  const [notice] = useState(() => {
-    if (typeof window === "undefined") {
-      return "";
-    }
-
-    const storedNotice = sessionStorage.getItem(CASE_CREATION_NOTICE_KEY);
-
-    if (storedNotice) {
-      sessionStorage.removeItem(CASE_CREATION_NOTICE_KEY);
-    }
-
-    return storedNotice ?? "";
-  });
+  const [notice, setNotice] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isRoomMissing, setIsRoomMissing] = useState(false);
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const isConfigDirtyRef = useRef(false);
+  const noticeRef = useRef(notice);
 
   useEffect(() => {
+    noticeRef.current = notice;
+  }, [notice]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setUserId(readSavedSession(code)?.user.id ?? null);
+
+      const storedNotice = sessionStorage.getItem(CASE_CREATION_NOTICE_KEY);
+
+      if (storedNotice) {
+        sessionStorage.removeItem(CASE_CREATION_NOTICE_KEY);
+        setNotice(storedNotice);
+      } else {
+        setNotice("");
+      }
+
+      setIsSessionLoaded(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [code]);
+
+  useEffect(() => {
+    if (!isSessionLoaded) {
+      return;
+    }
+
     let isActive = true;
 
     async function loadRoom() {
@@ -300,12 +341,21 @@ export default function RoomPage() {
           localStorage.removeItem(leftCaseStorageKey(code));
         }
 
+        const isCurrentUserInRoom = Boolean(
+          userId && data.room.users.some((user) => user.id === userId),
+        );
+
+        if (!isCurrentUserInRoom && (data.room.activecase || data.room.allReady)) {
+          setError("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
+          return;
+        }
+
         if (data.room.activecase && data.room.activecase !== leftCaseId) {
           router.replace(`/sala/${code}/jogo`);
           return;
         }
 
-        if (!data.room.activecase && data.room.allReady) {
+        if (!data.room.activecase && data.room.allReady && !noticeRef.current) {
           router.replace(`/sala/${code}/criando-caso`);
         }
       } catch (caughtError) {
@@ -326,9 +376,10 @@ export default function RoomPage() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [code, router]);
+  }, [code, isSessionLoaded, router, userId]);
 
   const currentUser = room?.users.find((user) => user.id === userId);
+  const currentUserId = currentUser?.id;
   const canEditConfig = Boolean(
     currentUser && room?.users[0]?.id === currentUser.id && !room.activecase,
   );
@@ -344,7 +395,7 @@ export default function RoomPage() {
   }, [canEditConfig, room?.config]);
 
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentUserId) {
       return;
     }
 
@@ -352,11 +403,47 @@ export default function RoomPage() {
       roomCode: code,
       user: currentUser,
     });
-  }, [code, currentUser]);
+  }, [code, currentUser, currentUserId]);
+
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function heartbeat() {
+      try {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: currentUserId }),
+        });
+        const data = await response.json();
+
+        if (isActive && response.ok && data.room) {
+          setRoom(data.room);
+        }
+      } catch {
+        // O polling da sala exibe erro se a conexão realmente cair.
+      }
+    }
+
+    void heartbeat();
+    const interval = window.setInterval(heartbeat, 30_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [code, currentUserId]);
 
   async function join(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
+    setNotice("");
     setIsSaving(true);
 
     try {
@@ -365,7 +452,7 @@ export default function RoomPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ nickname, color }),
+        body: JSON.stringify({ browserId: getBrowserId(), nickname, color }),
       });
       const data = await response.json();
 
@@ -382,8 +469,8 @@ export default function RoomPage() {
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
       setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
-      setNickname(data.user.nickname);
-      setColor(data.user.color);
+      setNickname(data.user.nickname ?? "");
+      setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
       setError(
@@ -404,6 +491,7 @@ export default function RoomPage() {
     }
 
     setError("");
+    setNotice("");
     setIsSaving(true);
 
     try {
@@ -431,8 +519,8 @@ export default function RoomPage() {
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
       setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
-      setNickname(data.user.nickname);
-      setColor(data.user.color);
+      setNickname(data.user.nickname ?? "");
+      setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
       setError(
@@ -531,6 +619,7 @@ export default function RoomPage() {
     }
 
     setError("");
+    setNotice("");
     setIsSaving(true);
 
     try {
@@ -593,8 +682,12 @@ export default function RoomPage() {
       setRoom(data.room);
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
-      setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+      setConfigDraft(data.room?.config ?? DEFAULT_ROOM_CONFIG);
       setIsEditing(false);
+
+      if (!data.room) {
+        router.push("/");
+      }
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -634,13 +727,17 @@ export default function RoomPage() {
     );
   }
 
-  const showProfileForm = !currentUser || isEditing;
+  const currentUserHasProfile = hasCompleteProfile(currentUser);
+  const showProfileForm = !currentUser || isEditing || !currentUserHasProfile;
   const usedColors = new Set(
     room?.users
       .filter((user) => user.id !== currentUser?.id)
+      .filter((user) => user.color)
       .map((user) => user.color),
   );
-  const readyCount = room?.users.filter((user) => user.ready).length ?? 0;
+  const readyCount =
+    room?.users.filter((user) => hasCompleteProfile(user) && user.ready).length ?? 0;
+  const canSubmitProfile = Boolean(nickname.trim() && color);
 
   return (
     <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
@@ -756,8 +853,8 @@ export default function RoomPage() {
                   className="h-14 rounded-lg border border-stone-600 px-8 font-semibold text-stone-100 transition hover:bg-white/10"
                   onClick={() => {
                     setIsEditing(false);
-                    setNickname(currentUser.nickname);
-                    setColor(currentUser.color);
+                    setNickname(currentUser.nickname ?? "");
+                    setColor(currentUser.color ?? "");
                   }}
                   type="button"
                 >
@@ -766,10 +863,10 @@ export default function RoomPage() {
               ) : null}
               <button
                 className="h-14 rounded-lg bg-[#d7b861] px-8 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isSaving}
+                disabled={isSaving || !canSubmitProfile}
                 type="submit"
               >
-                {currentUser ? "Salvar" : "Entrar na sessão"}
+                {currentUser ? "Salvar identificação" : "Entrar na sessão"}
               </button>
             </div>
           </form>
@@ -777,24 +874,24 @@ export default function RoomPage() {
           <div
             className="current-player-card mt-6 flex flex-col justify-between gap-4 rounded-lg border px-5 py-4 shadow-2xl shadow-black/20 sm:flex-row sm:items-center"
             style={{
-              borderColor: `${PLAYER_COLORS[currentUser.color].hex}66`,
-              "--player-color": PLAYER_COLORS[currentUser.color].hex,
+              borderColor: `${getUserColorHex(currentUser.color)}66`,
+              "--player-color": getUserColorHex(currentUser.color),
             } as CSSProperties}
           >
             <div className="flex items-center gap-4">
               <span
                 className="h-12 w-12 rounded-full border-2 border-white/50"
-                style={{ backgroundColor: PLAYER_COLORS[currentUser.color].hex }}
+                style={{ backgroundColor: getUserColorHex(currentUser.color) }}
               />
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d7b861]">
                   Sua identificação
                 </p>
                 <p className="text-2xl font-bold text-[#fff3cf]">
-                  {currentUser.nickname}
+                  {getUserName(currentUser)}
                 </p>
                 <p className="text-sm text-stone-300">
-                  {PLAYER_COLORS[currentUser.color].name}
+                  {getUserColorName(currentUser.color)}
                 </p>
               </div>
             </div>
@@ -802,8 +899,8 @@ export default function RoomPage() {
               <button
                 className="h-11 rounded-lg border border-stone-600 bg-[#0f120e] px-5 font-semibold text-stone-100 shadow-sm transition hover:border-[#d7b861]"
                 onClick={() => {
-                  setNickname(currentUser.nickname);
-                  setColor(currentUser.color);
+                  setNickname(currentUser.nickname ?? "");
+                  setColor(currentUser.color ?? "");
                   setIsEditing(true);
                 }}
                 type="button"
@@ -812,6 +909,7 @@ export default function RoomPage() {
               </button>
               <button
                 className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] shadow-sm transition hover:bg-[#f3dfaa]"
+                disabled={!currentUserHasProfile}
                 onClick={() => toggleReady(!currentUser.ready)}
                 type="button"
               >
@@ -856,12 +954,12 @@ export default function RoomPage() {
                 className="player-card relative overflow-hidden rounded-lg border bg-[#171b16] p-5 shadow-2xl shadow-black/20"
                 key={user.id}
                 style={{
-                  borderColor: `${PLAYER_COLORS[user.color].hex}66`,
+                  borderColor: `${getUserColorHex(user.color)}66`,
                 }}
               >
                 <div
                   className="absolute inset-x-0 top-0 h-2"
-                  style={{ backgroundColor: PLAYER_COLORS[user.color].hex }}
+                  style={{ backgroundColor: getUserColorHex(user.color) }}
                 />
                 {index === 0 ? (
                   <div className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[#d7b861]/60 bg-[#0f120e] text-lg text-[#d7b861] shadow-lg" title="Líder da investigação">
@@ -872,17 +970,17 @@ export default function RoomPage() {
                 <div className="flex items-start justify-between gap-4 pt-3">
                   <div className="min-w-0 pr-12">
                     <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#d7b861]">
-                      {PLAYER_COLORS[user.color].name}
+                      {getUserColorName(user.color)}
                       {user.id === userId ? " / Você" : ""}
                       {index === 0 ? " / Líder" : ""}
                     </p>
                     <h3 className="mt-2 truncate text-3xl font-black text-[#fff3cf]">
-                      {user.nickname}
+                      {getUserName(user)}
                     </h3>
                   </div>
                   <span
                     className="h-14 w-14 shrink-0 rounded-full border-2 border-white/40 shadow-lg"
-                    style={{ backgroundColor: PLAYER_COLORS[user.color].hex }}
+                    style={{ backgroundColor: getUserColorHex(user.color) }}
                   />
                 </div>
                 <div className="mt-5 flex items-center justify-between border-t border-stone-700 pt-4">

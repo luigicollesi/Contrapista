@@ -16,7 +16,7 @@ export async function POST(
   const room = await leaveRoom({ code, userId: body.userId });
 
   if (!room) {
-    return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    return Response.json({ room: null, deleted: true });
   }
 
   return Response.json({ room });

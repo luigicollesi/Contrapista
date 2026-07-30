@@ -56,6 +56,7 @@ const clueCards = [
 const CASE_CREATION_FETCH_ATTEMPTS = 5;
 const CASE_CREATION_RETRY_DELAY_MS = 2500;
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
+const SESSION_STORAGE_KEY = "contrapista-session";
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -107,6 +108,28 @@ async function readJsonResponse(response: Response) {
   }
 }
 
+function readUserId(code: string) {
+  try {
+    const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+
+    if (!stored) {
+      return null;
+    }
+
+    const session = JSON.parse(stored) as {
+      roomCode?: string;
+      user?: { id?: string };
+    };
+
+    return session.roomCode === code && session.user?.id
+      ? session.user.id
+      : null;
+  } catch {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+    return null;
+  }
+}
+
 export default function CreatingCasePage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
@@ -148,6 +171,42 @@ export default function CreatingCasePage() {
 
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    const userId = readUserId(code);
+
+    if (!userId) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function heartbeat() {
+      try {
+        await fetch(`/api/rooms/${code}/heartbeat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }),
+        });
+      } catch {
+        // A criação em andamento lida com falhas de conexão no POST principal.
+      }
+    }
+
+    void heartbeat();
+    const interval = window.setInterval(() => {
+      if (isActive) {
+        void heartbeat();
+      }
+    }, 30_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [code]);
 
   useEffect(() => {
     let isActive = true;

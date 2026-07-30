@@ -32,6 +32,27 @@ type RequestSlot = {
   modelSlot: ModelSlot;
 };
 
+type AiLogValue = string | number | boolean | null | undefined;
+
+function formatAiLog(fields: Record<string, AiLogValue>) {
+  return Object.entries(fields)
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" ");
+}
+
+function logAiInfo(event: string, fields: Record<string, AiLogValue>) {
+  console.info(`[AI][${event}] ${formatAiLog(fields)}`);
+}
+
+function logAiWarn(event: string, fields: Record<string, AiLogValue>) {
+  console.warn(`[AI][${event}] ${formatAiLog(fields)}`);
+}
+
+function createAiRequestId() {
+  return crypto.randomUUID().slice(0, 8);
+}
+
 function looksLikeNonGenerativeModel(model: string) {
   return /(?:embed|embedding|rerank|safety|moderation|guard)/i.test(model);
 }
@@ -82,7 +103,8 @@ async function getModelSlots(models: string[]): Promise<ModelSlot[]> {
         id: String(index + 1),
         model,
         supportsResponseFormat: info
-          ? info.supportedParameters.includes("response_format")
+          ? info.supportedParameters.includes("response_format") ||
+            info.supportedParameters.includes("structured_outputs")
           : undefined,
       };
     })
@@ -126,21 +148,59 @@ function standoffKey(apiKeySlotId: string, modelSlotId: string) {
   return `${apiKeySlotId}:${modelSlotId}`;
 }
 
+async function getModelSlotsWithStandoffState(
+  models: string[],
+  apiKeySlotId: string,
+  now: number,
+) {
+  const slots = await getModelSlots(models);
+
+  return slots.map((slot) => {
+    const standoffUntil = modelStandoffUntil.get(
+      standoffKey(apiKeySlotId, slot.id),
+    ) ?? 0;
+
+    return {
+      ...slot,
+      standoffUntil,
+      available: standoffUntil <= now,
+    };
+  });
+}
+
 async function getNextAvailableRequestSlot(
   models: string[],
   apiKeys: string[],
   now: number,
 ): Promise<RequestSlot | null> {
   for (const apiKeySlot of getApiKeySlots(apiKeys)) {
-    const [modelSlot] = await getAvailableModelSlots(
+    const slots = await getModelSlotsWithStandoffState(
       models,
       apiKeySlot.id,
       now,
     );
+    const modelSlot = slots.find((slot) => slot.available);
+
+    for (const skippedSlot of slots.filter((slot) => !slot.available)) {
+      logAiInfo("skip-model", {
+        action: "skip",
+        reason: "standoff",
+        apiKeySlot: apiKeySlot.id,
+        modelSlot: skippedSlot.id,
+        model: skippedSlot.model,
+        standoffUntil: new Date(skippedSlot.standoffUntil).toISOString(),
+      });
+    }
 
     if (modelSlot) {
       return { apiKeySlot, modelSlot };
     }
+
+    logAiInfo("skip-api-key", {
+      action: "skip",
+      reason: "no-available-models",
+      apiKeySlot: apiKeySlot.id,
+    });
   }
 
   return null;
@@ -227,11 +287,13 @@ async function requestModelCompletion({
   apiKey,
   model,
   supportsResponseFormat,
+  requestId,
 }: {
   params: AiChatCompletionParams;
   apiKey: string;
   model: string;
   supportsResponseFormat?: boolean;
+  requestId: string;
 }): Promise<AiChatCompletionResult> {
   const client = getAiClient();
   const { validateText, ...providerParams } = params;
@@ -239,6 +301,14 @@ async function requestModelCompletion({
     supportsResponseFormat === false ? undefined : providerParams.responseFormat;
 
   async function request(responseFormat = initialResponseFormat) {
+    logAiInfo("provider-request", {
+      requestId,
+      action: "send",
+      model,
+      responseFormat: responseFormat ? "enabled" : "none",
+      sessionId: params.sessionId ?? "none",
+    });
+
     const response = await client.chatCompletion({
       ...providerParams,
       apiKey,
@@ -262,6 +332,12 @@ async function requestModelCompletion({
     const status = getErrorStatus(error);
 
     if ((status === 400 || status === 404) && providerParams.responseFormat) {
+      logAiWarn("provider-retry", {
+        requestId,
+        action: "retry-without-response-format",
+        reason: `http-${status}`,
+        model,
+      });
       return request(undefined);
     }
 
@@ -281,6 +357,7 @@ async function executeChatCompletion(
   params: AiChatCompletionParams,
 ): Promise<AiChatCompletionResult> {
   const config = getAiConfig();
+  const requestId = createAiRequestId();
   const now = Date.now();
   const requestSlot = await getNextAvailableRequestSlot(
     config.models,
@@ -289,6 +366,12 @@ async function executeChatCompletion(
   );
 
   if (!requestSlot) {
+    logAiWarn("unavailable", {
+      requestId,
+      action: "fail-request",
+      reason: "all-combinations-in-standoff",
+      sessionId: params.sessionId ?? "none",
+    });
     throw new AiModelsUnavailableError(
       "Todas as combinações de chave e modelo LLM configuradas estão temporariamente em espera por falhas de API.",
     );
@@ -297,9 +380,25 @@ async function executeChatCompletion(
   const { apiKeySlot, modelSlot } = requestSlot;
   const { id: modelSlotId, model, supportsResponseFormat } = modelSlot;
 
+  logAiInfo("try-model", {
+    requestId,
+    action: "try",
+    provider: config.provider,
+    apiKeySlot: apiKeySlot.id,
+    modelSlot: modelSlotId,
+    model,
+    responseFormat:
+      supportsResponseFormat === false
+        ? "disabled"
+        : params.responseFormat
+          ? "enabled"
+          : "none",
+    sessionId: params.sessionId ?? "none",
+  });
+
   if (config.debug) {
     console.debug(
-      `[AI][request] provider=${config.provider} apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} responseFormat=${supportsResponseFormat === false ? "disabled" : params.responseFormat ? "enabled" : "none"} sessionId=${params.sessionId ?? "none"}`,
+      `[AI][request] requestId=${requestId} provider=${config.provider} apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} responseFormat=${supportsResponseFormat === false ? "disabled" : params.responseFormat ? "enabled" : "none"} sessionId=${params.sessionId ?? "none"}`,
     );
     console.debug("[AI][prompt]", params.messages);
   }
@@ -310,6 +409,18 @@ async function executeChatCompletion(
       apiKey: apiKeySlot.apiKey,
       model,
       supportsResponseFormat,
+      requestId,
+    });
+
+    logAiInfo("model-success", {
+      requestId,
+      action: "accept",
+      apiKeySlot: apiKeySlot.id,
+      modelSlot: modelSlotId,
+      model,
+      promptTokens: response.usage?.promptTokens,
+      completionTokens: response.usage?.completionTokens,
+      totalTokens: response.usage?.totalTokens,
     });
 
     if (config.debug) {
@@ -325,6 +436,15 @@ async function executeChatCompletion(
     const shouldStandoff = shouldPutModelInStandoff();
     const standoffDuration = getModelStandoffDuration(status);
     const apiKeyScopedFailure = isApiKeyScopedFailure(status, message);
+    const failureSource = status === 422 ? "local-validation" : "provider";
+    const standoffUntil = shouldStandoff
+      ? new Date(failedAt + standoffDuration).toISOString()
+      : undefined;
+    const action = shouldStandoff
+      ? apiKeyScopedFailure
+        ? "standoff-api-key-models"
+        : "standoff-model"
+      : "no-standoff";
 
     if (shouldStandoff && apiKeyScopedFailure) {
       await putApiKeyModelsInStandoff(
@@ -342,12 +462,23 @@ async function executeChatCompletion(
       );
     }
 
+    logAiWarn("model-failure", {
+      requestId,
+      action,
+      apiKeySlot: apiKeySlot.id,
+      modelSlot: modelSlotId,
+      model,
+      status: status ?? "unknown",
+      failureSource,
+      standoffScope: apiKeyScopedFailure ? "api-key" : "model",
+      standoffDurationMs: shouldStandoff ? standoffDuration : undefined,
+      standoffUntil,
+      reason: message.slice(0, 220).replace(/\s+/g, " "),
+    });
+
     if (config.debug) {
-      const standoffUntil = shouldStandoff
-        ? new Date(failedAt + standoffDuration).toISOString()
-        : "not-applied";
       console.error(
-        `[AI][error] apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} standoffScope=${apiKeyScopedFailure ? "api-key" : "model"} standoffUntil=${standoffUntil}`,
+        `[AI][error] requestId=${requestId} apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} action=${action} standoffScope=${apiKeyScopedFailure ? "api-key" : "model"} standoffUntil=${standoffUntil ?? "not-applied"}`,
         error,
       );
     }

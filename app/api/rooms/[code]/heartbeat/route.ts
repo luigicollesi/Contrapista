@@ -1,4 +1,4 @@
-import { joinRoom } from "@/lib/rooms";
+import { heartbeatRoomUser } from "@/lib/rooms";
 
 export async function POST(
   request: Request,
@@ -6,27 +6,24 @@ export async function POST(
 ) {
   const { code } = await params;
   const body = (await request.json()) as {
-    browserId?: string;
-    nickname?: string;
-    color?: string;
+    userId?: string;
   };
 
-  try {
-    const result = await joinRoom({
-      code,
-      browserId: body.browserId,
-      nickname: body.nickname ?? "",
-      color: body.color ?? "",
-    });
+  if (!body.userId) {
+    return Response.json({ error: "Usuário inválido." }, { status: 400 });
+  }
 
-    if (!result) {
+  try {
+    const room = await heartbeatRoomUser({ code, userId: body.userId });
+
+    if (!room) {
       return Response.json({ error: "Sala não encontrada." }, { status: 404 });
     }
 
-    return Response.json(result);
+    return Response.json({ room });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Erro ao entrar na sala.";
+      error instanceof Error ? error.message : "Erro ao atualizar presença.";
 
     return Response.json({ error: message }, { status: 400 });
   }

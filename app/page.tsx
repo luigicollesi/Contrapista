@@ -4,13 +4,15 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const SESSION_STORAGE_KEY = "contrapista-session";
+const BROWSER_ID_STORAGE_KEY = "contrapista-browser-id";
 
 type SavedSession = {
   roomCode: string;
   user: {
     id: string;
-    nickname: string;
-    color: string;
+    browserId: string;
+    nickname: string | null;
+    color?: string | null;
   };
 };
 
@@ -104,6 +106,26 @@ function readSavedSession() {
   }
 }
 
+function saveSession(session: SavedSession) {
+  localStorage.setItem(BROWSER_ID_STORAGE_KEY, session.user.browserId);
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  localStorage.setItem(
+    `contrapista-room-${session.roomCode}`,
+    JSON.stringify(session),
+  );
+}
+
+function getBrowserId() {
+  let browserId = localStorage.getItem(BROWSER_ID_STORAGE_KEY);
+
+  if (!browserId) {
+    browserId = crypto.randomUUID();
+    localStorage.setItem(BROWSER_ID_STORAGE_KEY, browserId);
+  }
+
+  return browserId;
+}
+
 export default function Home() {
   const router = useRouter();
   const [roomCode, setRoomCode] = useState("");
@@ -161,6 +183,10 @@ export default function Home() {
     try {
       const response = await fetch("/api/rooms", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ browserId: getBrowserId() }),
       });
       const data = await response.json();
 
@@ -168,6 +194,10 @@ export default function Home() {
         throw new Error(data.error ?? "Não foi possível criar a sala.");
       }
 
+      saveSession({
+        roomCode: data.room.code,
+        user: data.user,
+      });
       router.push(`/sala/${data.room.code}`);
     } catch (caughtError) {
       setError(
@@ -194,12 +224,23 @@ export default function Home() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/rooms/${code}`);
+      const response = await fetch(`/api/rooms/${code}/join`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ browserId: getBrowserId() }),
+      });
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error("Sala não encontrada.");
+        throw new Error(data.error ?? "Sala não encontrada.");
       }
 
+      saveSession({
+        roomCode: code,
+        user: data.user,
+      });
       router.push(`/sala/${code}`);
     } catch (caughtError) {
       setError(

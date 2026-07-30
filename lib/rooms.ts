@@ -1,4 +1,5 @@
-import { chatCompletion } from "@/lib/ai";
+import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
+import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { dbQuery, getDbClient, type DatabaseClient } from "@/lib/db";
 import {
   isPlayerColor,
@@ -8,10 +9,12 @@ import {
 
 export type RoomUser = {
   id: string;
-  nickname: string;
-  color: PlayerColor;
+  browserId: string;
+  nickname: string | null;
+  color: PlayerColor | null;
   ready: boolean;
   joinedAt: number;
+  lastSeenAt: number;
 };
 
 export type RoomConfig = {
@@ -35,7 +38,12 @@ export type Room = {
 
 export type RoomEvent = {
   id: string;
-  type: "solution" | "solution_pending" | "solution_correct" | "solution_wrong";
+  type:
+    | "solution"
+    | "solution_pending"
+    | "solution_manual_review"
+    | "solution_correct"
+    | "solution_wrong";
   actorId: string;
   actorNickname: string;
   createdAt: number;
@@ -76,6 +84,7 @@ export type GameState = {
 
 const ROOM_EMPTY_TTL_SQL = "1 hour";
 const ROULETTE_MS = 3_000;
+const DISCONNECTED_USER_TIMEOUT_MS = 2 * 60 * 1000;
 
 export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   readingTimeSeconds: 120,
@@ -106,14 +115,30 @@ function normalizeUsers(users: unknown): RoomUser[] {
 
   return users.map((user) => {
     const partial = user as Partial<RoomUser> & { color?: string };
+    const nickname =
+      typeof partial.nickname === "string" && partial.nickname.trim()
+        ? partial.nickname.trim().slice(0, 18)
+        : null;
+    const color =
+      typeof partial.color === "string" && isPlayerColor(partial.color)
+        ? normalizePlayerColor(partial.color)
+        : null;
+    const joinedAt =
+      typeof partial.joinedAt === "number" ? partial.joinedAt : Date.now();
 
     return {
       id: String(partial.id ?? crypto.randomUUID()),
-      nickname: String(partial.nickname ?? "Jogador").slice(0, 18),
-      color: normalizePlayerColor(String(partial.color ?? "red")),
-      ready: Boolean(partial.ready),
-      joinedAt:
-        typeof partial.joinedAt === "number" ? partial.joinedAt : Date.now(),
+      browserId: String(
+        (partial as Partial<RoomUser> & { browserId?: unknown }).browserId ??
+          partial.id ??
+          crypto.randomUUID(),
+      ),
+      nickname,
+      color,
+      ready: Boolean(partial.ready) && Boolean(nickname && color),
+      joinedAt,
+      lastSeenAt:
+        typeof partial.lastSeenAt === "number" ? partial.lastSeenAt : joinedAt,
     };
   });
 }
@@ -191,8 +216,28 @@ function publicRoom(room: Room) {
     activeevent: room.activeevent,
     gamestate: room.gamestate,
     config,
-    allReady: room.users.length > 0 && room.users.every((user) => user.ready),
+    allReady:
+      room.users.length > 0 &&
+      room.users.every((user) => hasCompleteProfile(user) && user.ready),
   };
+}
+
+function hasCompleteProfile(user: RoomUser) {
+  return Boolean(user.nickname && user.color);
+}
+
+function displayUserName(user: RoomUser) {
+  return user.nickname ?? "Investigador sem identificação";
+}
+
+function isUserDisconnected(user: RoomUser, now: number) {
+  return now - user.lastSeenAt > DISCONNECTED_USER_TIMEOUT_MS;
+}
+
+function normalizeBrowserId(browserId: string | undefined) {
+  const trimmed = browserId?.trim();
+
+  return trimmed && trimmed.length <= 80 ? trimmed : crypto.randomUUID();
 }
 
 function hashString(value: string) {
@@ -341,7 +386,7 @@ function phaseSkipKey(state: GameState) {
 function getActiveUsers(state: GameState, users: RoomUser[]) {
   const eliminated = new Set(state.eliminatedUserIds ?? []);
 
-  return users.filter((user) => !eliminated.has(user.id));
+  return users.filter((user) => hasCompleteProfile(user) && !eliminated.has(user.id));
 }
 
 function addEliminatedUser(state: GameState, userId: string) {
@@ -558,7 +603,7 @@ async function buildAutoSharedClueState({
     sharedClue: {
       id: crypto.randomUUID(),
       actorId: actor.id,
-      actorNickname: actor.nickname,
+      actorNickname: displayUserName(actor),
       clueText,
       clueNumber,
       clueId,
@@ -701,6 +746,20 @@ function ensureColorAvailable({
   }
 }
 
+function isRoomAcceptingNewUsers(room: Room, users: RoomUser[]) {
+  if (room.activecase) {
+    return false;
+  }
+
+  const identifiedUsers = users.filter(hasCompleteProfile);
+
+  return !(
+    identifiedUsers.length > 0 &&
+    identifiedUsers.length === users.length &&
+    identifiedUsers.every((user) => user.ready)
+  );
+}
+
 async function ensureSchema() {
   schemaReady ??= dbQuery(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -834,12 +893,212 @@ async function cleanupExpiredRooms(client?: DatabaseClient) {
   await dbQuery(sql, values);
 }
 
-export async function createRoom() {
+function removeDisconnectedUsersFromLobby(users: RoomUser[], now: number) {
+  return users.filter((user) => !isUserDisconnected(user, now));
+}
+
+function eliminateDisconnectedUsersFromGame({
+  code,
+  users,
+  state,
+  activeevent,
+  now,
+}: {
+  code: string;
+  users: RoomUser[];
+  state: GameState | null;
+  activeevent: RoomEvent | null;
+  now: number;
+}) {
+  if (!state) {
+    return { state, activeevent };
+  }
+
+  const staleUsers = users.filter(
+    (user) =>
+      hasCompleteProfile(user) &&
+      isUserDisconnected(user, now) &&
+      !(state.eliminatedUserIds ?? []).includes(user.id),
+  );
+
+  if (!staleUsers.length) {
+    return { state, activeevent };
+  }
+
+  const eliminatedUserIds = Array.from(
+    new Set([
+      ...(state.eliminatedUserIds ?? []),
+      ...staleUsers.map((user) => user.id),
+    ]),
+  );
+  const nextStateBase = {
+    ...state,
+    eliminatedUserIds,
+    readyUserIds: (state.readyUserIds ?? []).filter(
+      (id) => !eliminatedUserIds.includes(id),
+    ),
+    skipVotes: state.skipVotes
+      ? {
+          ...state.skipVotes,
+          userIds: state.skipVotes.userIds.filter(
+            (id) => !eliminatedUserIds.includes(id),
+          ),
+        }
+      : undefined,
+    pausedAt: state.pausedAt,
+    pausedRemainingMs: state.pausedRemainingMs,
+  } satisfies GameState;
+  const activeUsers = getActiveUsers(nextStateBase, users);
+  const nextOrder = reconcileOrder(
+    nextStateBase.order,
+    activeUsers,
+    `${code}:disconnected`,
+  );
+  const previousTurnUserId = state.order[state.currentTurnIndex];
+  const preservedTurnIndex = nextOrder.indexOf(previousTurnUserId);
+  const currentTurnIndex =
+    preservedTurnIndex >= 0
+      ? preservedTurnIndex
+      : Math.min(nextStateBase.currentTurnIndex, Math.max(0, nextOrder.length - 1));
+  const disconnectedUser = staleUsers[0];
+  const remainingMs = state.pausedAt
+    ? state.pausedRemainingMs ?? 0
+    : Math.max(0, state.phaseEndsAt - now);
+
+  return {
+    state: {
+      ...nextStateBase,
+      order: nextOrder,
+      currentTurnIndex,
+      pausedAt: undefined,
+      pausedRemainingMs: undefined,
+      phaseStartedAt: now,
+      phaseEndsAt: now + remainingMs,
+    } satisfies GameState,
+    activeevent: {
+      id: crypto.randomUUID(),
+      type: "solution_wrong",
+      actorId: disconnectedUser.id,
+      actorNickname: displayUserName(disconnectedUser),
+      guess: "Desconexão por inatividade.",
+      createdAt: now,
+    } satisfies RoomEvent,
+  };
+}
+
+async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
+  const executor = client ?? (await getDbClient());
+  const ownsClient = !client;
+
+  try {
+    if (ownsClient) {
+      await executor.query("BEGIN");
+    }
+
+    const current = await executor.query<Room>(
+      `
+        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        FROM game_rooms
+        WHERE room_code = $1
+        FOR UPDATE
+      `,
+      [code],
+    );
+    const room = current.rows[0];
+
+    if (!room) {
+      if (ownsClient) {
+        await executor.query("COMMIT");
+      }
+      return;
+    }
+
+    const now = Date.now();
+    const users = normalizeUsers(room.users);
+    let updatedUsers = users;
+    let updatedState = normalizeGameState(room.gamestate);
+    let updatedEvent = room.activeevent;
+
+    if (room.activecase) {
+      const eliminated = eliminateDisconnectedUsersFromGame({
+        code,
+        users,
+        state: updatedState,
+        activeevent: updatedEvent,
+        now,
+      });
+
+      updatedState = eliminated.state;
+      updatedEvent = eliminated.activeevent;
+      updatedUsers = users.map((user) =>
+        isUserDisconnected(user, now) ? { ...user, ready: false } : user,
+      );
+    } else {
+      updatedUsers = removeDisconnectedUsersFromLobby(users, now);
+    }
+
+    if (
+      JSON.stringify(updatedUsers) !== JSON.stringify(users) ||
+      JSON.stringify(updatedState) !== JSON.stringify(normalizeGameState(room.gamestate)) ||
+      JSON.stringify(updatedEvent) !== JSON.stringify(room.activeevent)
+    ) {
+      if (!updatedUsers.length) {
+        await executor.query(`DELETE FROM game_rooms WHERE room_code = $1`, [
+          code,
+        ]);
+      } else {
+        await executor.query(
+          `
+            UPDATE game_rooms
+            SET users = $2::jsonb,
+                gamestate = $3::jsonb,
+                activeevent = $4::jsonb,
+                empty_since = NULL,
+                updated_at = now()
+            WHERE room_code = $1
+          `,
+          [
+            code,
+            JSON.stringify(updatedUsers),
+            updatedState ? JSON.stringify(updatedState) : null,
+            updatedEvent ? JSON.stringify(updatedEvent) : null,
+          ],
+        );
+      }
+    }
+
+    if (ownsClient) {
+      await executor.query("COMMIT");
+    }
+  } catch (error) {
+    if (ownsClient) {
+      await executor.query("ROLLBACK");
+    }
+    throw error;
+  } finally {
+    if (ownsClient && "release" in executor) {
+      (executor as { release: () => void }).release();
+    }
+  }
+}
+
+export async function createRoom({ browserId }: { browserId?: string } = {}) {
   await ensureSchema();
   await cleanupExpiredRooms();
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const now = Date.now();
+    const normalizedBrowserId = normalizeBrowserId(browserId);
+    const user: RoomUser = {
+      id: crypto.randomUUID(),
+      browserId: normalizedBrowserId,
+      nickname: null,
+      color: null,
+      ready: false,
+      joinedAt: now,
+      lastSeenAt: now,
+    };
     const client = await getDbClient();
 
     try {
@@ -848,11 +1107,11 @@ export async function createRoom() {
       const result = await client.query<Room & { id: string }>(
         `
           INSERT INTO game_rooms (room_code, users, empty_since, activecase)
-          VALUES ($1, '[]'::jsonb, now(), NULL)
+          VALUES ($1, $2::jsonb, NULL, NULL)
           ON CONFLICT DO NOTHING
           RETURNING id::text AS id, room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
         `,
-        [code],
+        [code, JSON.stringify([user])],
       );
       const room = result.rows[0];
 
@@ -885,14 +1144,17 @@ export async function createRoom() {
       );
       await client.query("COMMIT");
 
-      return publicRoom({
-        code: room.code,
-        users: normalizeUsers(room.users),
-        activecase: room.activecase,
-        activeevent: room.activeevent,
-        gamestate: normalizeGameState(room.gamestate),
-        config,
-      });
+      return {
+        room: publicRoom({
+          code: room.code,
+          users: normalizeUsers(room.users),
+          activecase: room.activecase,
+          activeevent: room.activeevent,
+          gamestate: normalizeGameState(room.gamestate),
+          config,
+        }),
+        user,
+      };
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;
@@ -907,6 +1169,7 @@ export async function createRoom() {
 export async function getRoom(code: string) {
   await ensureSchema();
   await cleanupExpiredRooms();
+  await sweepDisconnectedUsers(code);
 
   const result = await dbQuery<Room>(
     `
@@ -977,10 +1240,12 @@ export async function getRoom(code: string) {
 
 export async function joinRoom({
   code,
+  browserId,
   nickname,
   color,
 }: {
   code: string;
+  browserId?: string;
   nickname: string;
   color: string;
 }) {
@@ -988,8 +1253,13 @@ export async function joinRoom({
 
   const trimmedNickname = nickname.trim().slice(0, 18);
   const normalizedColor = color.trim();
+  const hasProfileData = Boolean(trimmedNickname || normalizedColor);
+  const profileColor = isPlayerColor(normalizedColor)
+    ? normalizePlayerColor(normalizedColor)
+    : null;
+  const normalizedBrowserId = normalizeBrowserId(browserId);
 
-  if (!trimmedNickname || !isPlayerColor(normalizedColor)) {
+  if (hasProfileData && (!trimmedNickname || !profileColor)) {
     throw new Error("Dados de usuário inválidos.");
   }
 
@@ -998,6 +1268,7 @@ export async function joinRoom({
   try {
     await client.query("BEGIN");
     await cleanupExpiredRooms(client);
+    await sweepDisconnectedUsers(code, client);
 
     const current = await client.query<Room>(
       `
@@ -1016,14 +1287,66 @@ export async function joinRoom({
     }
 
     const users = normalizeUsers(room.users);
-    ensureColorAvailable({ users, color: normalizedColor });
+    const existingUser = users.find(
+      (user) => user.browserId === normalizedBrowserId,
+    );
+
+    if (existingUser) {
+      const updatedUsers = users.map((user) =>
+        user.id === existingUser.id
+          ? {
+              ...user,
+              lastSeenAt: Date.now(),
+            }
+          : user,
+      );
+
+      await client.query(
+        `
+          UPDATE game_rooms
+          SET users = $2::jsonb,
+              updated_at = now()
+          WHERE room_code = $1
+        `,
+        [code, JSON.stringify(updatedUsers)],
+      );
+
+      await client.query("COMMIT");
+
+      const updatedUser =
+        updatedUsers.find((user) => user.id === existingUser.id) ?? existingUser;
+
+      return {
+        room: publicRoom({
+          code,
+          users: updatedUsers,
+          activecase: room.activecase,
+          activeevent: room.activeevent,
+          gamestate: normalizeGameState(room.gamestate),
+        }),
+        user: updatedUser,
+      };
+    }
+
+    if (!isRoomAcceptingNewUsers(room, users)) {
+      await client.query("ROLLBACK");
+      throw new Error("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
+    }
+
+    if (hasProfileData && profileColor) {
+      ensureColorAvailable({ users, color: profileColor });
+    }
+
+    const now = Date.now();
 
     const user: RoomUser = {
       id: crypto.randomUUID(),
-      nickname: trimmedNickname,
-      color: normalizedColor,
+      browserId: normalizedBrowserId,
+      nickname: hasProfileData ? trimmedNickname : null,
+      color: hasProfileData ? profileColor : null,
       ready: false,
-      joinedAt: Date.now(),
+      joinedAt: now,
+      lastSeenAt: now,
     };
     const updatedUsers = [...users, user];
 
@@ -1093,14 +1416,17 @@ export async function leaveRoom({
       (user) => user.id !== userId,
     );
 
+    if (!updatedUsers.length) {
+      await client.query(`DELETE FROM game_rooms WHERE room_code = $1`, [code]);
+      await client.query("COMMIT");
+      return null;
+    }
+
     await client.query(
       `
         UPDATE game_rooms
         SET users = $2::jsonb,
-            empty_since = CASE
-              WHEN jsonb_array_length($2::jsonb) = 0 THEN COALESCE(empty_since, now())
-              ELSE NULL
-            END,
+            empty_since = NULL,
             updated_at = now()
         WHERE room_code = $1
       `,
@@ -1112,6 +1438,84 @@ export async function leaveRoom({
     return publicRoom({
       code,
       users: updatedUsers,
+      activecase: room.activecase,
+      activeevent: room.activeevent,
+      gamestate: normalizeGameState(room.gamestate),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function heartbeatRoomUser({
+  code,
+  userId,
+}: {
+  code: string;
+  userId: string;
+}) {
+  await ensureSchema();
+
+  const client = await getDbClient();
+
+  try {
+    await client.query("BEGIN");
+    await cleanupExpiredRooms(client);
+    await sweepDisconnectedUsers(code, client);
+
+    const current = await client.query<Room>(
+      `
+        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        FROM game_rooms
+        WHERE room_code = $1
+        FOR UPDATE
+      `,
+      [code],
+    );
+    const room = current.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    let userExists = false;
+    const now = Date.now();
+    const users = normalizeUsers(room.users).map((user) => {
+      if (user.id !== userId) {
+        return user;
+      }
+
+      userExists = true;
+      return {
+        ...user,
+        lastSeenAt: now,
+      };
+    });
+
+    if (!userExists) {
+      await client.query("ROLLBACK");
+      throw new Error("Usuário não encontrado na sala.");
+    }
+
+    await client.query(
+      `
+        UPDATE game_rooms
+        SET users = $2::jsonb,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, JSON.stringify(users)],
+    );
+
+    await client.query("COMMIT");
+
+    return publicRoom({
+      code,
+      users,
       activecase: room.activecase,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
@@ -1139,8 +1543,11 @@ export async function updateRoomUser({
 
   const trimmedNickname = nickname.trim().slice(0, 18);
   const normalizedColor = color.trim();
+  const profileColor = isPlayerColor(normalizedColor)
+    ? normalizePlayerColor(normalizedColor)
+    : null;
 
-  if (!trimmedNickname || !isPlayerColor(normalizedColor)) {
+  if (!trimmedNickname || !profileColor) {
     throw new Error("Dados de usuário inválidos.");
   }
 
@@ -1169,7 +1576,7 @@ export async function updateRoomUser({
     const users = normalizeUsers(room.users);
     ensureColorAvailable({
       users,
-      color: normalizedColor,
+      color: profileColor,
       currentUserId: userId,
     });
 
@@ -1182,8 +1589,9 @@ export async function updateRoomUser({
       updatedUser = {
         ...user,
         nickname: trimmedNickname,
-        color: normalizedColor,
+        color: profileColor,
         ready: false,
+        lastSeenAt: Date.now(),
       };
 
       return updatedUser;
@@ -1385,9 +1793,15 @@ export async function setRoomUserReady({
       }
 
       userExists = true;
+
+      if (ready && !hasCompleteProfile(user)) {
+        throw new Error("Escolha nome e cor antes de marcar pronto.");
+      }
+
       return {
         ...user,
         ready,
+        lastSeenAt: Date.now(),
       };
     });
 
@@ -1457,6 +1871,8 @@ async function getCaseFinalAnswer(caseId: string, client?: DatabaseClient) {
   return result.rows[0]?.final_answer ?? "";
 }
 
+const MIN_FINAL_GUESS_JUDGE_ATTEMPTS = 3;
+
 function parseAiBoolean(text: string): boolean | null {
   const normalized = text.trim().toLowerCase();
 
@@ -1469,13 +1885,42 @@ function parseAiBoolean(text: string): boolean | null {
   }
 
   try {
-    const parsed = JSON.parse(normalized) as unknown;
+    const parsed = JSON.parse(text.trim()) as unknown;
 
     if (typeof parsed === "boolean") {
       return parsed;
     }
+
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof (parsed as { correct?: unknown }).correct === "boolean"
+    ) {
+      return (parsed as { correct: boolean }).correct;
+    }
   } catch {
     // Fall back to extracting a clear boolean token from prose.
+  }
+
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    try {
+      const parsed = JSON.parse(text.slice(firstBrace, lastBrace + 1)) as unknown;
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        typeof (parsed as { correct?: unknown }).correct === "boolean"
+      ) {
+        return (parsed as { correct: boolean }).correct;
+      }
+    } catch {
+      // Continue to token extraction.
+    }
   }
 
   const matches = normalized.match(/\b(?:true|false)\b/g) ?? [];
@@ -1486,6 +1931,82 @@ function parseAiBoolean(text: string): boolean | null {
   }
 
   return uniqueMatches[0] === "true";
+}
+
+async function requestFinalGuessJudgement({
+  roomCode,
+  normalizedGuess,
+  finalAnswer,
+  attempt,
+}: {
+  roomCode: string;
+  normalizedGuess: string;
+  finalAnswer: string;
+  attempt: number;
+}) {
+  console.info(
+    `[AI][final-judge-attempt] room=${roomCode} attempt=${attempt} action=try`,
+  );
+
+  const response = await chatCompletion({
+    temperature: 0,
+    maxTokens: 120,
+    sessionId: `contrapista:room:${roomCode}:final-guess-judge:v1`,
+    responseFormat: {
+      type: "json_schema",
+      json_schema: {
+        name: "contrapista_final_guess_judgement",
+        strict: true,
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          required: ["correct"],
+          properties: {
+            correct: {
+              type: "boolean",
+              description:
+                "true se o palpite do jogador resolve as mesmas ideias centrais da resposta oficial; false caso contrário.",
+            },
+          },
+        },
+      },
+    },
+    validateText: (text) => {
+      if (parseAiBoolean(text) === null) {
+        throw new Error(`A IA respondeu avaliação inválida: ${text.slice(0, 80)}`);
+      }
+    },
+    messages: [
+      {
+        role: "system",
+        content:
+          'Você é um juiz de equivalência semântica de respostas de jogo investigativo. Responda somente JSON válido no formato {"correct":true} ou {"correct":false}. Use true quando o palpite tiver a mesma ideia central da resposta oficial, mesmo com sinônimos, ordem diferente, erros ortográficos ou texto incompleto. Use false quando faltar culpado, método, motivo ou contradição central exigida pela resposta oficial. Não explique.',
+      },
+      {
+        role: "user",
+        content: `Compare as duas respostas.
+
+Resposta oficial:
+${finalAnswer}
+
+Palpite do jogador:
+${normalizedGuess}
+
+O palpite resolve corretamente as perguntas centrais do caso?`,
+      },
+    ],
+  });
+  const parsed = parseAiBoolean(response.text);
+
+  if (parsed === null) {
+    throw new Error(`A IA respondeu avaliação inválida: ${response.text.slice(0, 80)}`);
+  }
+
+  console.info(
+    `[AI][final-judge-result] room=${roomCode} attempt=${attempt} action=accept correct=${parsed}`,
+  );
+
+  return parsed;
 }
 
 async function evaluateFinalGuess({
@@ -1503,35 +2024,109 @@ async function evaluateFinalGuess({
     return false;
   }
 
-  const response = await chatCompletion({
-    temperature: 0,
-    maxTokens: 8,
-    sessionId: `contrapista:room:${roomCode}:final-guess-judge:v1`,
-    validateText: (text) => {
-      if (parseAiBoolean(text) === null) {
-        throw new Error(`A IA respondeu avaliação inválida: ${text.slice(0, 40)}`);
+  const maxAttempts = Math.max(
+    MIN_FINAL_GUESS_JUDGE_ATTEMPTS,
+    await getAvailableAiModelCount(),
+  );
+  const errors: string[] = [];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await requestFinalGuessJudgement({
+        roomCode,
+        normalizedGuess,
+        finalAnswer,
+        attempt,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
+      errors.push(message);
+      console.warn(
+        `[AI][final-judge-failure] room=${roomCode} attempt=${attempt} action=try-next reason=${message.slice(0, 180).replace(/\s+/g, " ")}`,
+      );
+
+      if (
+        error instanceof AiModelsUnavailableError &&
+        error.failures.length === 0
+      ) {
+        break;
       }
-    },
-    messages: [
-      {
-        role: "system",
-        content:
-          'Você é um juiz estrito de respostas de jogo investigativo. Responda exclusivamente true ou false. Aceite sinônimos, erros ortográficos e formulações diferentes quando a ideia central estiver correta. Não explique.',
-      },
-      {
-        role: "user",
-        content: `Resposta oficial:
-${finalAnswer}
+    }
+  }
 
-Palpite do jogador:
-${normalizedGuess}
+  throw new Error(
+    `Não foi possível avaliar o palpite final após ${errors.length} tentativa(s): ${errors.join(" | ")}`,
+  );
+}
 
-O palpite resolve corretamente as perguntas centrais do caso?`,
-      },
-    ],
-  });
+function buildFinalGuessResolution({
+  code,
+  actor,
+  guess,
+  isCorrect,
+  latestState,
+  latestUsers,
+  now,
+  config,
+}: {
+  code: string;
+  actor: RoomUser;
+  guess: string;
+  isCorrect: boolean;
+  latestState: GameState;
+  latestUsers: RoomUser[];
+  now: number;
+  config: RoomConfig;
+}) {
+  const activeevent = {
+    id: crypto.randomUUID(),
+    type: isCorrect ? "solution_correct" : "solution_wrong",
+    actorId: actor.id,
+    actorNickname: displayUserName(actor),
+    guess: guess.trim(),
+    createdAt: now,
+  } satisfies RoomEvent;
 
-  return parseAiBoolean(response.text) === true;
+  if (isCorrect) {
+    return {
+      activeevent,
+      resumedState: latestState,
+    };
+  }
+
+  const eliminatedState = {
+    ...latestState,
+    eliminatedUserIds: addEliminatedUser(latestState, actor.id),
+  };
+  const activeUsers = getActiveUsers(eliminatedState, latestUsers);
+  const nextOrder = reconcileOrder(
+    eliminatedState.order,
+    activeUsers,
+    `${code}:eliminated`,
+  );
+  const previousTurnUserId = latestState.order[latestState.currentTurnIndex];
+  const preservedTurnIndex = nextOrder.indexOf(previousTurnUserId);
+  const nextTurnIndex =
+    preservedTurnIndex >= 0
+      ? preservedTurnIndex
+      : Math.min(latestState.currentTurnIndex, Math.max(0, nextOrder.length - 1));
+
+  return {
+    activeevent,
+    resumedState: {
+      ...eliminatedState,
+      order: nextOrder,
+      currentTurnIndex: nextTurnIndex,
+      pausedAt: undefined,
+      pausedRemainingMs: undefined,
+      phaseStartedAt: now,
+      phaseEndsAt:
+        now +
+        (latestState.pausedRemainingMs ??
+          durationMs(config.clueSelectionTimeSeconds)),
+    } satisfies GameState,
+  };
 }
 
 export async function publishRoomEvent({
@@ -1543,7 +2138,8 @@ export async function publishRoomEvent({
   userId: string;
   event:
     | { type: "solution" }
-    | { type: "solution_guess"; guess: string };
+    | { type: "solution_guess"; guess: string }
+    | { type: "solution_manual_result"; correct: boolean };
 }) {
   await ensureSchema();
 
@@ -1610,7 +2206,7 @@ export async function publishRoomEvent({
         id: crypto.randomUUID(),
         type: "solution",
         actorId: actor.id,
-        actorNickname: actor.nickname,
+        actorNickname: displayUserName(actor),
         createdAt: now,
       };
       resumedState = currentState.pausedAt
@@ -1620,6 +2216,36 @@ export async function publishRoomEvent({
             pausedAt: now,
             pausedRemainingMs: Math.max(0, currentState.phaseEndsAt - now),
           };
+    } else if (event.type === "solution_manual_result") {
+      if (currentState.pausedAt === undefined) {
+        await client.query("ROLLBACK");
+        throw new Error("Não há revisão manual em andamento.");
+      }
+
+      const reviewEvent = room.activeevent as RoomEvent | null;
+
+      if (
+        !reviewEvent ||
+        reviewEvent.type !== "solution_manual_review" ||
+        reviewEvent.actorId !== actor.id
+      ) {
+        await client.query("ROLLBACK");
+        throw new Error("Apenas o autor do palpite pode concluir esta revisão.");
+      }
+
+      const resolution = buildFinalGuessResolution({
+        code,
+        actor,
+        guess: reviewEvent.guess ?? "",
+        isCorrect: event.correct,
+        latestState: currentState,
+        latestUsers: normalizeUsers(room.users),
+        now,
+        config: normalizeRoomConfig(room),
+      });
+
+      activeevent = resolution.activeevent;
+      resumedState = resolution.resumedState;
     } else {
       if (!room.activecase) {
         await client.query("ROLLBACK");
@@ -1630,7 +2256,7 @@ export async function publishRoomEvent({
         id: crypto.randomUUID(),
         type: "solution_pending",
         actorId: actor.id,
-        actorNickname: actor.nickname,
+        actorNickname: displayUserName(actor),
         guess: event.guess.trim(),
         createdAt: now,
       } satisfies RoomEvent;
@@ -1649,11 +2275,19 @@ export async function publishRoomEvent({
       await client.query("COMMIT");
 
       const finalAnswer = await getCaseFinalAnswer(room.activecase);
-      const isCorrect = await evaluateFinalGuess({
-        roomCode: code,
-        guess: event.guess,
-        finalAnswer,
-      });
+      let isCorrect: boolean | null = null;
+
+      try {
+        isCorrect = await evaluateFinalGuess({
+          roomCode: code,
+          guess: event.guess,
+          finalAnswer,
+        });
+      } catch (error) {
+        console.warn(
+          `[AI][final-judge-manual-review] room=${code} action=manual-review reason=${error instanceof Error ? error.message.slice(0, 220).replace(/\s+/g, " ") : String(error)}`,
+        );
+      }
 
       await client.query("BEGIN");
       const latest = await getLockedRoomWithConfig(client, code);
@@ -1666,47 +2300,37 @@ export async function publishRoomEvent({
 
       const latestState = normalizeGameState(latestRoom.gamestate) ?? currentState;
       const latestUsers = normalizeUsers(latestRoom.users);
-      activeevent = {
-        id: crypto.randomUUID(),
-        type: isCorrect ? "solution_correct" : "solution_wrong",
-        actorId: actor.id,
-        actorNickname: actor.nickname,
-        guess: event.guess.trim(),
-        createdAt: now,
-      };
 
-      if (isCorrect) {
-        resumedState = latestState;
+      if (isCorrect === null) {
+        activeevent = {
+          id: crypto.randomUUID(),
+          type: "solution_manual_review",
+          actorId: actor.id,
+          actorNickname: displayUserName(actor),
+          guess: event.guess.trim(),
+          createdAt: now,
+        };
+        resumedState = latestState.pausedAt
+          ? latestState
+          : {
+              ...latestState,
+              pausedAt: now,
+              pausedRemainingMs: Math.max(0, latestState.phaseEndsAt - now),
+            };
       } else {
-        const eliminatedState = {
-          ...latestState,
-          eliminatedUserIds: addEliminatedUser(latestState, actor.id),
-        };
-        const activeUsers = getActiveUsers(eliminatedState, latestUsers);
-        const nextOrder = reconcileOrder(
-          eliminatedState.order,
-          activeUsers,
-          `${code}:eliminated`,
-        );
-        const previousTurnUserId = latestState.order[latestState.currentTurnIndex];
-        const preservedTurnIndex = nextOrder.indexOf(previousTurnUserId);
-        const nextTurnIndex =
-          preservedTurnIndex >= 0
-            ? preservedTurnIndex
-            : Math.min(latestState.currentTurnIndex, Math.max(0, nextOrder.length - 1));
+        const resolution = buildFinalGuessResolution({
+          code,
+          actor,
+          guess: event.guess,
+          isCorrect,
+          latestState,
+          latestUsers,
+          now,
+          config: normalizeRoomConfig(room),
+        });
 
-        resumedState = {
-          ...eliminatedState,
-          order: nextOrder,
-          currentTurnIndex: nextTurnIndex,
-          pausedAt: undefined,
-          pausedRemainingMs: undefined,
-          phaseStartedAt: now,
-          phaseEndsAt:
-            now +
-            (latestState.pausedRemainingMs ??
-              durationMs(normalizeRoomConfig(room).clueSelectionTimeSeconds)),
-        };
+        activeevent = resolution.activeevent;
+        resumedState = resolution.resumedState;
       }
     }
 
@@ -2059,7 +2683,7 @@ export async function shareRoomClue({
       sharedClue: {
         id: crypto.randomUUID(),
         actorId: actor.id,
-        actorNickname: actor.nickname,
+        actorNickname: displayUserName(actor),
         clueText: trimmedClue,
         clueNumber,
         clueId: safeClueId,
