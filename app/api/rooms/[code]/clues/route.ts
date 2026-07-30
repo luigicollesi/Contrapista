@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { shareRoomClue } from "@/lib/rooms";
 
 export async function POST(
@@ -31,9 +32,6 @@ export async function POST(
 
     return Response.json({ gamestate });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao compartilhar pista.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao compartilhar pista.");
   }
 }

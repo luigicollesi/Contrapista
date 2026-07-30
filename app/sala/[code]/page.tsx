@@ -1,8 +1,17 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type SubmitEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
+import { readJsonResponse, requestJson } from "@/lib/client-http";
+import {
+  clearSession,
+  getBrowserId,
+  leftCaseStorageKey,
+  readSavedSession,
+  saveSession,
+} from "@/lib/client-session";
 import {
   PLAYER_COLORS,
   type PlayerColor,
@@ -35,13 +44,8 @@ type Room = {
   config: RoomConfig;
 };
 
-const SESSION_STORAGE_KEY = "contrapista-session";
-const BROWSER_ID_STORAGE_KEY = "contrapista-browser-id";
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
-function leftCaseStorageKey(code: string) {
-  return `contrapista-left-case-${code}`;
-}
 const colorOptions = Object.entries(PLAYER_COLORS) as Array<
   [PlayerColor, (typeof PLAYER_COLORS)[PlayerColor]]
 >;
@@ -176,11 +180,6 @@ function configsMatch(left: RoomConfig, right: RoomConfig) {
   return configFields.every((field) => left[field.key] === right[field.key]);
 }
 
-type SavedSession = {
-  roomCode: string;
-  user: RoomUser;
-};
-
 function hasCompleteProfile(user: RoomUser | null | undefined) {
   return Boolean(user?.nickname && user.color);
 }
@@ -195,66 +194,6 @@ function getUserColorHex(color: PlayerColor | null | undefined) {
 
 function getUserColorName(color: PlayerColor | null | undefined) {
   return color ? PLAYER_COLORS[color]?.name ?? "Cor indisponível" : "Sem cor";
-}
-
-function readSavedSession(code: string): SavedSession | null {
-  try {
-    const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-
-    if (stored) {
-      const session = JSON.parse(stored) as SavedSession;
-
-      if (session.roomCode === code && session.user?.id) {
-        return session;
-      }
-    }
-
-    return null;
-  } catch {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    return null;
-  }
-}
-
-function saveSession(session: SavedSession) {
-  localStorage.setItem(BROWSER_ID_STORAGE_KEY, session.user.browserId);
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-  localStorage.setItem(
-    `contrapista-room-${session.roomCode}`,
-    JSON.stringify(session),
-  );
-}
-
-function getBrowserId() {
-  let browserId = localStorage.getItem(BROWSER_ID_STORAGE_KEY);
-
-  if (!browserId) {
-    browserId = crypto.randomUUID();
-    localStorage.setItem(BROWSER_ID_STORAGE_KEY, browserId);
-  }
-
-  return browserId;
-}
-
-function clearSession(code: string) {
-  localStorage.removeItem(SESSION_STORAGE_KEY);
-  localStorage.removeItem(`contrapista-room-${code}`);
-}
-
-async function readRoomResponse(response: Response) {
-  const text = await response.text();
-
-  if (!text) {
-    return {} as { room?: Room; error?: string };
-  }
-
-  try {
-    return JSON.parse(text) as { room?: Room; error?: string };
-  } catch {
-    return {
-      error: `O servidor retornou uma resposta inesperada: ${text.slice(0, 180)}`,
-    };
-  }
 }
 
 export default function RoomPage() {
@@ -274,6 +213,8 @@ export default function RoomPage() {
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const isConfigDirtyRef = useRef(false);
+  const isHeartbeatInFlightRef = useRef(false);
+  const isLoadingRoomRef = useRef(false);
   const noticeRef = useRef(notice);
 
   useEffect(() => {
@@ -307,11 +248,19 @@ export default function RoomPage() {
     let isActive = true;
 
     async function loadRoom() {
+      if (isLoadingRoomRef.current) {
+        return;
+      }
+
+      isLoadingRoomRef.current = true;
+
       try {
         const response = await fetch(`/api/rooms/${code}`, {
           cache: "no-store",
         });
-        const data = await readRoomResponse(response);
+        const data = await readJsonResponse<{ room?: Room; error?: string }>(
+          response,
+        );
 
         if (!isActive) {
           return;
@@ -366,11 +315,17 @@ export default function RoomPage() {
               : "Não foi possível atualizar a ante-sala.",
           );
         }
+      } finally {
+        isLoadingRoomRef.current = false;
       }
     }
 
     loadRoom();
-    const interval = window.setInterval(loadRoom, 2000);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void loadRoom();
+      }
+    }, 2000);
 
     return () => {
       isActive = false;
@@ -413,6 +368,12 @@ export default function RoomPage() {
     let isActive = true;
 
     async function heartbeat() {
+      if (isHeartbeatInFlightRef.current) {
+        return;
+      }
+
+      isHeartbeatInFlightRef.current = true;
+
       try {
         const response = await fetch(`/api/rooms/${code}/heartbeat`, {
           method: "POST",
@@ -428,6 +389,8 @@ export default function RoomPage() {
         }
       } catch {
         // O polling da sala exibe erro se a conexão realmente cair.
+      } finally {
+        isHeartbeatInFlightRef.current = false;
       }
     }
 
@@ -440,25 +403,24 @@ export default function RoomPage() {
     };
   }, [code, currentUserId]);
 
-  async function join(event: FormEvent<HTMLFormElement>) {
+  async function join(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
     setNotice("");
     setIsSaving(true);
 
     try {
-      const response = await fetch(`/api/rooms/${code}/join`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const data = await requestJson<{ room: Room; user: RoomUser }>(
+        `/api/rooms/${code}/join`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ browserId: getBrowserId(), nickname, color }),
         },
-        body: JSON.stringify({ browserId: getBrowserId(), nickname, color }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível entrar na sala.");
-      }
+        "Não foi possível entrar na sala.",
+      );
 
       saveSession({
         roomCode: code,
@@ -483,7 +445,7 @@ export default function RoomPage() {
     }
   }
 
-  async function updateUser(event: FormEvent<HTMLFormElement>) {
+  async function updateUser(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!currentUser) {
@@ -495,7 +457,7 @@ export default function RoomPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(
+      const data = await requestJson<{ room: Room; user: RoomUser }>(
         `/api/rooms/${code}/users/${currentUser.id}`,
         {
           method: "PATCH",
@@ -504,12 +466,8 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ nickname, color }),
         },
+        "Não foi possível atualizar usuário.",
       );
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível atualizar usuário.");
-      }
 
       saveSession({
         roomCode: code,
@@ -585,18 +543,17 @@ export default function RoomPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`/api/rooms/${code}/config`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
+      const data = await requestJson<{ room: Room }>(
+        `/api/rooms/${code}/config`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: currentUser.id, config: configDraft }),
         },
-        body: JSON.stringify({ userId: currentUser.id, config: configDraft }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível salvar a configuração.");
-      }
+        "Não foi possível salvar a configuração.",
+      );
 
       setRoom(data.room);
       isConfigDirtyRef.current = false;
@@ -623,18 +580,17 @@ export default function RoomPage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`/api/rooms/${code}/ready`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const data = await requestJson<{ room: Room }>(
+        `/api/rooms/${code}/ready`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: currentUser.id, ready }),
         },
-        body: JSON.stringify({ userId: currentUser.id, ready }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível alterar pronto.");
-      }
+        "Não foi possível alterar pronto.",
+      );
 
       setRoom(data.room);
 
@@ -664,18 +620,17 @@ export default function RoomPage() {
     setError("");
 
     try {
-      const response = await fetch(`/api/rooms/${code}/leave`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const data = await requestJson<{ room: Room | null }>(
+        `/api/rooms/${code}/leave`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: currentUser.id }),
         },
-        body: JSON.stringify({ userId: currentUser.id }),
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível sair da sala.");
-      }
+        "Não foi possível sair da sala.",
+      );
 
       clearSession(code);
       setUserId(null);
@@ -685,9 +640,7 @@ export default function RoomPage() {
       setConfigDraft(data.room?.config ?? DEFAULT_ROOM_CONFIG);
       setIsEditing(false);
 
-      if (!data.room) {
-        router.push("/");
-      }
+      router.push("/");
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -747,23 +700,21 @@ export default function RoomPage() {
       <section className="relative mx-auto w-full max-w-7xl">
         <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
           <div>
-            <Link
-              className="text-sm font-semibold text-[#d7b861]"
-              href="/"
-              onClick={(event) => {
-                if (!currentUser) {
-                  return;
-                }
-
-                event.preventDefault();
-                setError("Encerre sua participação antes de voltar ao início.");
-              }}
-            >
-              Voltar ao início
-            </Link>
-            <p className="mt-5 text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
-              Sala reservada
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
+                Sala reservada
+              </p>
+              {currentUser ? (
+                <LeaveRoomButton onClick={leave} />
+              ) : (
+                <Link
+                  className="text-sm font-semibold text-[#d7b861]"
+                  href="/"
+                >
+                  Voltar ao início
+                </Link>
+              )}
+            </div>
             <h1 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf] sm:text-5xl">
               Ante-sala do caso
             </h1>
@@ -914,13 +865,6 @@ export default function RoomPage() {
                 type="button"
               >
                 {currentUser.ready ? "Cancelar pronto" : "Pronto"}
-              </button>
-              <button
-                className="h-11 rounded-lg bg-[#8b1e1e] px-5 font-semibold text-white shadow-sm transition hover:bg-[#a32929]"
-                onClick={leave}
-                type="button"
-              >
-                Sair da sala
               </button>
             </div>
           </div>

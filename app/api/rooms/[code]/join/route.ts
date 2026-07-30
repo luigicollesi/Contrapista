@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { joinRoom } from "@/lib/rooms";
 
 export async function POST(
@@ -25,9 +26,6 @@ export async function POST(
 
     return Response.json(result);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao entrar na sala.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao entrar na sala.");
   }
 }

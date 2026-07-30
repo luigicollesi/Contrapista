@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { CaseCreationStatus } from "@/components/case-creation/case-creation-status";
+import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
+import { readJsonResponse } from "@/lib/client-http";
+import { clearSession, readUserId } from "@/lib/client-session";
 
 const steps = [
   "Reunindo depoimentos",
@@ -56,7 +60,6 @@ const clueCards = [
 const CASE_CREATION_FETCH_ATTEMPTS = 5;
 const CASE_CREATION_RETRY_DELAY_MS = 2500;
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
-const SESSION_STORAGE_KEY = "contrapista-session";
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -92,42 +95,24 @@ async function readEstimatedCreationTime(code: string) {
   }
 }
 
-async function readJsonResponse(response: Response) {
-  const text = await response.text();
+async function readCaseCreationRoomState(code: string) {
+  const response = await fetch(`/api/rooms/${code}`, {
+    cache: "no-store",
+  });
+  const data = await readJsonResponse<{
+    room?: {
+      activecase?: string | null;
+      allReady?: boolean;
+      users?: Array<{ id: string }>;
+    } | null;
+    error?: string;
+  }>(response, 160);
 
-  if (!text) {
-    return {};
+  if (!response.ok || !data.room) {
+    throw new Error(data.error ?? "Não foi possível ler a sala.");
   }
 
-  try {
-    return JSON.parse(text) as { error?: string };
-  } catch {
-    return {
-      error: `O servidor retornou uma resposta inesperada: ${text.slice(0, 160)}`,
-    };
-  }
-}
-
-function readUserId(code: string) {
-  try {
-    const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-
-    if (!stored) {
-      return null;
-    }
-
-    const session = JSON.parse(stored) as {
-      roomCode?: string;
-      user?: { id?: string };
-    };
-
-    return session.roomCode === code && session.user?.id
-      ? session.user.id
-      : null;
-  } catch {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    return null;
-  }
+  return data.room;
 }
 
 export default function CreatingCasePage() {
@@ -136,9 +121,12 @@ export default function CreatingCasePage() {
   const code = params.code;
   const [error, setError] = useState("");
   const [retryNotice, setRetryNotice] = useState("");
+  const [isLeaving, setIsLeaving] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
+  const isHeartbeatInFlightRef = useRef(false);
+  const isWatchingRoomRef = useRef(false);
   const progress = ((stepIndex + 1) / steps.length) * 100;
 
   useEffect(() => {
@@ -167,7 +155,7 @@ export default function CreatingCasePage() {
     const startedAt = Date.now();
     const interval = window.setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 250);
+    }, 1000);
 
     return () => window.clearInterval(interval);
   }, []);
@@ -182,16 +170,47 @@ export default function CreatingCasePage() {
     let isActive = true;
 
     async function heartbeat() {
+      if (isHeartbeatInFlightRef.current) {
+        return;
+      }
+
+      isHeartbeatInFlightRef.current = true;
+
       try {
-        await fetch(`/api/rooms/${code}/heartbeat`, {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId }),
         });
+        const data = await readJsonResponse<{
+          room?: {
+            activecase?: string | null;
+            allReady?: boolean;
+          } | null;
+          error?: string;
+        }>(response, 160);
+
+        if (!isActive || !response.ok) {
+          return;
+        }
+
+        if (data.room?.activecase) {
+          router.replace(`/sala/${code}/jogo`);
+          return;
+        }
+
+        if (data.room && !data.room.activecase && data.room.allReady === false) {
+          const message =
+            "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
+          sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
+          router.replace(`/sala/${code}`);
+        }
       } catch {
         // A criação em andamento lida com falhas de conexão no POST principal.
+      } finally {
+        isHeartbeatInFlightRef.current = false;
       }
     }
 
@@ -206,13 +225,80 @@ export default function CreatingCasePage() {
       isActive = false;
       window.clearInterval(interval);
     };
-  }, [code]);
+  }, [code, router]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function watchRoomState() {
+      if (isWatchingRoomRef.current) {
+        return;
+      }
+
+      isWatchingRoomRef.current = true;
+
+      try {
+        const room = await readCaseCreationRoomState(code);
+
+        if (!isActive) {
+          return;
+        }
+
+        if (room.activecase) {
+          router.replace(`/sala/${code}/jogo`);
+          return;
+        }
+
+        if (room.allReady === false) {
+          const message =
+            "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
+          sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
+          router.replace(`/sala/${code}`);
+        }
+      } catch {
+        // O POST principal ou o heartbeat mostram falhas relevantes ao usuário.
+      } finally {
+        isWatchingRoomRef.current = false;
+      }
+    }
+
+    void watchRoomState();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void watchRoomState();
+      }
+    }, 2000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [code, router]);
 
   useEffect(() => {
     let isActive = true;
 
     async function startCaseCreation() {
       try {
+        const userId = readUserId(code);
+
+        if (!userId) {
+          throw new Error("Sessão local não encontrada. Volte para a ante-sala.");
+        }
+
+        const room = await readCaseCreationRoomState(code);
+
+        if (!isActive) {
+          return;
+        }
+
+        const leaderUserId = room.users?.[0]?.id;
+
+        if (leaderUserId && leaderUserId !== userId) {
+          setRetryNotice("Aguardando o responsável da sala iniciar a criação do caso...");
+          return;
+        }
+
         let response: Response | null = null;
 
         for (
@@ -256,7 +342,7 @@ export default function CreatingCasePage() {
 
         setRetryNotice("");
 
-        const data = await readJsonResponse(response);
+        const data = await readJsonResponse<{ error?: string }>(response, 160);
 
         if (!response.ok) {
           throw new Error(data.error ?? "Não foi possível criar o caso.");
@@ -290,6 +376,32 @@ export default function CreatingCasePage() {
     };
   }, [code, router]);
 
+  async function leaveRoom() {
+    if (isLeaving) {
+      return;
+    }
+
+    setIsLeaving(true);
+    setError("");
+
+    const userId = readUserId(code);
+
+    try {
+      if (userId) {
+        await fetch(`/api/rooms/${code}/leave`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId }),
+        });
+      }
+    } finally {
+      clearSession(code);
+      router.replace("/");
+    }
+  }
+
   return (
     <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
       <div className="absolute inset-0 opacity-20">
@@ -307,9 +419,12 @@ export default function CreatingCasePage() {
       </div>
       <section className="relative mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[.82fr_1.18fr] lg:gap-12">
         <div className="mx-auto w-full max-w-2xl lg:mx-0">
-          <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d7b861]">
-            Sala {code}
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d7b861]">
+              Sala {code}
+            </p>
+            <LeaveRoomButton isLeaving={isLeaving} onClick={leaveRoom} />
+          </div>
           <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
             A mesa está consolidando um dossiê inédito.
           </h1>
@@ -318,89 +433,15 @@ export default function CreatingCasePage() {
             final. Esta etapa pode levar alguns instantes.
           </p>
 
-          <div className="mt-6 inline-flex flex-wrap items-center gap-4 rounded-lg border border-[#d7b861]/40 bg-[#171b16]/95 px-5 py-4 shadow-2xl shadow-black/25 backdrop-blur">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#d7b861]/35 bg-[#0f120e] font-mono text-sm font-black text-[#d7b861]">
-              ⏱
-            </div>
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-                Tempo de criação
-              </p>
-              <p className="mt-1 font-mono text-3xl font-black text-[#fff3cf]">
-                {formatElapsedTime(elapsedSeconds)}
-              </p>
-            </div>
-            {estimatedSeconds !== null ? (
-              <div className="border-l border-[#d7b861]/25 pl-4">
-                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-                  Estimativa
-                </p>
-                <p className="mt-1 font-mono text-2xl font-black text-[#fff3cf]">
-                  {formatElapsedTime(estimatedSeconds)}
-                </p>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/25">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-              Andamento do dossiê
-            </p>
-            <div className="mt-4 flex items-center gap-4">
-              <span className="relative flex h-4 w-4">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d7b861] opacity-75" />
-                <span className="relative inline-flex h-4 w-4 rounded-full bg-[#d7b861]" />
-              </span>
-              <p className="text-xl font-bold text-[#fff3cf]">
-                {steps[stepIndex]}
-              </p>
-            </div>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#0f120e]">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#8b1e1e] via-[#d7b861] to-[#fff3cf] transition-[width] duration-700"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <div className="mt-4 grid grid-cols-5 gap-2 sm:grid-cols-10">
-              {steps.map((step, index) => (
-                <span
-                  aria-label={step}
-                  className={`h-2 rounded-full transition ${
-                    index <= stepIndex ? "bg-[#d7b861]" : "bg-stone-800"
-                  }`}
-                  key={step}
-                  title={step}
-                />
-              ))}
-            </div>
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {steps.map((step, index) => (
-                <div
-                  className={`flex items-center gap-2 text-sm ${
-                    index === stepIndex
-                      ? "font-bold text-[#fff3cf]"
-                      : index < stepIndex
-                        ? "text-[#d7b861]"
-                        : "text-stone-500"
-                  }`}
-                  key={step}
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      index <= stepIndex ? "bg-[#d7b861]" : "bg-stone-700"
-                    }`}
-                  />
-                  {step}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {retryNotice ? (
-            <p className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#2d2818]/80 px-4 py-3 text-sm font-medium text-[#fff3cf]">
-              {retryNotice}
-            </p>
-          ) : null}
+          <CaseCreationStatus
+            elapsedSeconds={elapsedSeconds}
+            estimatedSeconds={estimatedSeconds}
+            formatElapsedTime={formatElapsedTime}
+            progress={progress}
+            retryNotice={retryNotice}
+            stepIndex={stepIndex}
+            steps={steps}
+          />
 
           {error ? (
             <p className="mt-6 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">

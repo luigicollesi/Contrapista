@@ -1,6 +1,7 @@
 import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
 import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { dbQuery } from "@/lib/db";
+import { getClueDistribution } from "@/lib/room-config";
 import {
   DEFAULT_ROOM_CONFIG,
   setRoomActiveCase,
@@ -203,6 +204,55 @@ function countRoomUsers(users: unknown) {
   return Array.isArray(users) ? users.length : 0;
 }
 
+function areCaseCreationUsersReady(users: unknown) {
+  return (
+    Array.isArray(users) &&
+    users.length > 0 &&
+    users.every((user) => {
+      if (!user || typeof user !== "object") {
+        return false;
+      }
+
+      const data = user as {
+        nickname?: unknown;
+        color?: unknown;
+        ready?: unknown;
+      };
+
+      return Boolean(data.nickname && data.color && data.ready === true);
+    })
+  );
+}
+
+async function assertRoomStillReadyForCaseCreation(roomCode: string) {
+  const current = await dbQuery<{
+    activecase: string | null;
+    users: unknown;
+  }>(
+    `
+      SELECT activecase::text AS activecase, users
+      FROM game_rooms
+      WHERE room_code = $1
+    `,
+    [roomCode],
+  );
+  const room = current.rows[0];
+
+  if (!room) {
+    throw new Error("Sala não encontrada durante a criação do caso.");
+  }
+
+  if (room.activecase) {
+    return;
+  }
+
+  if (!areCaseCreationUsersReady(room.users)) {
+    throw new Error(
+      "A sala mudou de estado antes de receber o caso criado. Voltem para a ante-sala e tentem novamente.",
+    );
+  }
+}
+
 function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
   function numberOrDefault(key: keyof RoomConfig) {
     const value = config?.[key];
@@ -222,25 +272,6 @@ function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
     trueCluesPerPlayer: numberOrDefault("trueCluesPerPlayer"),
     cluesPerPlayer: numberOrDefault("cluesPerPlayer"),
   } satisfies RoomConfig;
-}
-
-export function getClueDistribution(config = DEFAULT_ROOM_CONFIG) {
-  const normalizedConfig = normalizeCaseConfig(config);
-  const cluesPerPlayer = Math.min(
-    10,
-    Math.max(2, Math.round(normalizedConfig.cluesPerPlayer)),
-  );
-  const trueCluesPerPlayer = Math.min(
-    cluesPerPlayer,
-    Math.max(0, Math.round(normalizedConfig.trueCluesPerPlayer)),
-  );
-  const falseCluesPerPlayer = cluesPerPlayer - trueCluesPerPlayer;
-
-  return {
-    cluesPerPlayer,
-    trueCluesPerPlayer,
-    falseCluesPerPlayer,
-  };
 }
 
 function hasPlaceholderText(value: string) {
@@ -717,6 +748,7 @@ export async function createCaseForRoom(roomCode: string) {
       roomConfig,
       roomCaseGenerationSessionId(roomCode),
     );
+    await assertRoomStillReadyForCaseCreation(roomCode);
     const result = await dbQuery<GameCase>(
       `
         INSERT INTO cases (

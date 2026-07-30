@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { createRoom } from "@/lib/rooms";
 
 export async function POST(request: Request) {
@@ -8,9 +9,6 @@ export async function POST(request: Request) {
 
     return Response.json(await createRoom({ browserId: body.browserId }));
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao criar sala.";
-
-    return Response.json({ error: message }, { status: 500 });
+    return errorResponse(error, "Erro ao criar sala.", 500);
   }
 }

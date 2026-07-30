@@ -32,8 +32,4 @@ ALTER TABLE game_rooms ALTER COLUMN room_code SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS game_rooms_room_code_key
   ON game_rooms (room_code);
 
-CREATE INDEX IF NOT EXISTS game_rooms_empty_since_idx
-  ON game_rooms (empty_since)
-  WHERE empty_since IS NOT NULL;
-
 COMMIT;

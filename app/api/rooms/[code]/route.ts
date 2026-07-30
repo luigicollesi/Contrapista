@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { getRoom } from "@/lib/rooms";
 
 export async function GET(
@@ -15,9 +16,6 @@ export async function GET(
 
     return Response.json({ room });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao carregar sala.";
-
-    return Response.json({ error: message }, { status: 500 });
+    return errorResponse(error, "Erro ao carregar sala.", 500);
   }
 }

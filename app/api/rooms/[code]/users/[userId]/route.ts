@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { updateRoomUser } from "@/lib/rooms";
 
 export async function PATCH(
@@ -24,9 +25,6 @@ export async function PATCH(
 
     return Response.json(result);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao atualizar usuário.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao atualizar usuário.");
   }
 }

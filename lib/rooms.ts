@@ -6,6 +6,7 @@ import {
   normalizePlayerColor,
   type PlayerColor,
 } from "@/lib/player-colors";
+import { getClueDistribution } from "@/lib/room-config";
 
 export type RoomUser = {
   id: string;
@@ -82,7 +83,6 @@ export type GameState = {
   };
 };
 
-const ROOM_EMPTY_TTL_SQL = "1 hour";
 const ROULETTE_MS = 3_000;
 const DISCONNECTED_USER_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -207,6 +207,7 @@ function durationMs(seconds: number) {
 
 function publicRoom(room: Room) {
   const config = room.config ?? DEFAULT_ROOM_CONFIG;
+  const allReady = areAllRoomUsersReady(room.users);
 
   return {
     code: room.code,
@@ -216,14 +217,19 @@ function publicRoom(room: Room) {
     activeevent: room.activeevent,
     gamestate: room.gamestate,
     config,
-    allReady:
-      room.users.length > 0 &&
-      room.users.every((user) => hasCompleteProfile(user) && user.ready),
+    allReady,
   };
 }
 
 function hasCompleteProfile(user: RoomUser) {
   return Boolean(user.nickname && user.color);
+}
+
+function areAllRoomUsersReady(users: RoomUser[]) {
+  return (
+    users.length > 0 &&
+    users.every((user) => hasCompleteProfile(user) && user.ready)
+  );
 }
 
 function displayUserName(user: RoomUser) {
@@ -464,23 +470,6 @@ function finishRouletteSpin(
     phaseEndsAt: now + durationMs(config.clueSelectionTimeSeconds),
     sharedClue: undefined,
   } satisfies GameState;
-}
-
-function getClueDistribution(config = DEFAULT_ROOM_CONFIG) {
-  const cluesPerPlayer = Math.min(
-    10,
-    Math.max(2, Math.round(config.cluesPerPlayer)),
-  );
-  const trueCluesPerPlayer = Math.min(
-    cluesPerPlayer,
-    Math.max(0, Math.round(config.trueCluesPerPlayer)),
-  );
-
-  return {
-    cluesPerPlayer,
-    trueCluesPerPlayer,
-    falseCluesPerPlayer: cluesPerPlayer - trueCluesPerPlayer,
-  };
 }
 
 function getPlayerTrueClueIds(userIndex: number, config: RoomConfig) {
@@ -772,8 +761,7 @@ async function ensureSchema() {
         gamestate jsonb,
         users jsonb NOT NULL DEFAULT '[]'::jsonb,
         created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        empty_since timestamptz
+        updated_at timestamptz NOT NULL DEFAULT now()
       );
 
       CREATE TABLE IF NOT EXISTS game_rooms_config (
@@ -798,7 +786,6 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS users jsonb NOT NULL DEFAULT '[]'::jsonb,
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
-        ADD COLUMN IF NOT EXISTS empty_since timestamptz,
         ADD COLUMN IF NOT EXISTS config_id uuid;
 
       DO $$
@@ -863,10 +850,6 @@ async function ensureSchema() {
 
       CREATE UNIQUE INDEX IF NOT EXISTS game_rooms_room_code_key
         ON game_rooms (room_code);
-
-      CREATE INDEX IF NOT EXISTS game_rooms_empty_since_idx
-        ON game_rooms (empty_since)
-        WHERE empty_since IS NOT NULL;
     `)
     .then(() => undefined)
     .catch((error) => {
@@ -877,58 +860,49 @@ async function ensureSchema() {
   return schemaReady;
 }
 
-async function cleanupExpiredRooms(client?: DatabaseClient) {
-  const sql = `
-    DELETE FROM game_rooms
-    WHERE empty_since IS NOT NULL
-      AND empty_since <= now() - $1::interval
-  `;
-  const values = [ROOM_EMPTY_TTL_SQL];
-
-  if (client) {
-    await client.query(sql, values);
-    return;
-  }
-
-  await dbQuery(sql, values);
-}
-
 function removeDisconnectedUsersFromLobby(users: RoomUser[], now: number) {
   return users.filter((user) => !isUserDisconnected(user, now));
 }
 
-function eliminateDisconnectedUsersFromGame({
+function eliminateUsersFromGame({
   code,
   users,
   state,
   activeevent,
   now,
+  userIds,
+  eventGuess,
+  orderReason,
 }: {
   code: string;
   users: RoomUser[];
   state: GameState | null;
   activeevent: RoomEvent | null;
   now: number;
+  userIds: string[];
+  eventGuess: string;
+  orderReason: string;
 }) {
   if (!state) {
     return { state, activeevent };
   }
 
-  const staleUsers = users.filter(
+  const userIdSet = new Set(userIds);
+  const usersToEliminate = users.filter(
     (user) =>
       hasCompleteProfile(user) &&
-      isUserDisconnected(user, now) &&
+      userIdSet.has(user.id) &&
       !(state.eliminatedUserIds ?? []).includes(user.id),
   );
 
-  if (!staleUsers.length) {
+  if (!usersToEliminate.length) {
     return { state, activeevent };
   }
 
   const eliminatedUserIds = Array.from(
     new Set([
       ...(state.eliminatedUserIds ?? []),
-      ...staleUsers.map((user) => user.id),
+      ...usersToEliminate.map((user) => user.id),
     ]),
   );
   const nextStateBase = {
@@ -952,7 +926,7 @@ function eliminateDisconnectedUsersFromGame({
   const nextOrder = reconcileOrder(
     nextStateBase.order,
     activeUsers,
-    `${code}:disconnected`,
+    `${code}:${orderReason}`,
   );
   const previousTurnUserId = state.order[state.currentTurnIndex];
   const preservedTurnIndex = nextOrder.indexOf(previousTurnUserId);
@@ -960,7 +934,7 @@ function eliminateDisconnectedUsersFromGame({
     preservedTurnIndex >= 0
       ? preservedTurnIndex
       : Math.min(nextStateBase.currentTurnIndex, Math.max(0, nextOrder.length - 1));
-  const disconnectedUser = staleUsers[0];
+  const eliminatedUser = usersToEliminate[0];
   const remainingMs = state.pausedAt
     ? state.pausedRemainingMs ?? 0
     : Math.max(0, state.phaseEndsAt - now);
@@ -978,12 +952,41 @@ function eliminateDisconnectedUsersFromGame({
     activeevent: {
       id: crypto.randomUUID(),
       type: "solution_wrong",
-      actorId: disconnectedUser.id,
-      actorNickname: displayUserName(disconnectedUser),
-      guess: "Desconexão por inatividade.",
+      actorId: eliminatedUser.id,
+      actorNickname: displayUserName(eliminatedUser),
+      guess: eventGuess,
       createdAt: now,
     } satisfies RoomEvent,
   };
+}
+
+function eliminateDisconnectedUsersFromGame({
+  code,
+  users,
+  state,
+  activeevent,
+  now,
+}: {
+  code: string;
+  users: RoomUser[];
+  state: GameState | null;
+  activeevent: RoomEvent | null;
+  now: number;
+}) {
+  const staleUserIds = users
+    .filter((user) => hasCompleteProfile(user) && isUserDisconnected(user, now))
+    .map((user) => user.id);
+
+  return eliminateUsersFromGame({
+    code,
+    users,
+    state,
+    activeevent,
+    now,
+    userIds: staleUserIds,
+    eventGuess: "Desconexão por inatividade.",
+    orderReason: "disconnected",
+  });
 }
 
 async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
@@ -1018,8 +1021,24 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
     let updatedUsers = users;
     let updatedState = normalizeGameState(room.gamestate);
     let updatedEvent = room.activeevent;
+    let usersChanged = false;
+    let stateChanged = false;
+    let eventChanged = false;
 
     if (room.activecase) {
+      const eliminatedUserIds = new Set(updatedState?.eliminatedUserIds ?? []);
+      const disconnectedUserIds = users
+        .filter((user) => isUserDisconnected(user, now))
+        .map((user) => user.id);
+      const disconnectedGameUserIds = users
+        .filter(
+          (user) =>
+            updatedState &&
+            hasCompleteProfile(user) &&
+            isUserDisconnected(user, now) &&
+            !eliminatedUserIds.has(user.id),
+        )
+        .map((user) => user.id);
       const eliminated = eliminateDisconnectedUsersFromGame({
         code,
         users,
@@ -1030,18 +1049,36 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
 
       updatedState = eliminated.state;
       updatedEvent = eliminated.activeevent;
-      updatedUsers = users.map((user) =>
-        isUserDisconnected(user, now) ? { ...user, ready: false } : user,
-      );
+      stateChanged = disconnectedGameUserIds.length > 0;
+      eventChanged = disconnectedGameUserIds.length > 0;
+
+      if (disconnectedUserIds.length) {
+        const disconnected = new Set(disconnectedUserIds);
+        usersChanged = users.some(
+          (user) => disconnected.has(user.id) && user.ready,
+        );
+
+        if (usersChanged) {
+          updatedUsers = users.map((user) =>
+            disconnected.has(user.id) ? { ...user, ready: false } : user,
+          );
+        }
+      }
     } else {
+      const wasCreatingCase = areAllRoomUsersReady(users);
       updatedUsers = removeDisconnectedUsersFromLobby(users, now);
+      usersChanged = updatedUsers.length !== users.length;
+
+      if (wasCreatingCase && usersChanged) {
+        updatedUsers = updatedUsers.map((user) => ({ ...user, ready: false }));
+        updatedState = null;
+        updatedEvent = null;
+        stateChanged = Boolean(room.gamestate);
+        eventChanged = Boolean(room.activeevent);
+      }
     }
 
-    if (
-      JSON.stringify(updatedUsers) !== JSON.stringify(users) ||
-      JSON.stringify(updatedState) !== JSON.stringify(normalizeGameState(room.gamestate)) ||
-      JSON.stringify(updatedEvent) !== JSON.stringify(room.activeevent)
-    ) {
+    if (usersChanged || stateChanged || eventChanged) {
       if (!updatedUsers.length) {
         await executor.query(`DELETE FROM game_rooms WHERE room_code = $1`, [
           code,
@@ -1053,7 +1090,6 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
             SET users = $2::jsonb,
                 gamestate = $3::jsonb,
                 activeevent = $4::jsonb,
-                empty_since = NULL,
                 updated_at = now()
             WHERE room_code = $1
           `,
@@ -1084,7 +1120,6 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
 
 export async function createRoom({ browserId }: { browserId?: string } = {}) {
   await ensureSchema();
-  await cleanupExpiredRooms();
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
@@ -1106,8 +1141,8 @@ export async function createRoom({ browserId }: { browserId?: string } = {}) {
 
       const result = await client.query<Room & { id: string }>(
         `
-          INSERT INTO game_rooms (room_code, users, empty_since, activecase)
-          VALUES ($1, $2::jsonb, NULL, NULL)
+          INSERT INTO game_rooms (room_code, users, activecase)
+          VALUES ($1, $2::jsonb, NULL)
           ON CONFLICT DO NOTHING
           RETURNING id::text AS id, room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
         `,
@@ -1168,7 +1203,6 @@ export async function createRoom({ browserId }: { browserId?: string } = {}) {
 
 export async function getRoom(code: string) {
   await ensureSchema();
-  await cleanupExpiredRooms();
   await sweepDisconnectedUsers(code);
 
   const result = await dbQuery<Room>(
@@ -1267,7 +1301,6 @@ export async function joinRoom({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
     await sweepDisconnectedUsers(code, client);
 
     const current = await client.query<Room>(
@@ -1354,7 +1387,6 @@ export async function joinRoom({
       `
         UPDATE game_rooms
         SET users = $2::jsonb,
-            empty_since = NULL,
             updated_at = now()
         WHERE room_code = $1
       `,
@@ -1394,7 +1426,6 @@ export async function leaveRoom({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room>(
       `
@@ -1412,9 +1443,34 @@ export async function leaveRoom({
       return null;
     }
 
-    const updatedUsers = normalizeUsers(room.users).filter(
-      (user) => user.id !== userId,
-    );
+    const users = normalizeUsers(room.users);
+    const wasCreatingCase = !room.activecase && areAllRoomUsersReady(users);
+    let updatedUsers = users.filter((user) => user.id !== userId);
+    let updatedState = normalizeGameState(room.gamestate);
+    let updatedEvent = room.activeevent;
+
+    if (room.activecase) {
+      const eliminated = eliminateUsersFromGame({
+        code,
+        users,
+        state: updatedState,
+        activeevent: updatedEvent,
+        now: Date.now(),
+        userIds: [userId],
+        eventGuess: "Saiu da sala.",
+        orderReason: "left",
+      });
+
+      updatedUsers = users.map((user) =>
+        user.id === userId ? { ...user, ready: false } : user,
+      );
+      updatedState = eliminated.state;
+      updatedEvent = eliminated.activeevent;
+    } else if (wasCreatingCase && updatedUsers.length !== users.length) {
+      updatedUsers = updatedUsers.map((user) => ({ ...user, ready: false }));
+      updatedState = null;
+      updatedEvent = null;
+    }
 
     if (!updatedUsers.length) {
       await client.query(`DELETE FROM game_rooms WHERE room_code = $1`, [code]);
@@ -1426,11 +1482,17 @@ export async function leaveRoom({
       `
         UPDATE game_rooms
         SET users = $2::jsonb,
-            empty_since = NULL,
+            gamestate = $3::jsonb,
+            activeevent = $4::jsonb,
             updated_at = now()
         WHERE room_code = $1
       `,
-      [code, JSON.stringify(updatedUsers)],
+      [
+        code,
+        JSON.stringify(updatedUsers),
+        updatedState ? JSON.stringify(updatedState) : null,
+        updatedEvent ? JSON.stringify(updatedEvent) : null,
+      ],
     );
 
     await client.query("COMMIT");
@@ -1439,8 +1501,8 @@ export async function leaveRoom({
       code,
       users: updatedUsers,
       activecase: room.activecase,
-      activeevent: room.activeevent,
-      gamestate: normalizeGameState(room.gamestate),
+      activeevent: updatedEvent,
+      gamestate: updatedState,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -1463,7 +1525,6 @@ export async function heartbeatRoomUser({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
     await sweepDisconnectedUsers(code, client);
 
     const current = await client.query<Room>(
@@ -1555,7 +1616,6 @@ export async function updateRoomUser({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room>(
       `
@@ -1648,7 +1708,6 @@ export async function updateRoomConfig({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room & { config_id: string | null }>(
       `
@@ -1768,7 +1827,6 @@ export async function setRoomUserReady({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room>(
       `
@@ -1853,6 +1911,14 @@ export async function setRoomActiveCase({
           updated_at = now()
       WHERE room_code = $1
         AND activecase IS NULL
+        AND jsonb_array_length(users) > 0
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(users) AS user_data(value)
+          WHERE COALESCE(user_data.value->'ready', 'false'::jsonb) <> 'true'::jsonb
+             OR NULLIF(user_data.value->>'nickname', '') IS NULL
+             OR NULLIF(user_data.value->>'color', '') IS NULL
+        )
       RETURNING room_code
     `,
     [code, caseId],
@@ -2147,7 +2213,6 @@ export async function publishRoomEvent({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room>(
       `
@@ -2394,7 +2459,6 @@ export async function setGameUserReady({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await getLockedRoomWithConfig(client, code);
     const room = current.rows[0];
@@ -2481,7 +2545,6 @@ export async function skipGamePhase({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await getLockedRoomWithConfig(client, code);
     const room = current.rows[0];
@@ -2588,7 +2651,6 @@ export async function shareRoomClue({
 
   try {
     await client.query("BEGIN");
-    await cleanupExpiredRooms(client);
 
     const current = await client.query<Room>(
       `

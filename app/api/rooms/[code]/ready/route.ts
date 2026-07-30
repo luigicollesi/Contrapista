@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { setRoomUserReady } from "@/lib/rooms";
 
 export async function POST(
@@ -27,9 +28,6 @@ export async function POST(
 
     return Response.json({ room });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao alterar pronto.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao alterar pronto.");
   }
 }

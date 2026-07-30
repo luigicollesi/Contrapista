@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { updateRoomConfig, type RoomConfig } from "@/lib/rooms";
 
 export async function PATCH(
@@ -27,9 +28,6 @@ export async function PATCH(
 
     return Response.json({ room });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao atualizar configuração.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao atualizar configuração.");
   }
 }

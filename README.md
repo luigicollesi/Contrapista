@@ -152,7 +152,6 @@ POST  /api/rooms/[code]/game/skip        Vota para pular fase coletiva
 POST  /api/rooms/[code]/clues            Compartilha pista do turno
 POST  /api/rooms/[code]/events           Publica palpite final e resultado
 POST  /api/rooms/[code]/case/return      Marca retorno à ante-sala
-POST  /api/rooms/[code]/case/finish      Limpa caso ativo imediatamente
 GET   /api/cases/[caseId]                Lê caso salvo
 ```
 
@@ -183,7 +182,6 @@ Campos relevantes:
 - `gamestate`
 - `users`
 - `config_id`
-- `empty_since`
 - `created_at`
 - `updated_at`
 
@@ -196,7 +194,7 @@ Regras:
 - `activecase` aponta para `cases.id`;
 - `activeevent` sincroniza eventos de palpite e resultado;
 - `gamestate` sincroniza fases, roleta, turno atual, pistas compartilhadas, votos para pular, eliminados e retorno à ante-sala;
-- sala vazia recebe `empty_since` e pode ser removida após 1 hora.
+- sala vazia é removida imediatamente.
 
 ### `game_rooms_config`
 

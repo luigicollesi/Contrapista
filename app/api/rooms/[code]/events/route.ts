@@ -1,3 +1,4 @@
+import { errorResponse } from "@/lib/api-response";
 import { publishRoomEvent } from "@/lib/rooms";
 
 export async function POST(
@@ -41,9 +42,6 @@ export async function POST(
 
     return Response.json({ event });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Erro ao publicar evento.";
-
-    return Response.json({ error: message }, { status: 400 });
+    return errorResponse(error, "Erro ao publicar evento.");
   }
 }
