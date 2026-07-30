@@ -16,7 +16,7 @@ const steps = [
   "Lacrando o arquivo",
 ];
 
-const BOARD_THREAD_OFFSET = { x: 2, y: 2 };
+const BOARD_THREAD_OFFSET = { x: 1.5, y: 2 };
 
 const boardPins = [
   { x: 18, y: 22, delay: "0s" },

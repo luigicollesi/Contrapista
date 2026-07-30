@@ -56,7 +56,7 @@ Crie ou mantenha um arquivo `.env` com:
 DATABASE=postgresql://...
 
 LLM_PROVIDER=openrouter
-LLM_OPENROUTER_API_KEY=...
+LLM_OPENROUTER_API_KEY=key_1,key_2,key_3
 LLM_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODELS=openai/gpt-4o-mini,google/gemini-2.0-flash-001,meta-llama/llama-3.1-70b-instruct
 LLM_DEBUG=false
@@ -77,11 +77,14 @@ LLM_OPENROUTER_IGNORE=...
 
 O projeto usa os modelos na ordem de `LLM_MODELS`, separados por vírgula. Cada chamada à IA usa somente o primeiro modelo disponível da lista; os demais ficam ignorados até serem necessários. Se esse modelo falhar por erro de API, ele entra em espera por 24 horas no processo atual. Se retornar uma resposta inválida pela validação local, entra em espera por 5 minutos. A próxima chamada passa para o próximo modelo disponível da lista.
 
+`LLM_OPENROUTER_API_KEY` também aceita uma lista separada por vírgula. A fila percorre primeiro todos os modelos elegíveis com a primeira chave; quando todos os modelos dessa chave estiverem em espera, passa para a segunda chave e recomeça a ordem de modelos. O estado de espera é sempre por combinação `chave + modelo`, sem registrar ou expor o valor da chave nos logs.
+
 Na geração de caso, o backend continua tentando os modelos fora de espera antes de retornar erro. Requisições com JSON estruturado usam `provider.require_parameters` para evitar provedores incompatíveis com os parâmetros enviados. Quando um modelo rejeita `response_format` com HTTP 400 ou 404 de incompatibilidade de parâmetros, a mesma chamada é repetida uma vez sem `response_format`, mantendo a validação local do JSON. Erros HTTP 400/404 de parâmetros e respostas inválidas entram em espera curta de 5 minutos. Se nenhum modelo conseguir gerar um caso válido, a sala é resetada para a ante-sala e a UI informa que os modelos de IA estão indisponíveis.
 
 Técnicas de economia e consistência aplicadas:
 
 - `session_id` estável por fluxo de IA para favorecer sticky routing e prompt caching no OpenRouter.
+- Fila em memória por `session_id`: requisições da mesma sala/fluxo executam uma de cada vez, evitando rajadas simultâneas para a mesma sala.
 - Prompt de caso separado entre instruções fixas cacheáveis e configuração variável curta.
 - Filtro por Models API do OpenRouter para ignorar modelos não generativos, como embed, rerank, safety, moderation e guard.
 - Uso de `response_format` apenas quando o modelo anuncia suporte; caso contrário, o backend usa prompt JSON e validação local.

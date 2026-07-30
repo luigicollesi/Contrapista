@@ -8,7 +8,7 @@ import { PLAYER_COLORS, type PlayerColor } from "@/lib/player-colors";
 type RoomEvent =
   | {
       id: string;
-      type: "solution" | "solution_correct";
+      type: "solution" | "solution_pending" | "solution_correct" | "solution_wrong";
       actorId: string;
       actorNickname: string;
       createdAt: number;
@@ -68,6 +68,7 @@ type GameState = {
     clueNumber: number;
     clueId?: string;
     autoShared?: boolean;
+    autoSharedFalse?: boolean;
     createdAt: number;
   };
 };
@@ -96,6 +97,7 @@ type SavedSession = {
 };
 
 const SESSION_STORAGE_KEY = "contrapista-session";
+const EMPTY_USER_IDS: string[] = [];
 
 function leftCaseStorageKey(code: string) {
   return `contrapista-left-case-${code}`;
@@ -204,6 +206,41 @@ function pickClues({
     .filter((clue): clue is PlayerClue => Boolean(clue));
 }
 
+function getPlayerCluesForUser({
+  gameCase,
+  room,
+  userId,
+}: {
+  gameCase: GameCase;
+  room: Room;
+  userId: string;
+}) {
+  const userIndex = Math.max(
+    0,
+    room.users.findIndex((user) => user.id === userId),
+  );
+  const distribution = getClueDistribution(room.config);
+  const trueStart = userIndex * distribution.trueCluesPerPlayer;
+  const falseStart = userIndex * distribution.falseCluesPerPlayer;
+  const trueClues = pickClues({
+    clues: gameCase.true_clues,
+    start: trueStart,
+    count: distribution.trueCluesPerPlayer,
+    prefix: "true",
+  });
+  const falseClues = pickClues({
+    clues: gameCase.false_clues,
+    start: falseStart,
+    count: distribution.falseCluesPerPlayer,
+    prefix: "false",
+  });
+
+  return seededShuffle(
+    [...trueClues, ...falseClues],
+    `${gameCase.id}:${userId}:player-clues`,
+  ).map((clue, index) => ({ ...clue, number: index + 1 }));
+}
+
 export default function GamePage() {
   const params = useParams<{ code: string }>();
   const router = useRouter();
@@ -221,6 +258,7 @@ export default function GamePage() {
   const [now, setNow] = useState(() => Date.now());
   const [selectedClue, setSelectedClue] = useState<PlayerClue | null>(null);
   const [dismissedSharedClueId, setDismissedSharedClueId] = useState<string | null>(null);
+  const [dismissedWrongEventId, setDismissedWrongEventId] = useState<string | null>(null);
   const [finalGuess, setFinalGuess] = useState("");
   const finalGuessRef = useRef("");
   const [isSubmittingGuess, setIsSubmittingGuess] = useState(false);
@@ -302,7 +340,10 @@ export default function GamePage() {
   }, [code, gameCase, router]);
 
   const event = room?.activeevent ?? null;
-  const modalEvent = event && event.type !== "solution_wrong" ? event : null;
+  const modalEvent =
+    event && !(event.type === "solution_wrong" && dismissedWrongEventId === event.id)
+      ? event
+      : null;
   const isMissingGame =
     error === "Sala não encontrada." || error === "Caso não encontrado.";
   const playerClues = useMemo(() => {
@@ -310,39 +351,21 @@ export default function GamePage() {
       return [];
     }
 
-    const userIndex = Math.max(
-      0,
-      room.users.findIndex((user) => user.id === userId),
-    );
-    const distribution = getClueDistribution(room.config);
-    const trueStart = userIndex * distribution.trueCluesPerPlayer;
-    const falseStart = userIndex * distribution.falseCluesPerPlayer;
-    const trueClues = pickClues({
-      clues: gameCase.true_clues,
-      start: trueStart,
-      count: distribution.trueCluesPerPlayer,
-      prefix: "true",
-    });
-    const falseClues = pickClues({
-      clues: gameCase.false_clues,
-      start: falseStart,
-      count: distribution.falseCluesPerPlayer,
-      prefix: "false",
-    });
-
-    return seededShuffle(
-      [...trueClues, ...falseClues],
-      `${gameCase.id}:${userId}:player-clues`,
-    ).map((clue, index) => ({ ...clue, number: index + 1 }));
+    return getPlayerCluesForUser({ gameCase, room, userId });
   }, [gameCase, room, userId]);
   const gameState = room?.gamestate ?? null;
+  const eliminatedUserIds = gameState?.eliminatedUserIds ?? EMPTY_USER_IDS;
+  const activeUsers = room?.users.filter(
+    (user) => !eliminatedUserIds.includes(user.id),
+  ) ?? [];
   const currentTurnUserId = gameState?.order[gameState.currentTurnIndex] ?? null;
   const currentTurnUser = room?.users.find((user) => user.id === currentTurnUserId);
   const isMyTurn =
-    Boolean(userId) &&
+    userId !== null &&
     gameState?.phase === "turn" &&
     currentTurnUserId === userId &&
-    !gameState.pausedAt;
+    !gameState.pausedAt &&
+    !eliminatedUserIds.includes(userId);
   const mySharedClueIds = userId
     ? gameState?.sharedClueIds?.[userId] ?? []
     : [];
@@ -377,9 +400,10 @@ export default function GamePage() {
       ? gameState.skipVotes.userIds
       : [];
   const canSkipPhase = Boolean(
-    userId &&
+    userId !== null &&
       gameStarted &&
       !gameState?.pausedAt &&
+      !eliminatedUserIds.includes(userId) &&
       (gameState?.phase === "reading" ||
         gameState?.phase === "pause" ||
         gameState?.phase === "shared_clue"),
@@ -387,7 +411,7 @@ export default function GamePage() {
   const hasVotedToSkip = Boolean(userId && skipVoteIds.includes(userId));
 
   const isEliminated = Boolean(
-    userId && gameState?.eliminatedUserIds?.includes(userId),
+    userId && eliminatedUserIds.includes(userId),
   );
   const finalGuessEvent = modalEvent?.type === "solution" ? modalEvent : null;
   const isGuessActor = Boolean(
@@ -404,6 +428,30 @@ export default function GamePage() {
     ? guessRemainingSeconds
     : phaseRemainingSeconds;
   const fixedTimerLabel = finalGuessEvent ? "Palpite final" : phaseLabel;
+  const eliminatedClueGroups = useMemo(() => {
+    if (!gameCase || !room) {
+      return [];
+    }
+
+    return eliminatedUserIds
+      .map((eliminatedUserId) => {
+        const player = room.users.find((user) => user.id === eliminatedUserId);
+
+        if (!player) {
+          return null;
+        }
+
+        return {
+          player,
+          clues: getPlayerCluesForUser({
+            gameCase,
+            room,
+            userId: eliminatedUserId,
+          }),
+        };
+      })
+      .filter((group): group is NonNullable<typeof group> => Boolean(group));
+  }, [eliminatedUserIds, gameCase, room]);
 
   async function postGameAction(path: "ready" | "skip") {
     if (!userId) {
@@ -476,6 +524,11 @@ export default function GamePage() {
   }
 
   async function openSolution() {
+    if (isEliminated) {
+      setError("Jogadores eliminados não podem registrar palpite final.");
+      return;
+    }
+
     setError("");
 
     try {
@@ -498,6 +551,11 @@ export default function GamePage() {
   async function shareClue(clue: PlayerClue) {
     if (!userId) {
       setError("Entre na sala novamente para compartilhar pistas.");
+      return;
+    }
+
+    if (isEliminated) {
+      setError("Jogadores eliminados não podem compartilhar pistas.");
       return;
     }
 
@@ -542,11 +600,28 @@ export default function GamePage() {
 
     setError("");
     setIsSubmittingGuess(true);
+    const submittedGuess = finalGuessRef.current;
+
+    setRoom((current) =>
+      current
+        ? {
+            ...current,
+            activeevent: {
+              id: `${finalGuessEvent.id}:pending`,
+              type: "solution_pending",
+              actorId: finalGuessEvent.actorId,
+              actorNickname: finalGuessEvent.actorNickname,
+              guess: submittedGuess.trim(),
+              createdAt: Date.now(),
+            },
+          }
+        : current,
+    );
 
     try {
       const event = await publishEvent({
         type: "solution_guess",
-        guess: finalGuessRef.current,
+        guess: submittedGuess,
       });
       setRoom((current) =>
         current && event ? { ...current, activeevent: event } : current,
@@ -702,8 +777,14 @@ export default function GamePage() {
               </button>
             </div>
             {gameState.sharedClue.autoShared ? (
-              <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-bold text-[#fff3cf]">
-                O tempo de escolha foi excedido. Uma pista verdadeira foi compartilhada automaticamente.
+              <p className={`mt-5 rounded-lg border px-4 py-3 text-sm font-bold ${
+                gameState.sharedClue.autoSharedFalse
+                  ? "border-red-500/35 bg-red-950/30 text-red-100"
+                  : "border-[#d7b861]/35 bg-[#2a2112] text-[#fff3cf]"
+              }`}>
+                {gameState.sharedClue.autoSharedFalse
+                  ? "O tempo de escolha foi excedido. Uma pista falsa foi compartilhada automaticamente."
+                  : "O tempo de escolha foi excedido. Uma pista verdadeira foi compartilhada automaticamente."}
               </p>
             ) : null}
             <p className="mt-5 whitespace-pre-line text-xl leading-9 text-stone-200">
@@ -816,6 +897,72 @@ export default function GamePage() {
       );
     }
 
+    if (modalEvent.type === "solution_pending") {
+      return (
+        <Modal>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+            Palpite enviado
+          </p>
+          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+            {modalEvent.actorNickname} sustentou uma tese
+          </h2>
+          <div className="mt-5 rounded-lg border border-[#d7b861]/30 bg-[#0f120e] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+              Resposta enviada
+            </p>
+            <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+              {modalEvent.guess?.trim() || "Nenhuma resposta foi escrita."}
+            </p>
+          </div>
+          <div className="mt-6 flex items-center gap-3 rounded-lg border border-[#d7b861]/25 bg-[#2a2112] px-4 py-3 text-[#fff3cf]">
+            <span className="relative flex h-4 w-4">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d7b861] opacity-75" />
+              <span className="relative inline-flex h-4 w-4 rounded-full bg-[#d7b861]" />
+            </span>
+            <span className="font-bold">
+              Comparando com a solução oficial...
+            </span>
+          </div>
+        </Modal>
+      );
+    }
+
+    if (modalEvent.type === "solution_wrong") {
+      return (
+        <Modal>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-300">
+                Palpite incorreto
+              </p>
+              <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                {modalEvent.actorNickname} saiu da disputa
+              </h2>
+            </div>
+            <button
+              aria-label="Fechar resultado do palpite"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+              onClick={() => setDismissedWrongEventId(modalEvent.id)}
+              type="button"
+            >
+              X
+            </button>
+          </div>
+          <div className="mt-5 rounded-lg border border-red-500/35 bg-red-950/30 p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-200">
+              Resposta enviada
+            </p>
+            <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+              {modalEvent.guess?.trim() || "Nenhuma resposta foi escrita."}
+            </p>
+          </div>
+          <p className="mt-5 text-sm leading-6 text-stone-400">
+            O jogo continua com os investigadores restantes. As pistas desse jogador agora ficam abertas para consulta, mas não entram nas rodadas de compartilhamento.
+          </p>
+        </Modal>
+      );
+    }
+
     if (modalEvent.type !== "solution_correct") {
       return null;
     }
@@ -826,10 +973,10 @@ export default function GamePage() {
           Caso encerrado
         </p>
         <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-          Resposta correta
+          {modalEvent.actorNickname} acertou e venceu o caso
         </h2>
         <p className="mt-3 text-stone-400">
-          {modalEvent.actorNickname} confirmou a solução do caso.
+          A tese enviada bate com a solução oficial. A investigação está encerrada.
         </p>
         <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
           {gameCase.final_answer}
@@ -903,7 +1050,7 @@ export default function GamePage() {
               <span aria-hidden="true" className="text-lg">⏩</span>
               <span>{hasVotedToSkip ? "Aguardando" : "Pular"}</span>
               <span className="rounded-full bg-[#17130d]/15 px-2 py-0.5 text-xs">
-                {skipVoteIds.length}/{room?.users.length ?? 0}
+                {skipVoteIds.length}/{activeUsers.length}
               </span>
             </button>
           ) : null}
@@ -1055,6 +1202,7 @@ export default function GamePage() {
               </div>
             </article>
 
+            {!isEliminated ? (
             <section className="mt-8">
               <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                 <div>
@@ -1103,6 +1251,46 @@ export default function GamePage() {
                 })}
               </div>
             </section>
+            ) : null}
+
+            {!isEliminated && eliminatedClueGroups.length > 0 ? (
+              <section className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/20 lg:p-6">
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+                  Arquivo dos eliminados
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  Pistas fora da disputa
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
+                  Estes fragmentos pertenciam a jogadores eliminados. Eles ficam disponíveis para consulta da mesa, mas não podem ser escolhidos nas rodadas de compartilhamento.
+                </p>
+                <div className="mt-5 space-y-5">
+                  {eliminatedClueGroups.map(({ player, clues }) => (
+                    <div
+                      className="rounded-lg border border-stone-700 bg-[#0f120e] p-4"
+                      key={player.id}
+                    >
+                      <h3 className="font-bold text-[#fff3cf]">
+                        Fragmentos de {player.nickname}
+                      </h3>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {clues.map((clue) => (
+                          <article
+                            className="min-h-36 rounded border border-stone-700 bg-[#1d201c] p-4 text-stone-300 opacity-90"
+                            key={`${player.id}-${clue.id}`}
+                          >
+                            <p className="font-mono text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
+                              Consulta
+                            </p>
+                            <p className="mt-3 leading-7">{clue.text}</p>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             {isEliminated ? (
               <section className="mt-8 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/20">

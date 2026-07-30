@@ -24,7 +24,6 @@ function normalizeStringArray(value: unknown) {
 export function createOpenRouterClient(): AiProviderClient {
   const config = getAiConfig();
   const defaultHeaders: Record<string, string> = {
-    Authorization: `Bearer ${config.openRouter.apiKey}`,
     "Content-Type": "application/json",
   };
 
@@ -47,7 +46,10 @@ export function createOpenRouterClient(): AiProviderClient {
       }
 
       const response = await fetch(`${config.openRouter.baseUrl}/models`, {
-        headers: defaultHeaders,
+        headers: {
+          ...defaultHeaders,
+          Authorization: `Bearer ${config.openRouter.apiKeys[0]}`,
+        },
         method: "GET",
       });
       const responseText = await response.text();
@@ -137,7 +139,10 @@ export function createOpenRouterClient(): AiProviderClient {
 
       const response = await fetch(`${config.openRouter.baseUrl}/chat/completions`, {
         body: JSON.stringify(requestBody),
-        headers: defaultHeaders,
+        headers: {
+          ...defaultHeaders,
+          Authorization: `Bearer ${params.apiKey}`,
+        },
         method: "POST",
       });
       const responseText = await response.text();

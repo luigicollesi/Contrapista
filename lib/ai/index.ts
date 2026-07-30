@@ -14,11 +14,22 @@ import type {
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
 const INVALID_RESPONSE_STANDOFF_MS = 5 * 60 * 1000;
 const modelStandoffUntil = new Map<string, number>();
+const sessionQueues = new Map<string, Promise<void>>();
 
 type ModelSlot = {
   id: string;
   model: string;
   supportsResponseFormat?: boolean;
+};
+
+type ApiKeySlot = {
+  id: string;
+  apiKey: string;
+};
+
+type RequestSlot = {
+  apiKeySlot: ApiKeySlot;
+  modelSlot: ModelSlot;
 };
 
 function looksLikeNonGenerativeModel(model: string) {
@@ -80,36 +91,72 @@ async function getModelSlots(models: string[]): Promise<ModelSlot[]> {
 
 async function getAvailableModelSlots(
   models: string[],
+  apiKeySlotId: string,
   now: number,
 ): Promise<ModelSlot[]> {
   const slots = await getModelSlots(models);
 
   return slots.filter(
-    (slot) => (modelStandoffUntil.get(slot.id) ?? 0) <= now,
+    (slot) => (modelStandoffUntil.get(standoffKey(apiKeySlotId, slot.id)) ?? 0) <= now,
   );
 }
 
 export async function getAvailableAiModelCount(): Promise<number> {
-  return (await getAvailableModelSlots(getAiConfig().models, Date.now())).length;
+  const config = getAiConfig();
+  const keySlots = getApiKeySlots(config.openRouter.apiKeys);
+  const availableCounts = await Promise.all(
+    keySlots.map((keySlot) =>
+      getAvailableModelSlots(config.models, keySlot.id, Date.now()).then(
+        (slots) => slots.length,
+      ),
+    ),
+  );
+
+  return availableCounts.reduce((total, count) => total + count, 0);
 }
 
-async function getNextAvailableModelSlot(
+function getApiKeySlots(apiKeys: string[]): ApiKeySlot[] {
+  return apiKeys.map((apiKey, index) => ({
+    id: String(index + 1),
+    apiKey,
+  }));
+}
+
+function standoffKey(apiKeySlotId: string, modelSlotId: string) {
+  return `${apiKeySlotId}:${modelSlotId}`;
+}
+
+async function getNextAvailableRequestSlot(
   models: string[],
+  apiKeys: string[],
   now: number,
-): Promise<ModelSlot | null> {
-  return (await getAvailableModelSlots(models, now))[0] ?? null;
+): Promise<RequestSlot | null> {
+  for (const apiKeySlot of getApiKeySlots(apiKeys)) {
+    const [modelSlot] = await getAvailableModelSlots(
+      models,
+      apiKeySlot.id,
+      now,
+    );
+
+    if (modelSlot) {
+      return { apiKeySlot, modelSlot };
+    }
+  }
+
+  return null;
 }
 
 function putModelSlotInStandoff(
-  slotId: string,
+  apiKeySlotId: string,
+  modelSlotId: string,
   now: number,
   duration = MODEL_STANDOFF_MS,
 ): void {
-  modelStandoffUntil.set(slotId, now + duration);
+  modelStandoffUntil.set(standoffKey(apiKeySlotId, modelSlotId), now + duration);
 }
 
-function shouldPutModelInStandoff(status?: number): boolean {
-  return status !== 401 && status !== 403;
+function shouldPutModelInStandoff(): boolean {
+  return true;
 }
 
 function getModelStandoffDuration(status?: number): number {
@@ -118,12 +165,44 @@ function getModelStandoffDuration(status?: number): number {
     : MODEL_STANDOFF_MS;
 }
 
+async function runExclusiveForSession<T>(
+  sessionId: string | undefined,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!sessionId) {
+    return operation();
+  }
+
+  const previous = sessionQueues.get(sessionId) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const next = previous.then(() => current, () => current);
+
+  sessionQueues.set(sessionId, next);
+
+  await previous.catch(() => undefined);
+
+  try {
+    return await operation();
+  } finally {
+    release();
+
+    if (sessionQueues.get(sessionId) === next) {
+      sessionQueues.delete(sessionId);
+    }
+  }
+}
+
 async function requestModelCompletion({
   params,
+  apiKey,
   model,
   supportsResponseFormat,
 }: {
   params: AiChatCompletionParams;
+  apiKey: string;
   model: string;
   supportsResponseFormat?: boolean;
 }): Promise<AiChatCompletionResult> {
@@ -135,6 +214,7 @@ async function requestModelCompletion({
   async function request(responseFormat = initialResponseFormat) {
     const response = await client.chatCompletion({
       ...providerParams,
+      apiKey,
       responseFormat,
       model,
     });
@@ -165,21 +245,34 @@ async function requestModelCompletion({
 export async function chatCompletion(
   params: AiChatCompletionParams,
 ): Promise<AiChatCompletionResult> {
+  return runExclusiveForSession(params.sessionId, () =>
+    executeChatCompletion(params),
+  );
+}
+
+async function executeChatCompletion(
+  params: AiChatCompletionParams,
+): Promise<AiChatCompletionResult> {
   const config = getAiConfig();
   const now = Date.now();
-  const modelSlot = await getNextAvailableModelSlot(config.models, now);
+  const requestSlot = await getNextAvailableRequestSlot(
+    config.models,
+    config.openRouter.apiKeys,
+    now,
+  );
 
-  if (!modelSlot) {
+  if (!requestSlot) {
     throw new AiModelsUnavailableError(
-      "Todos os modelos LLM configurados estão temporariamente em espera por falhas de API.",
+      "Todas as combinações de chave e modelo LLM configuradas estão temporariamente em espera por falhas de API.",
     );
   }
 
+  const { apiKeySlot, modelSlot } = requestSlot;
   const { id: modelSlotId, model, supportsResponseFormat } = modelSlot;
 
   if (config.debug) {
     console.debug(
-      `[AI][request] provider=${config.provider} modelSlot=${modelSlotId} model=${model} responseFormat=${supportsResponseFormat === false ? "disabled" : params.responseFormat ? "enabled" : "none"} sessionId=${params.sessionId ?? "none"}`,
+      `[AI][request] provider=${config.provider} apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} responseFormat=${supportsResponseFormat === false ? "disabled" : params.responseFormat ? "enabled" : "none"} sessionId=${params.sessionId ?? "none"}`,
     );
     console.debug("[AI][prompt]", params.messages);
   }
@@ -187,6 +280,7 @@ export async function chatCompletion(
   try {
     const response = await requestModelCompletion({
       params,
+      apiKey: apiKeySlot.apiKey,
       model,
       supportsResponseFormat,
     });
@@ -200,11 +294,16 @@ export async function chatCompletion(
   } catch (error) {
     const failedAt = Date.now();
     const status = getErrorStatus(error);
-    const shouldStandoff = shouldPutModelInStandoff(status);
+    const shouldStandoff = shouldPutModelInStandoff();
     const standoffDuration = getModelStandoffDuration(status);
 
     if (shouldStandoff) {
-      putModelSlotInStandoff(modelSlotId, failedAt, standoffDuration);
+      putModelSlotInStandoff(
+        apiKeySlot.id,
+        modelSlotId,
+        failedAt,
+        standoffDuration,
+      );
     }
 
     if (config.debug) {
@@ -212,7 +311,7 @@ export async function chatCompletion(
         ? new Date(failedAt + standoffDuration).toISOString()
         : "not-applied";
       console.error(
-        `[AI][error] modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
+        `[AI][error] apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
         error,
       );
     }

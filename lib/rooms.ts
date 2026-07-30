@@ -35,7 +35,7 @@ export type Room = {
 
 export type RoomEvent = {
   id: string;
-  type: "solution" | "solution_correct" | "solution_wrong";
+  type: "solution" | "solution_pending" | "solution_correct" | "solution_wrong";
   actorId: string;
   actorNickname: string;
   createdAt: number;
@@ -69,6 +69,7 @@ export type GameState = {
     clueNumber: number;
     clueId?: string;
     autoShared?: boolean;
+    autoSharedFalse?: boolean;
     createdAt: number;
   };
 };
@@ -445,6 +446,14 @@ function getPlayerTrueClueIds(userIndex: number, config: RoomConfig) {
   );
 }
 
+function getPlayerFalseClueIds(userIndex: number, config: RoomConfig) {
+  const distribution = getClueDistribution(config);
+
+  return Array.from({ length: distribution.falseCluesPerPlayer }, (_, index) =>
+    `false-${userIndex * distribution.falseCluesPerPlayer + index}`,
+  );
+}
+
 function getSharedClueIds(state: GameState, userId: string) {
   return state.sharedClueIds?.[userId] ?? [];
 }
@@ -468,12 +477,18 @@ function normalizeTextArray(value: unknown): string[] {
 
 async function getCaseTrueClues(caseId: string, client?: DatabaseClient) {
   const executor = client ?? { query: dbQuery };
-  const result = await executor.query<{ true_clues: unknown }>(
-    `SELECT true_clues FROM cases WHERE id = $1::uuid`,
+  const result = await executor.query<{
+    true_clues: unknown;
+    false_clues: unknown;
+  }>(
+    `SELECT true_clues, false_clues FROM cases WHERE id = $1::uuid`,
     [caseId],
   );
 
-  return normalizeTextArray(result.rows[0]?.true_clues);
+  return {
+    trueClues: normalizeTextArray(result.rows[0]?.true_clues),
+    falseClues: normalizeTextArray(result.rows[0]?.false_clues),
+  };
 }
 
 async function buildAutoSharedClueState({
@@ -503,19 +518,34 @@ async function buildAutoSharedClueState({
     return null;
   }
 
-  const trueClues = await getCaseTrueClues(caseId, client);
+  const { trueClues, falseClues } = await getCaseTrueClues(caseId, client);
   const trueClueIds = getPlayerTrueClueIds(actorIndex, config);
+  const falseClueIds = getPlayerFalseClueIds(actorIndex, config);
+  const usedIds = getSharedClueIds(state, actor.id);
 
-  if (!trueClues.length || !trueClueIds.length) {
-    return null;
+  let clueId = trueClueIds.find((id) => !usedIds.includes(id));
+  let clueText = "";
+  let clueNumber = 0;
+  let autoSharedFalse = false;
+
+  if (clueId && trueClues.length) {
+    const clueIndex = Number(clueId.split("-")[1] ?? 0);
+    clueText = trueClues[clueIndex % trueClues.length] ?? "";
+    clueNumber = trueClueIds.indexOf(clueId) + 1;
   }
 
-  const usedIds = getSharedClueIds(state, actor.id);
-  const clueId = trueClueIds.find((id) => !usedIds.includes(id)) ?? trueClueIds[0];
-  const clueIndex = Number(clueId.split("-")[1] ?? 0);
-  const clueText = trueClues[clueIndex % trueClues.length];
-
   if (!clueText) {
+    clueId = falseClueIds.find((id) => !usedIds.includes(id));
+
+    if (clueId && falseClues.length) {
+      const clueIndex = Number(clueId.split("-")[1] ?? 0);
+      clueText = falseClues[clueIndex % falseClues.length] ?? "";
+      clueNumber = trueClueIds.length + falseClueIds.indexOf(clueId) + 1;
+      autoSharedFalse = true;
+    }
+  }
+
+  if (!clueId || !clueText) {
     return null;
   }
 
@@ -530,9 +560,10 @@ async function buildAutoSharedClueState({
       actorId: actor.id,
       actorNickname: actor.nickname,
       clueText,
-      clueNumber: trueClueIds.indexOf(clueId) + 1,
+      clueNumber,
       clueId,
       autoShared: true,
+      autoSharedFalse,
       createdAt: now,
     },
   } satisfies GameState;
@@ -1416,8 +1447,9 @@ export async function setRoomActiveCase({
   return result.rowCount === 1;
 }
 
-async function getCaseFinalAnswer(caseId: string, client: DatabaseClient) {
-  const result = await client.query<{ final_answer: string }>(
+async function getCaseFinalAnswer(caseId: string, client?: DatabaseClient) {
+  const executor = client ?? { query: dbQuery };
+  const result = await executor.query<{ final_answer: string }>(
     `SELECT final_answer FROM cases WHERE id = $1::uuid`,
     [caseId],
   );
@@ -1425,10 +1457,43 @@ async function getCaseFinalAnswer(caseId: string, client: DatabaseClient) {
   return result.rows[0]?.final_answer ?? "";
 }
 
+function parseAiBoolean(text: string): boolean | null {
+  const normalized = text.trim().toLowerCase();
+
+  if (normalized === "true") {
+    return true;
+  }
+
+  if (normalized === "false") {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(normalized) as unknown;
+
+    if (typeof parsed === "boolean") {
+      return parsed;
+    }
+  } catch {
+    // Fall back to extracting a clear boolean token from prose.
+  }
+
+  const matches = normalized.match(/\b(?:true|false)\b/g) ?? [];
+  const uniqueMatches = Array.from(new Set(matches));
+
+  if (uniqueMatches.length !== 1) {
+    return null;
+  }
+
+  return uniqueMatches[0] === "true";
+}
+
 async function evaluateFinalGuess({
+  roomCode,
   guess,
   finalAnswer,
 }: {
+  roomCode: string;
   guess: string;
   finalAnswer: string;
 }) {
@@ -1441,11 +1506,9 @@ async function evaluateFinalGuess({
   const response = await chatCompletion({
     temperature: 0,
     maxTokens: 8,
-    sessionId: "contrapista:final-guess-judge:v1",
+    sessionId: `contrapista:room:${roomCode}:final-guess-judge:v1`,
     validateText: (text) => {
-      const normalized = text.trim().toLowerCase();
-
-      if (normalized !== "true" && normalized !== "false") {
+      if (parseAiBoolean(text) === null) {
         throw new Error(`A IA respondeu avaliação inválida: ${text.slice(0, 40)}`);
       }
     },
@@ -1468,7 +1531,7 @@ O palpite resolve corretamente as perguntas centrais do caso?`,
     ],
   });
 
-  return response.text.trim().toLowerCase() === "true";
+  return parseAiBoolean(response.text) === true;
 }
 
 export async function publishRoomEvent({
@@ -1534,6 +1597,11 @@ export async function publishRoomEvent({
       throw new Error("Jogo ainda não foi iniciado.");
     }
 
+    if ((currentState.eliminatedUserIds ?? []).includes(actor.id)) {
+      await client.query("ROLLBACK");
+      throw new Error("Jogadores eliminados não podem interagir com o palpite final.");
+    }
+
     let activeevent: RoomEvent;
     let resumedState: GameState | null = currentState;
 
@@ -1558,12 +1626,46 @@ export async function publishRoomEvent({
         throw new Error("Caso ativo não encontrado.");
       }
 
-      const finalAnswer = await getCaseFinalAnswer(room.activecase, client);
+      const pendingEvent = {
+        id: crypto.randomUUID(),
+        type: "solution_pending",
+        actorId: actor.id,
+        actorNickname: actor.nickname,
+        guess: event.guess.trim(),
+        createdAt: now,
+      } satisfies RoomEvent;
+
+      await client.query(
+        `
+          UPDATE game_rooms
+          SET activeevent = $2::jsonb,
+              gamestate = $3::jsonb,
+              updated_at = now()
+          WHERE room_code = $1
+        `,
+        [code, JSON.stringify(pendingEvent), JSON.stringify(currentState)],
+      );
+
+      await client.query("COMMIT");
+
+      const finalAnswer = await getCaseFinalAnswer(room.activecase);
       const isCorrect = await evaluateFinalGuess({
+        roomCode: code,
         guess: event.guess,
         finalAnswer,
       });
 
+      await client.query("BEGIN");
+      const latest = await getLockedRoomWithConfig(client, code);
+      const latestRoom = latest.rows[0];
+
+      if (!latestRoom) {
+        await client.query("ROLLBACK");
+        return null;
+      }
+
+      const latestState = normalizeGameState(latestRoom.gamestate) ?? currentState;
+      const latestUsers = normalizeUsers(latestRoom.users);
       activeevent = {
         id: crypto.randomUUID(),
         type: isCorrect ? "solution_correct" : "solution_wrong",
@@ -1574,24 +1676,24 @@ export async function publishRoomEvent({
       };
 
       if (isCorrect) {
-        resumedState = currentState;
+        resumedState = latestState;
       } else {
         const eliminatedState = {
-          ...currentState,
-          eliminatedUserIds: addEliminatedUser(currentState, actor.id),
+          ...latestState,
+          eliminatedUserIds: addEliminatedUser(latestState, actor.id),
         };
-        const activeUsers = getActiveUsers(eliminatedState, normalizeUsers(room.users));
+        const activeUsers = getActiveUsers(eliminatedState, latestUsers);
         const nextOrder = reconcileOrder(
           eliminatedState.order,
           activeUsers,
           `${code}:eliminated`,
         );
-        const previousTurnUserId = currentState.order[currentState.currentTurnIndex];
+        const previousTurnUserId = latestState.order[latestState.currentTurnIndex];
         const preservedTurnIndex = nextOrder.indexOf(previousTurnUserId);
         const nextTurnIndex =
           preservedTurnIndex >= 0
             ? preservedTurnIndex
-            : Math.min(currentState.currentTurnIndex, Math.max(0, nextOrder.length - 1));
+            : Math.min(latestState.currentTurnIndex, Math.max(0, nextOrder.length - 1));
 
         resumedState = {
           ...eliminatedState,
@@ -1602,7 +1704,7 @@ export async function publishRoomEvent({
           phaseStartedAt: now,
           phaseEndsAt:
             now +
-            (currentState.pausedRemainingMs ??
+            (latestState.pausedRemainingMs ??
               durationMs(normalizeRoomConfig(room).clueSelectionTimeSeconds)),
         };
       }
@@ -1788,10 +1890,17 @@ export async function skipGamePhase({
       throw new Error("Esta fase não pode ser pulada agora.");
     }
 
+    const activeUsers = getActiveUsers(state, users);
+
+    if (!activeUsers.some((item) => item.id === user.id)) {
+      await client.query("ROLLBACK");
+      throw new Error("Jogadores eliminados não votam para pular fases.");
+    }
+
     const phaseKey = phaseSkipKey(state);
     const currentVotes =
       state.skipVotes?.phaseKey === phaseKey ? state.skipVotes.userIds : [];
-    const userIds = users.map((item) => item.id);
+    const userIds = activeUsers.map((item) => item.id);
     const nextVotes = Array.from(new Set([...currentVotes, user.id]));
     const votedState = {
       ...state,

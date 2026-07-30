@@ -42,26 +42,32 @@ function rememberCaseCreationDuration(startedAt: number) {
   );
 }
 
-function extractJson(text: string) {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-
-  if (fenced?.[1]?.trim().startsWith("{")) {
-    return fenced[1].trim();
+function hasCaseJsonShape(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
   }
 
-  const firstBrace = text.indexOf("{");
+  return CASE_JSON_KEYS.every((key) => key in value);
+}
 
-  if (firstBrace < 0) {
-    throw new Error(
-      `A IA respondeu texto em vez de JSON: ${text.slice(0, 80)}`,
-    );
+function tryParseJsonCandidate(candidate: string) {
+  try {
+    return JSON.parse(candidate) as unknown;
+  } catch {
+    return null;
   }
+}
 
+function isJsonCodeFence(language: string | undefined) {
+  return !language || language.toLowerCase() === "json";
+}
+
+function extractBalancedObject(text: string, startIndex: number) {
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let index = firstBrace; index < text.length; index += 1) {
+  for (let index = startIndex; index < text.length; index += 1) {
     const char = text[index];
 
     if (escaped) {
@@ -89,12 +95,98 @@ function extractJson(text: string) {
       depth -= 1;
 
       if (depth === 0) {
-        return text.slice(firstBrace, index + 1);
+        return text.slice(startIndex, index + 1).trim();
       }
     }
   }
 
-  throw new Error("A IA retornou um objeto JSON incompleto.");
+  return null;
+}
+
+function findJsonCandidate(text: string) {
+  const candidates: string[] = [];
+  const repairCandidates: string[] = [];
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith("{")) {
+    candidates.push(trimmed);
+  }
+
+  for (const match of text.matchAll(/```([a-zA-Z0-9_-]+)?\s*([\s\S]*?)```/g)) {
+    const [, language, content] = match;
+
+    if (!isJsonCodeFence(language)) {
+      continue;
+    }
+
+    const candidate = content.trim();
+
+    if (candidate.startsWith("{")) {
+      candidates.push(candidate);
+      repairCandidates.push(candidate);
+    }
+  }
+
+  const firstBrace = text.indexOf("{");
+
+  if (firstBrace < 0) {
+    return null;
+  }
+
+  const lastBrace = text.lastIndexOf("}");
+
+  if (lastBrace > firstBrace) {
+    const candidate = text.slice(firstBrace, lastBrace + 1).trim();
+    candidates.push(candidate);
+    repairCandidates.push(candidate);
+  }
+
+  for (let index = firstBrace; index >= 0 && index < text.length; index += 1) {
+    if (text[index] !== "{") {
+      continue;
+    }
+
+    const candidate = extractBalancedObject(text, index);
+
+    if (candidate) {
+      candidates.push(candidate);
+      repairCandidates.push(candidate);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJsonCandidate(candidate);
+
+    if (hasCaseJsonShape(parsed)) {
+      return candidate;
+    }
+  }
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJsonCandidate(candidate);
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return candidate;
+    }
+  }
+
+  return repairCandidates[0] ?? null;
+}
+
+function extractJson(text: string) {
+  const candidate = findJsonCandidate(text);
+
+  if (candidate) {
+    return candidate;
+  }
+
+  if (text.includes("{")) {
+    throw new Error("A IA retornou um objeto JSON incompleto.");
+  }
+
+  throw new Error(
+    `A IA respondeu texto em vez de JSON: ${text.slice(0, 80)}`,
+  );
 }
 
 function normalizeClueArray(value: unknown): string[] {
@@ -249,7 +341,11 @@ function parseGeneratedJson(text: string) {
   return JSON.parse(jsonText) as unknown;
 }
 
-async function repairGeneratedJson(text: string, parseError: unknown) {
+async function repairGeneratedJson(
+  text: string,
+  parseError: unknown,
+  sessionId: string,
+) {
   const jsonText = extractJson(text);
   const errorMessage =
     parseError instanceof Error ? parseError.message : "erro desconhecido";
@@ -257,7 +353,7 @@ async function repairGeneratedJson(text: string, parseError: unknown) {
   const repair = await chatCompletion({
     temperature: 0,
     maxTokens: 4200,
-    sessionId: "contrapista:json-repair:v1",
+    sessionId,
     responseFormat: { type: "json_object" },
     messages: [
       {
@@ -282,12 +378,16 @@ ${jsonText}
   return parseGeneratedJson(repair.text);
 }
 
-async function parseCaseResponse(text: string) {
+async function parseCaseResponse(text: string, sessionId: string) {
   try {
     return parseGeneratedJson(text);
   } catch (parseError) {
-    return repairGeneratedJson(text, parseError);
+    return repairGeneratedJson(text, parseError, sessionId);
   }
+}
+
+function roomCaseGenerationSessionId(roomCode: string) {
+  return `contrapista:room:${roomCode}:case-generation:v2`;
 }
 
 const CASE_GENERATION_SYSTEM_PROMPT = `
@@ -418,7 +518,11 @@ async function ensureCaseSchema() {
   `);
 }
 
-async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
+async function generateCaseWithAi(
+  playerCount: number,
+  config: RoomConfig,
+  sessionId: string,
+) {
   const distribution = getClueDistribution(config);
   const requiredTrueClues = playerCount * distribution.trueCluesPerPlayer;
   const requiredFalseClues = playerCount * distribution.falseCluesPerPlayer;
@@ -434,7 +538,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
       const chat = await chatCompletion({
         temperature: attempt === 0 ? 0.8 : 0.2,
         maxTokens: 3800,
-        sessionId: "contrapista:case-generation:v2",
+        sessionId,
         responseFormat: caseResponseFormat({
           requiredTrueClues,
           requiredFalseClues,
@@ -467,7 +571,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
       });
 
       return assertGeneratedCase(
-        await parseCaseResponse(chat.text),
+        await parseCaseResponse(chat.text, sessionId),
         requiredTrueClues,
         requiredFalseClues,
       );
@@ -477,8 +581,7 @@ async function generateCaseWithAi(playerCount: number, config: RoomConfig) {
 
       if (
         error instanceof AiModelsUnavailableError &&
-        (error.failures.length === 0 ||
-          error.failures.some((failure) => failure.status === 401 || failure.status === 403))
+        error.failures.length === 0
       ) {
         break;
       }
@@ -565,7 +668,11 @@ export async function createCaseForRoom(roomCode: string) {
     const playerCount = countRoomUsers(room?.users);
     const roomConfig = normalizeCaseConfig(room);
     const caseCreationStartedAt = Date.now();
-    const generatedCase = await generateCaseWithAi(playerCount, roomConfig);
+    const generatedCase = await generateCaseWithAi(
+      playerCount,
+      roomConfig,
+      roomCaseGenerationSessionId(roomCode),
+    );
     const result = await dbQuery<GameCase>(
       `
         INSERT INTO cases (

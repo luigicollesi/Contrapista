@@ -46,6 +46,16 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function requireCsvEnv(name: string): string[] {
+  const values = parseCsv(requireEnv(name));
+
+  if (!values?.length) {
+    throw new Error(`A variável de ambiente ${name} não tem valores válidos.`);
+  }
+
+  return values;
+}
+
 function parseProvider(rawProvider?: string): LlmProvider {
   const provider = (rawProvider ?? "openrouter").trim().toLowerCase();
 
@@ -96,7 +106,7 @@ export function getAiConfig(): AiConfig {
     models: parseModels(),
     debug: isTruthy(process.env.LLM_DEBUG),
     openRouter: {
-      apiKey: requireEnv("LLM_OPENROUTER_API_KEY"),
+      apiKeys: requireCsvEnv("LLM_OPENROUTER_API_KEY"),
       baseUrl:
         process.env.LLM_OPENROUTER_BASE_URL?.trim() || OPENROUTER_BASE_URL,
       appName: process.env.LLM_OPENROUTER_APP_NAME?.trim() || undefined,
