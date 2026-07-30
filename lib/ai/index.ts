@@ -155,8 +155,35 @@ function putModelSlotInStandoff(
   modelStandoffUntil.set(standoffKey(apiKeySlotId, modelSlotId), now + duration);
 }
 
+async function putApiKeyModelsInStandoff(
+  apiKeySlotId: string,
+  models: string[],
+  now: number,
+  duration = MODEL_STANDOFF_MS,
+): Promise<void> {
+  const slots = await getModelSlots(models);
+
+  for (const slot of slots) {
+    putModelSlotInStandoff(apiKeySlotId, slot.id, now, duration);
+  }
+}
+
 function shouldPutModelInStandoff(): boolean {
   return true;
+}
+
+function isApiKeyScopedFailure(status: number | undefined, message: string) {
+  if (status === 401 || status === 403) {
+    return true;
+  }
+
+  if (status !== 429) {
+    return false;
+  }
+
+  return /(?:free-models-per-day|rate.?limit|quota|credit|insufficient)/i.test(
+    message,
+  );
 }
 
 function getModelStandoffDuration(status?: number): number {
@@ -294,10 +321,19 @@ async function executeChatCompletion(
   } catch (error) {
     const failedAt = Date.now();
     const status = getErrorStatus(error);
+    const message = getErrorMessage(error);
     const shouldStandoff = shouldPutModelInStandoff();
     const standoffDuration = getModelStandoffDuration(status);
+    const apiKeyScopedFailure = isApiKeyScopedFailure(status, message);
 
-    if (shouldStandoff) {
+    if (shouldStandoff && apiKeyScopedFailure) {
+      await putApiKeyModelsInStandoff(
+        apiKeySlot.id,
+        config.models,
+        failedAt,
+        standoffDuration,
+      );
+    } else if (shouldStandoff) {
       putModelSlotInStandoff(
         apiKeySlot.id,
         modelSlotId,
@@ -311,7 +347,7 @@ async function executeChatCompletion(
         ? new Date(failedAt + standoffDuration).toISOString()
         : "not-applied";
       console.error(
-        `[AI][error] apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} standoffUntil=${standoffUntil}`,
+        `[AI][error] apiKeySlot=${apiKeySlot.id} modelSlot=${modelSlotId} model=${model} standoffScope=${apiKeyScopedFailure ? "api-key" : "model"} standoffUntil=${standoffUntil}`,
         error,
       );
     }
@@ -322,7 +358,7 @@ async function executeChatCompletion(
         {
           model,
           status,
-          message: getErrorMessage(error),
+          message,
         },
       ],
       status ?? 502,
