@@ -1,9 +1,13 @@
 import { AUTH_SECRET } from "@/lib/auth-config";
 import { logSecurityEvent } from "@/lib/security/audit-log";
 import { validateCsrfRequest } from "@/lib/security/csrf";
+import { validateTrustedBackendHost } from "@/lib/security/trusted-hosts";
+import type { JWT } from "next-auth/jwt";
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
 
+const backendApiPrefix = "/api";
+const providerCallbackPrefixes = ["/api/auth/callback/google", "/api/auth/callback/github"];
 const protectedPagePrefixes = ["/jogar/busca", "/jogar/diario", "/sala"];
 const protectedApiPrefixes = [
   "/api/cases",
@@ -23,7 +27,18 @@ function isProtectedPath(pathname: string, prefixes: string[]) {
   );
 }
 
-function hasAuthenticatedToken(token: Awaited<ReturnType<typeof getToken>>) {
+function isBackendApiPath(pathname: string) {
+  return pathname === backendApiPrefix || pathname.startsWith(`${backendApiPrefix}/`);
+}
+
+function isProviderCallbackPath(pathname: string) {
+  return isProtectedPath(pathname, providerCallbackPrefixes);
+}
+
+const SECURE_AUTH_COOKIE = "__Secure-authjs.session-token";
+const AUTH_COOKIE = "authjs.session-token";
+
+function hasAuthenticatedToken(token: JWT | null) {
   if (!token || typeof token === "string") {
     return false;
   }
@@ -31,14 +46,59 @@ function hasAuthenticatedToken(token: Awaited<ReturnType<typeof getToken>>) {
   return typeof token?.id === "string" || typeof token?.sub === "string";
 }
 
+async function readAuthToken(request: NextRequest) {
+  const cookieNames = request.cookies.has(SECURE_AUTH_COOKIE)
+    ? [SECURE_AUTH_COOKIE, AUTH_COOKIE]
+    : [AUTH_COOKIE, SECURE_AUTH_COOKIE];
+
+  for (const cookieName of cookieNames) {
+    try {
+      const token = await getToken({
+        cookieName,
+        req: request,
+        secret: AUTH_SECRET,
+      });
+
+      if (token) {
+        return token;
+      }
+    } catch (error) {
+      logSecurityEvent("auth-token-read", {
+        action: "ignore-invalid-token",
+        cookieName,
+        error: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
+  }
+
+  return null;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const protectsBackendHost =
+    isBackendApiPath(pathname) && !isProviderCallbackPath(pathname);
   const protectsPage = isProtectedPath(pathname, protectedPagePrefixes);
   const protectsApi = isProtectedPath(pathname, protectedApiPrefixes);
   const protectsCsrf = isProtectedPath(pathname, csrfApiPrefixes);
 
-  if (!protectsPage && !protectsApi && !protectsCsrf) {
+  if (!protectsBackendHost && !protectsPage && !protectsApi && !protectsCsrf) {
     return NextResponse.next();
+  }
+
+  if (protectsBackendHost) {
+    const hostError = validateTrustedBackendHost(request);
+
+    if (hostError) {
+      logSecurityEvent("trusted-host", {
+        action: "block",
+        path: pathname,
+        requestHost: hostError.requestHost,
+        trustedHostsCount: hostError.trustedHostsCount,
+      });
+
+      return Response.json({ error: "Host não autorizado." }, { status: 403 });
+    }
   }
 
   if (protectsCsrf) {
@@ -60,10 +120,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = await getToken({
-    req: request,
-    secret: AUTH_SECRET,
-  });
+  const token = await readAuthToken(request);
 
   if (hasAuthenticatedToken(token)) {
     return NextResponse.next();
@@ -85,14 +142,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/api/:path*",
     "/jogar/busca/:path*",
     "/jogar/diario/:path*",
-    "/api/cases/:path*",
-    "/api/auth/register",
-    "/api/auth/username",
     "/sala/:path*",
-    "/api/daily-problem/:path*",
-    "/api/matchmaking/:path*",
-    "/api/rooms/:path*",
   ],
 };

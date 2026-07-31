@@ -475,12 +475,16 @@ Contrato:
 Modelo de final_answer:
 "Resposta:\\n1. Culpado/resposta da pergunta 1.\\n2. Método/resposta da pergunta 2.\\nContexto: Explique em poucas frases como as pistas sustentam o gabarito e por que os desvios eram plausíveis."
 
-Qualidade:
-- A solução depende de cruzar várias pistas, não de uma pista óbvia.
-- Inclua pistas físicas, testemunhais, temporais e alguns jogos de linguagem simples.
-- Pistas falsas devem ser plausíveis e úteis para discussão, mas desviam sem o conjunto completo.
-- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
-`.trim();
+	Qualidade:
+	- A solução depende de cruzar várias pistas, não de uma pista óbvia.
+	- Inclua pistas físicas, testemunhais, temporais e alguns jogos de linguagem simples.
+	- Pistas falsas devem ser plausíveis e úteis para discussão, mas desviam sem o conjunto completo.
+	- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
+	- Varie o núcleo do mistério: crime, roubo, fraude, desaparecimento, chantagem, troca de identidade, objeto disfarçado ou álibi impossível.
+	- Use cenários concretos variados de investigação.
+	- Faça algumas pistas funcionarem como cadeia: uma indica local, outra revela motivo, outra desmonta um álibi e outra redefine o objeto ou método.
+	- Pistas engenhosas podem envolver profissão, hábito, clima, transporte, dívida, procedência de objeto, detalhe de linguagem, horário ou vestígio físico discreto.
+	`.trim();
 
 function casePrompt({
   playerCount,
@@ -524,10 +528,11 @@ Configuração da partida:
 Regras específicas:
 - true_clues deve ter exatamente ${requiredTrueClues} string(s).
 - false_clues deve ter exatamente ${requiredFalseClues} string(s).
-- ${trueClueNarrativeRules}
-- ${falseClueNarrativeRules}
-- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
-- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
+	- ${trueClueNarrativeRules}
+	- ${falseClueNarrativeRules}
+	- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
+	- Distribua as pistas para que nenhuma sozinha resolva tudo; pelo menos uma pista deve parecer secundária até ser combinada com outra.
+	- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
 ${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
 `.trim();
 }

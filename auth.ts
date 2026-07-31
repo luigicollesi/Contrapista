@@ -17,6 +17,7 @@ import {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: AUTH_SECRET,
+  trustHost: true,
   session: {
     strategy: "jwt",
     maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
