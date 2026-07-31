@@ -7,6 +7,7 @@ import {
   joinMatchmakingQueue,
   readMatchmakingStatus,
 } from "@/lib/matchmaking";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 async function getQueueIdentity() {
   const session = await auth();
@@ -44,6 +45,18 @@ export async function POST(request: Request) {
       );
     }
 
+    const limited = rateLimitResponse({
+      identity: identity.userId,
+      limit: 12,
+      namespace: "matchmaking-join",
+      request,
+      windowMs: 5 * 60_000,
+    });
+
+    if (limited) {
+      return limited;
+    }
+
     return Response.json(
       await joinMatchmakingQueue({
         browserId: body.browserId,
@@ -75,6 +88,18 @@ export async function GET(request: Request) {
       { error: "Faça login para consultar a fila." },
       { status: 401 },
     );
+  }
+
+  const limited = rateLimitResponse({
+    identity: session.user.id,
+    limit: heartbeat ? 90 : 30,
+    namespace: heartbeat ? "matchmaking-heartbeat" : "matchmaking-status",
+    request,
+    windowMs: 60_000,
+  });
+
+  if (limited) {
+    return limited;
   }
 
   try {

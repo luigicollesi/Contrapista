@@ -1,3 +1,26 @@
+const CSRF_HEADER = "x-contrapista-csrf";
+const CSRF_HEADER_VALUE = "1";
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function isStateChangingMethod(method: string | undefined) {
+  return !SAFE_METHODS.has((method ?? "GET").toUpperCase());
+}
+
+export function withCsrfHeader(init: RequestInit = {}) {
+  if (!isStateChangingMethod(init.method)) {
+    return init;
+  }
+
+  const headers = new Headers(init.headers);
+
+  headers.set(CSRF_HEADER, CSRF_HEADER_VALUE);
+
+  return {
+    ...init,
+    headers,
+  };
+}
+
 export async function readJsonResponse<T>(
   response: Response,
   unexpectedTextLimit = 180,
@@ -32,7 +55,7 @@ export async function requestJson<T>(
   init: RequestInit,
   fallbackError: string,
 ): Promise<T> {
-  const response = await fetch(input, init);
+  const response = await fetch(input, withCsrfHeader(init));
   const data = await readJsonResponse<T & { error?: string }>(response);
 
   if (!response.ok || "unexpectedResponse" in data) {

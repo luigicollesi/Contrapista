@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { joinRoom } from "@/lib/rooms";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 export async function POST(
   request: Request,
@@ -15,13 +16,26 @@ export async function POST(
     );
   }
 
+  const limited = rateLimitResponse({
+    identity: session.user.id,
+    limit: 20,
+    namespace: "rooms-join",
+    request,
+    windowMs: 10 * 60_000,
+  });
+
+  if (limited) {
+    return limited;
+  }
+
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     browserId?: string;
   };
 
   try {
     const result = await joinRoom({
+      accountUserId: session.user.id,
       code,
       browserId: body.browserId,
       nickname: session.user.name,

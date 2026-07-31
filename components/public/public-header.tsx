@@ -14,7 +14,7 @@ export function PublicHeader() {
     <header className="sticky top-0 z-50 border-b border-[#d0a85c]/20 bg-[#0e1111]/90 text-stone-50 shadow-2xl shadow-black/20 backdrop-blur">
       <div className="mx-auto grid w-full max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-3 py-2 sm:px-5 lg:min-h-20 lg:grid-cols-[minmax(220px,1fr)_auto_minmax(220px,1fr)] lg:items-stretch lg:gap-6 lg:px-8 lg:py-0">
         <Link className="flex min-w-0 items-center gap-2 lg:self-center" href="/">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-[#d0a85c]/50 bg-[#171a1a] shadow-lg sm:h-11 sm:w-11">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-[#d0a85c]/50 bg-[#6f6045] shadow-lg sm:h-11 sm:w-11">
             <Image
               alt="Contrapista"
               className="h-8 w-8 object-contain sm:h-9 sm:w-9"

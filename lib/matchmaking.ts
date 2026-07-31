@@ -5,6 +5,7 @@ import {
   DEFAULT_ROOM_CONFIG,
   ensureRoomsSchema,
   getRoom,
+  toRoomNickname,
   type RoomMode,
   type RoomUser,
 } from "@/lib/rooms";
@@ -81,6 +82,7 @@ async function createMatchRoom({
     const now = Date.now();
     const users: RoomUser[] = players.map((player) => ({
       id: crypto.randomUUID(),
+      accountUserId: player.user_id,
       browserId: player.browser_id,
       nickname: player.display_name,
       color: null,
@@ -241,7 +243,7 @@ export async function joinMatchmakingQueue({
   await ensureMatchmakingSchema();
 
   const normalizedBrowserId = normalizeBrowserId(browserId);
-  const normalizedDisplayName = displayName.trim().slice(0, 18);
+  const normalizedDisplayName = toRoomNickname(displayName);
   const normalizedRating = Math.max(0, Math.round(rating ?? 1000));
 
   if (!normalizedDisplayName) {

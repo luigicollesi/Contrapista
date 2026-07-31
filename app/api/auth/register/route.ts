@@ -1,4 +1,5 @@
 import { createCredentialsUser, validateAuthInput } from "@/lib/auth-users";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function getUniqueConstraint(error: unknown) {
   return (
@@ -14,6 +15,21 @@ function getUniqueConstraint(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  const limited = rateLimitResponse({
+    body: {
+      ok: false,
+      message: "Muitas tentativas de cadastro. Aguarde alguns minutos e tente novamente.",
+    },
+    limit: 5,
+    namespace: "auth-register",
+    request,
+    windowMs: 10 * 60_000,
+  });
+
+  if (limited) {
+    return limited;
+  }
+
   const body = (await request.json().catch(() => null)) as {
     name?: unknown;
     username?: unknown;

@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { listCaseSummaries } from "@/lib/cases";
 import { getRoom, selectRoomCase } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 function unauthorized() {
   return Response.json(
@@ -66,6 +67,16 @@ export async function PATCH(
 
   if (!body.userId) {
     return Response.json({ error: "Usuário inválido." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "case-selection",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

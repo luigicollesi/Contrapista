@@ -9,7 +9,7 @@ import {
   useTransition,
   type SubmitEvent,
 } from "react";
-import { readJsonResponse } from "@/lib/client-http";
+import { readJsonResponse, withCsrfHeader } from "@/lib/client-http";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 type DailyProblem = {
@@ -232,11 +232,11 @@ export function DailyProblem() {
     setNotice("");
 
     startTransition(async () => {
-      const response = await fetch("/api/daily-problem", {
+      const response = await fetch("/api/daily-problem", withCsrfHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ answer, date: problem?.date }),
-      });
+      }));
       const data = await readJsonResponse<DailyProblemResponse>(response);
 
       if (data.problem) {
@@ -425,7 +425,7 @@ export function DailyProblem() {
         {isCalendarOpen ? (
           <ResponsiveSheet
             backdropClassName="bg-black/70 backdrop-blur-sm"
-            contentClassName="max-w-lg border border-[#d0a85c]/35 bg-[#121515] p-4 text-stone-50 shadow-black/50 sm:rounded-sm sm:p-5"
+            contentClassName="max-w-lg border border-[#d0a85c]/35 bg-[#121515] p-4 text-stone-50 shadow-black/50 sm:w-[34rem] sm:rounded-sm sm:p-5"
           >
             <div>
               <div className="flex items-start justify-between gap-4">

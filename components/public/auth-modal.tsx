@@ -141,12 +141,12 @@ export function AuthModal({
     <ResponsiveSheet
       ariaLabelledBy={titleId}
       backdropClassName="bg-[#050606]/85 backdrop-blur-sm"
-      contentClassName="relative grid max-w-5xl border border-[#d0a85c]/40 bg-[#101414] shadow-black/60 lg:grid-cols-[0.86fr_1.14fr]"
+      contentClassName="relative max-w-[58rem] overflow-hidden border border-[#d0a85c]/40 bg-[#101414] shadow-black/60"
       zIndexClassName="z-[80]"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(208,168,92,0.16),transparent_42%),linear-gradient(135deg,rgba(124,31,42,0.18),transparent_38%)]" />
-      <div className="relative grid lg:grid-cols-[0.86fr_1.14fr]">
-        <aside className="hidden border-r border-[#d0a85c]/20 bg-[#171a1a] p-8 lg:flex lg:flex-col lg:justify-between">
+      <div className="relative grid lg:min-h-[34rem] lg:grid-cols-[0.88fr_1.12fr]">
+        <aside className="hidden border-r border-[#d0a85c]/20 bg-[#171a1a] p-8 lg:flex lg:flex-col lg:justify-between xl:p-9">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#d0a85c]">
               Contrapista
@@ -168,7 +168,7 @@ export function AuthModal({
           </div>
         </aside>
 
-        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-7 lg:p-8">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-7 lg:p-8 xl:p-9">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d0a85c]">

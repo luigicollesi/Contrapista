@@ -1,18 +1,29 @@
 import { errorResponse } from "@/lib/api-response";
 import { updateRoomConfig, type RoomConfig } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     config?: Partial<RoomConfig>;
   };
 
   if (!body.userId || !body.config) {
     return Response.json({ error: "Configuração inválida." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-config",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

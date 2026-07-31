@@ -5,6 +5,7 @@ import {
   listDailyProblemDates,
   submitDailyProblemAnswer,
 } from "@/lib/daily-problem";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function unauthorized() {
   return Response.json(
@@ -18,6 +19,18 @@ export async function GET(request: Request) {
 
   if (!session?.user?.id) {
     return unauthorized();
+  }
+
+  const limited = rateLimitResponse({
+    identity: session.user.id,
+    limit: 60,
+    namespace: "daily-problem-read",
+    request,
+    windowMs: 60_000,
+  });
+
+  if (limited) {
+    return limited;
   }
 
   const url = new URL(request.url);
@@ -47,6 +60,18 @@ export async function POST(request: Request) {
 
   if (!session?.user?.id) {
     return unauthorized();
+  }
+
+  const limited = rateLimitResponse({
+    identity: session.user.id,
+    limit: 6,
+    namespace: "daily-problem-submit",
+    request,
+    windowMs: 60 * 60_000,
+  });
+
+  if (limited) {
+    return limited;
   }
 
   const body = (await request.json().catch(() => ({}))) as {

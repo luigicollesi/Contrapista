@@ -1,5 +1,6 @@
 import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
 import { AiModelsUnavailableError } from "@/lib/ai/errors";
+import { PublicError } from "@/lib/api-response";
 import { dbQuery, getDbClient, type DatabaseClient } from "@/lib/db";
 import {
   isPlayerColor,
@@ -9,6 +10,7 @@ import {
 
 export type RoomUser = {
   id: string;
+  accountUserId?: string | null;
   browserId: string;
   nickname: string | null;
   color: PlayerColor | null;
@@ -90,6 +92,7 @@ export type GameState = {
 
 const ROULETTE_MS = 3_000;
 const DISCONNECTED_USER_TIMEOUT_MS = 2 * 60 * 1000;
+const ROOM_NICKNAME_MAX_LENGTH = 18;
 
 export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   readingTimeSeconds: 120,
@@ -122,7 +125,11 @@ function normalizeUsers(users: unknown): RoomUser[] {
     const partial = user as Partial<RoomUser> & { color?: string };
     const nickname =
       typeof partial.nickname === "string" && partial.nickname.trim()
-        ? partial.nickname.trim().slice(0, 18)
+        ? toRoomNickname(partial.nickname)
+        : null;
+    const accountUserId =
+      typeof partial.accountUserId === "string" && partial.accountUserId.trim()
+        ? partial.accountUserId.trim()
         : null;
     const color =
       typeof partial.color === "string" && isPlayerColor(partial.color)
@@ -133,6 +140,7 @@ function normalizeUsers(users: unknown): RoomUser[] {
 
     return {
       id: String(partial.id ?? crypto.randomUUID()),
+      accountUserId,
       browserId: String(
         (partial as Partial<RoomUser> & { browserId?: unknown }).browserId ??
           partial.id ??
@@ -146,6 +154,10 @@ function normalizeUsers(users: unknown): RoomUser[] {
         typeof partial.lastSeenAt === "number" ? partial.lastSeenAt : joinedAt,
     };
   });
+}
+
+export function toRoomNickname(nickname: string) {
+  return nickname.trim().slice(0, ROOM_NICKNAME_MAX_LENGTH);
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -791,7 +803,7 @@ function ensureColorAvailable({
   );
 
   if (colorInUse) {
-    throw new Error("Essa cor já está em uso na sala.");
+    throw new PublicError("Essa cor já está em uso na sala.");
   }
 }
 
@@ -1207,18 +1219,20 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
 }
 
 export async function createRoom({
+  accountUserId,
   browserId,
   nickname,
 }: {
+  accountUserId: string;
   browserId?: string;
   nickname: string;
 }) {
   await ensureSchema();
 
-  const trimmedNickname = nickname.trim().slice(0, 18);
+  const trimmedNickname = toRoomNickname(nickname);
 
   if (!trimmedNickname) {
-    throw new Error("Faça login com um nome de usuário antes de criar sala.");
+    throw new PublicError("Faça login com um nome de usuário antes de criar sala.");
   }
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -1227,6 +1241,7 @@ export async function createRoom({
     const normalizedBrowserId = normalizeBrowserId(browserId);
     const user: RoomUser = {
       id: crypto.randomUUID(),
+      accountUserId,
       browserId: normalizedBrowserId,
       nickname: trimmedNickname,
       color: null,
@@ -1379,22 +1394,61 @@ export async function getRoom(code: string) {
   });
 }
 
+export async function isRoomUserAuthorized({
+  accountUserId,
+  code,
+  nickname,
+  userId,
+}: {
+  accountUserId: string;
+  code: string;
+  nickname: string;
+  userId: string;
+}) {
+  await ensureSchema();
+
+  const result = await dbQuery<Pick<Room, "users">>(
+    `
+      SELECT users
+      FROM game_rooms
+      WHERE room_code = $1
+    `,
+    [code],
+  );
+  const users = normalizeUsers(result.rows[0]?.users);
+  const normalizedNickname = toRoomNickname(nickname);
+
+  return users.some((user) => {
+    if (user.id !== userId) {
+      return false;
+    }
+
+    if (user.accountUserId) {
+      return user.accountUserId === accountUserId;
+    }
+
+    return user.nickname === normalizedNickname;
+  });
+}
+
 export async function joinRoom({
+  accountUserId,
   code,
   browserId,
   nickname,
 }: {
+  accountUserId: string;
   code: string;
   browserId?: string;
   nickname: string;
 }) {
   await ensureSchema();
 
-  const trimmedNickname = nickname.trim().slice(0, 18);
+  const trimmedNickname = toRoomNickname(nickname);
   const normalizedBrowserId = normalizeBrowserId(browserId);
 
   if (!trimmedNickname) {
-    throw new Error("Faça login com um nome de usuário antes de entrar na sala.");
+    throw new PublicError("Faça login com um nome de usuário antes de entrar na sala.");
   }
 
   const client = await getDbClient();
@@ -1437,6 +1491,7 @@ export async function joinRoom({
         user.id === existingUser.id
           ? {
               ...user,
+              accountUserId: user.accountUserId ?? accountUserId,
               lastSeenAt: Date.now(),
             }
           : user,
@@ -1474,13 +1529,14 @@ export async function joinRoom({
 
     if (!isRoomAcceptingNewUsers(room, users)) {
       await client.query("ROLLBACK");
-      throw new Error("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
+      throw new PublicError("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
     }
 
     const now = Date.now();
 
     const user: RoomUser = {
       id: crypto.randomUUID(),
+      accountUserId,
       browserId: normalizedBrowserId,
       nickname: trimmedNickname,
       color: null,
@@ -1678,7 +1734,7 @@ export async function heartbeatRoomUser({
 
     if (!userExists) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     await client.query(
@@ -1728,7 +1784,7 @@ export async function updateRoomUser({
     : null;
 
   if (!profileColor) {
-    throw new Error("Escolha uma cor válida.");
+    throw new PublicError("Escolha uma cor válida.");
   }
 
   const client = await getDbClient();
@@ -1777,7 +1833,7 @@ export async function updateRoomUser({
 
     if (!updatedUser) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     await client.query(
@@ -1848,12 +1904,12 @@ export async function updateRoomConfig({
 
     if (room.activecase) {
       await client.query("ROLLBACK");
-      throw new Error("A configuração não pode ser alterada com dossiê ativo.");
+      throw new PublicError("A configuração não pode ser alterada com dossiê ativo.");
     }
 
     if ((room.mode ?? "custom") !== "custom") {
       await client.query("ROLLBACK");
-      throw new Error("Partidas pareadas usam configuração clássica fixa.");
+      throw new PublicError("Partidas pareadas usam configuração clássica fixa.");
     }
 
     const users = normalizeUsers(room.users);
@@ -1861,7 +1917,7 @@ export async function updateRoomConfig({
 
     if (!firstUser || firstUser.id !== userId) {
       await client.query("ROLLBACK");
-      throw new Error("Apenas o primeiro participante pode alterar a configuração.");
+      throw new PublicError("Apenas o primeiro participante pode alterar a configuração.");
     }
 
     let configId = room.config_id;
@@ -1982,7 +2038,7 @@ export async function setRoomUserReady({
       userExists = true;
 
       if (ready && !hasCompleteProfile(user)) {
-        throw new Error("Escolha uma cor antes de marcar pronto.");
+        throw new PublicError("Escolha uma cor antes de marcar pronto.");
       }
 
       return {
@@ -1994,7 +2050,7 @@ export async function setRoomUserReady({
 
     if (!userExists) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     let nextUsers = updatedUsers;
@@ -2145,19 +2201,19 @@ export async function cancelCustomCaseCreation({
 
     if (!requester) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const config = normalizeRoomConfig(room);
 
     if ((room.mode ?? "custom") !== "custom") {
       await client.query("ROLLBACK");
-      throw new Error("A criação só pode ser cancelada em sala personalizada.");
+      throw new PublicError("A criação só pode ser cancelada em sala personalizada.");
     }
 
     if (room.activecase) {
       await client.query("ROLLBACK");
-      throw new Error("O caso já foi criado. Volte pela tela de jogo.");
+      throw new PublicError("O caso já foi criado. Volte pela tela de jogo.");
     }
 
     const resetUsers = users.map((user) => ({ ...user, ready: false }));
@@ -2241,34 +2297,34 @@ export async function selectRoomCase({
     const leader = users[0];
 
     if (room.mode !== "custom") {
-      throw new Error("A seleção de caso só está disponível em salas personalizadas.");
+      throw new PublicError("A seleção de caso só está disponível em salas personalizadas.");
     }
 
     if (room.activecase) {
-      throw new Error("Não é possível trocar o caso depois que o jogo começou.");
+      throw new PublicError("Não é possível trocar o caso depois que o jogo começou.");
     }
 
     if (!leader || leader.id !== userId) {
-      throw new Error("Apenas o primeiro participante pode escolher o caso da sala.");
+      throw new PublicError("Apenas o primeiro participante pode escolher o caso da sala.");
     }
 
     if (!["generate", "manual", "automatic"].includes(mode)) {
-      throw new Error("Modo de seleção de caso inválido.");
+      throw new PublicError("Modo de seleção de caso inválido.");
     }
 
     if (mode === "manual" && !caseId) {
-      throw new Error("Escolha um caso para usar o modo manual.");
+      throw new PublicError("Escolha um caso para usar o modo manual.");
     }
 
     if (mode !== "manual" && caseId) {
-      throw new Error("Apenas o modo manual pode vincular um caso específico.");
+      throw new PublicError("Apenas o modo manual pode vincular um caso específico.");
     }
 
     if (mode === "manual" && caseId) {
       const totalClues = await getCaseClueCount(caseId, client);
 
       if (totalClues <= users.length) {
-        throw new Error("Escolha um caso com mais pistas do que jogadores na sala.");
+        throw new PublicError("Escolha um caso com mais pistas do que jogadores na sala.");
       }
     }
 
@@ -2627,7 +2683,7 @@ export async function publishRoomEvent({
 
     if (!actor) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const currentState = normalizeGameState(room.gamestate);
@@ -2635,12 +2691,12 @@ export async function publishRoomEvent({
 
     if (!currentState) {
       await client.query("ROLLBACK");
-      throw new Error("Jogo ainda não foi iniciado.");
+      throw new PublicError("Jogo ainda não foi iniciado.");
     }
 
     if ((currentState.eliminatedUserIds ?? []).includes(actor.id)) {
       await client.query("ROLLBACK");
-      throw new Error("Jogadores eliminados não podem interagir com o palpite final.");
+      throw new PublicError("Jogadores eliminados não podem interagir com o palpite final.");
     }
 
     let activeevent: RoomEvent;
@@ -2664,7 +2720,7 @@ export async function publishRoomEvent({
     } else if (event.type === "solution_manual_result") {
       if (currentState.pausedAt === undefined) {
         await client.query("ROLLBACK");
-        throw new Error("Não há revisão manual em andamento.");
+        throw new PublicError("Não há revisão manual em andamento.");
       }
 
       const reviewEvent = room.activeevent as RoomEvent | null;
@@ -2675,7 +2731,7 @@ export async function publishRoomEvent({
         reviewEvent.actorId !== actor.id
       ) {
         await client.query("ROLLBACK");
-        throw new Error("Apenas o autor do palpite pode concluir esta revisão.");
+        throw new PublicError("Apenas o autor do palpite pode concluir esta revisão.");
       }
 
       const resolution = buildFinalGuessResolution({
@@ -2694,7 +2750,7 @@ export async function publishRoomEvent({
     } else {
       if (!room.activecase) {
         await client.query("ROLLBACK");
-        throw new Error("Caso ativo não encontrado.");
+        throw new PublicError("Caso ativo não encontrado.");
       }
 
       const pendingEvent = {
@@ -2853,7 +2909,7 @@ export async function setGameUserReady({
 
     if (!user) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const config = normalizeRoomConfig(room);
@@ -2873,7 +2929,7 @@ export async function setGameUserReady({
 
     if (!state) {
       await client.query("ROLLBACK");
-      throw new Error("Jogo ainda não foi iniciado.");
+      throw new PublicError("Jogo ainda não foi iniciado.");
     }
 
     if (state.phase !== "ready") {
@@ -2939,7 +2995,7 @@ export async function skipGamePhase({
 
     if (!user) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const state = normalizeGameState(room.gamestate);
@@ -2954,14 +3010,14 @@ export async function skipGamePhase({
         state.phase !== "shared_clue")
     ) {
       await client.query("ROLLBACK");
-      throw new Error("Esta fase não pode ser pulada agora.");
+      throw new PublicError("Esta fase não pode ser pulada agora.");
     }
 
     const activeUsers = getActiveUsers(state, users);
 
     if (!activeUsers.some((item) => item.id === user.id)) {
       await client.query("ROLLBACK");
-      throw new Error("Jogadores eliminados não votam para pular fases.");
+      throw new PublicError("Jogadores eliminados não votam para pular fases.");
     }
 
     const phaseKey = phaseSkipKey(state);
@@ -3024,7 +3080,7 @@ export async function shareRoomClue({
   const trimmedClue = clueText.trim();
 
   if (!trimmedClue) {
-    throw new Error("Pista inválida.");
+    throw new PublicError("Pista inválida.");
   }
 
   const client = await getDbClient();
@@ -3066,7 +3122,7 @@ export async function shareRoomClue({
 
     if (!actor) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const state = normalizeGameState(room.gamestate);
@@ -3100,7 +3156,7 @@ export async function shareRoomClue({
       nextState.pausedAt
     ) {
       await client.query("ROLLBACK");
-      throw new Error("Não é a vez desse jogador compartilhar uma pista.");
+      throw new PublicError("Não é a vez desse jogador compartilhar uma pista.");
     }
 
     const totalClues = room.activecase
@@ -3115,7 +3171,7 @@ export async function shareRoomClue({
       alreadySharedIds.length < allPlayerClueCount
     ) {
       await client.query("ROLLBACK");
-      throw new Error("Essa pista já foi compartilhada. Escolha uma pista diferente.");
+      throw new PublicError("Essa pista já foi compartilhada. Escolha uma pista diferente.");
     }
 
     const sharedState: GameState = {
@@ -3192,7 +3248,7 @@ export async function returnRoomCaseToLobby({
 
     if (!returningUser) {
       await client.query("ROLLBACK");
-      throw new Error("Usuário não encontrado na sala.");
+      throw new PublicError("Usuário não encontrado na sala.");
     }
 
     const state =

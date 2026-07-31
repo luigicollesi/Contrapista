@@ -1,12 +1,13 @@
 import { errorResponse } from "@/lib/api-response";
 import { shareRoomClue } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     clueText?: string;
     clueNumber?: number;
@@ -15,6 +16,16 @@ export async function POST(
 
   if (!body.userId || !body.clueText || typeof body.clueNumber !== "number") {
     return Response.json({ error: "Pista inválida." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-share-clue",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

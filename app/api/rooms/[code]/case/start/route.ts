@@ -1,6 +1,9 @@
+import { auth } from "@/auth";
 import { createCaseForRoom, getLastCaseCreationDurationSeconds } from "@/lib/cases";
 import { AiModelsUnavailableError, getErrorStatus } from "@/lib/ai/errors";
 import { finishRoomCase, getRoom } from "@/lib/rooms";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -142,16 +145,66 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
 }
 
 export async function POST(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
 
   try {
+    const session = await auth();
+
+    if (!session?.user?.id || !session.user.name) {
+      return Response.json(
+        { error: "Faça login para criar o caso da partida." },
+        { status: 401 },
+      );
+    }
+
+    const limited = rateLimitResponse({
+      identity: session.user.id,
+      limit: 5,
+      namespace: "case-start",
+      request,
+      windowMs: 10 * 60_000,
+    });
+
+    if (limited) {
+      return limited;
+    }
+
+    const body = (await request.json().catch(() => ({}))) as {
+      userId?: string;
+    };
+    const userId = typeof body.userId === "string" ? body.userId : "";
+
+    if (!userId) {
+      return Response.json(
+        { error: "Sessão local não encontrada. Volte para a ante-sala." },
+        { status: 400 },
+      );
+    }
+
+    const authorizationFailure = await requireAuthorizedRoomUser({
+      action: "case-start",
+      code,
+      userId,
+    });
+
+    if (authorizationFailure) {
+      return authorizationFailure;
+    }
+
     const room = await getRoom(code);
 
     if (!room) {
       return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    }
+
+    if (room.users[0]?.id !== userId) {
+      return Response.json(
+        { error: "Apenas o responsável da sala pode iniciar a criação do caso." },
+        { status: 403 },
+      );
     }
 
     if (!room.activecase && !room.allReady) {

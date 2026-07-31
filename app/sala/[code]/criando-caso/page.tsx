@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { CaseCreationStatus } from "@/components/case-creation/case-creation-status";
 import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
-import { readJsonResponse } from "@/lib/client-http";
+import { readJsonResponse, withCsrfHeader } from "@/lib/client-http";
 import { clearSession, readUserId } from "@/lib/client-session";
 
 const steps = [
@@ -95,7 +95,7 @@ async function readEstimatedCreationTime(code: string) {
       return null;
     }
 
-    const data = (await response.json()) as { estimatedSeconds?: number | null };
+    const data = await readJsonResponse<{ estimatedSeconds?: number | null }>(response);
 
     return typeof data.estimatedSeconds === "number"
       ? data.estimatedSeconds
@@ -192,13 +192,13 @@ export default function CreatingCasePage() {
       isHeartbeatInFlightRef.current = true;
 
       try {
-        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, withCsrfHeader({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId }),
-        });
+        }));
         const data = await readJsonResponse<{
           room?: {
             activecase?: string | null;
@@ -329,9 +329,13 @@ export default function CreatingCasePage() {
           attempt += 1
         ) {
           try {
-            response = await fetch(`/api/rooms/${code}/case/start`, {
+            response = await fetch(`/api/rooms/${code}/case/start`, withCsrfHeader({
               method: "POST",
-            });
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ userId }),
+            }));
             break;
           } catch (caughtError) {
             if (!isActive) {
@@ -414,13 +418,13 @@ export default function CreatingCasePage() {
 
     try {
       if (userId) {
-        await fetch(`/api/rooms/${code}/leave`, {
+        await fetch(`/api/rooms/${code}/leave`, withCsrfHeader({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId }),
-        });
+        }));
       }
     } finally {
       clearSession(code);
@@ -445,13 +449,13 @@ export default function CreatingCasePage() {
     setError("");
 
     try {
-      const response = await fetch(`/api/rooms/${code}/case/cancel`, {
+      const response = await fetch(`/api/rooms/${code}/case/cancel`, withCsrfHeader({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ userId }),
-      });
+      }));
       const data = await readJsonResponse<{ error?: string }>(response, 160);
 
       if (!response.ok) {

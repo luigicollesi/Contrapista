@@ -239,7 +239,7 @@ export function PlayOptions() {
       {isJoinOpen ? (
         <ResponsiveSheet
           backdropClassName="bg-black/70 backdrop-blur-sm"
-          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:rounded-sm sm:p-6"
+          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:w-[28rem] sm:rounded-sm sm:p-6"
           zIndexClassName="z-[80]"
         >
           <form

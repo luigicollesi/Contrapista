@@ -1,18 +1,29 @@
 import { errorResponse } from "@/lib/api-response";
 import { setRoomUserReady } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     ready?: boolean;
   };
 
   if (!body.userId) {
     return Response.json({ error: "Usuário inválido." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-ready",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

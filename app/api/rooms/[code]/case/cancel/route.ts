@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { cancelCustomCaseCreation } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
@@ -21,6 +22,16 @@ export async function POST(
 
   if (!userId) {
     return Response.json({ error: "Usuário não informado." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "case-cancel",
+    code,
+    userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

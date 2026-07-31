@@ -1,17 +1,28 @@
 import { errorResponse } from "@/lib/api-response";
 import { heartbeatRoomUser } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
   };
 
   if (!body.userId) {
     return Response.json({ error: "Usuário inválido." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-heartbeat",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {

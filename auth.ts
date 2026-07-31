@@ -9,15 +9,21 @@ import {
   isAuthProvider,
   validateAuthInput,
 } from "@/lib/auth-users";
+import {
+  AUTH_SECRET,
+  AUTH_SESSION_MAX_AGE_SECONDS,
+  AUTH_SESSION_UPDATE_AGE_SECONDS,
+} from "@/lib/auth-config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  secret:
-    process.env.AUTH_SECRET ??
-    (process.env.NODE_ENV === "production"
-      ? undefined
-      : "contrapista-dev-auth-secret-change-me"),
+  secret: AUTH_SECRET,
   session: {
     strategy: "jwt",
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+    updateAge: AUTH_SESSION_UPDATE_AGE_SECONDS,
+  },
+  jwt: {
+    maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
   },
   pages: {
     error: "/auth/error",

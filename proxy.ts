@@ -1,3 +1,6 @@
+import { AUTH_SECRET } from "@/lib/auth-config";
+import { logSecurityEvent } from "@/lib/security/audit-log";
+import { validateCsrfRequest } from "@/lib/security/csrf";
 import { getToken } from "next-auth/jwt";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -8,6 +11,11 @@ const protectedApiPrefixes = [
   "/api/matchmaking",
   "/api/rooms",
 ];
+const csrfApiPrefixes = [
+  ...protectedApiPrefixes,
+  "/api/auth/register",
+  "/api/auth/username",
+];
 
 function isProtectedPath(pathname: string, prefixes: string[]) {
   return prefixes.some(
@@ -15,10 +23,38 @@ function isProtectedPath(pathname: string, prefixes: string[]) {
   );
 }
 
+function hasAuthenticatedToken(token: Awaited<ReturnType<typeof getToken>>) {
+  if (!token || typeof token === "string") {
+    return false;
+  }
+
+  return typeof token?.id === "string" || typeof token?.sub === "string";
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const protectsPage = isProtectedPath(pathname, protectedPagePrefixes);
   const protectsApi = isProtectedPath(pathname, protectedApiPrefixes);
+  const protectsCsrf = isProtectedPath(pathname, csrfApiPrefixes);
+
+  if (!protectsPage && !protectsApi && !protectsCsrf) {
+    return NextResponse.next();
+  }
+
+  if (protectsCsrf) {
+    const csrfError = validateCsrfRequest(request);
+
+    if (csrfError) {
+      logSecurityEvent("csrf", {
+        action: "block",
+        method: request.method,
+        path: pathname,
+        reason: csrfError,
+      });
+
+      return Response.json({ error: "Requisição bloqueada por segurança." }, { status: 403 });
+    }
+  }
 
   if (!protectsPage && !protectsApi) {
     return NextResponse.next();
@@ -26,28 +62,23 @@ export async function proxy(request: NextRequest) {
 
   const token = await getToken({
     req: request,
-    secret:
-      process.env.AUTH_SECRET ??
-      (process.env.NODE_ENV === "production"
-        ? undefined
-        : "contrapista-dev-auth-secret-change-me"),
+    secret: AUTH_SECRET,
   });
-  const hasUsername = typeof token?.name === "string" && token.name.trim();
 
-  if (hasUsername) {
+  if (hasAuthenticatedToken(token)) {
     return NextResponse.next();
   }
 
   if (protectsApi) {
-    return Response.json(
-      { error: "Faça login e escolha um nome de usuário para continuar." },
-      { status: 401 },
-    );
+    return Response.json({ error: "Faça login para continuar." }, { status: 401 });
   }
 
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = "/auth/entrar";
-  loginUrl.searchParams.set("callbackUrl", request.nextUrl.pathname);
+  loginUrl.searchParams.set(
+    "callbackUrl",
+    `${request.nextUrl.pathname}${request.nextUrl.search}`,
+  );
 
   return NextResponse.redirect(loginUrl);
 }
@@ -57,6 +88,8 @@ export const config = {
     "/jogar/busca/:path*",
     "/jogar/diario/:path*",
     "/api/cases/:path*",
+    "/api/auth/register",
+    "/api/auth/username",
     "/sala/:path*",
     "/api/daily-problem/:path*",
     "/api/matchmaking/:path*",

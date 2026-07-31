@@ -29,7 +29,7 @@ export function ReadyInvestigationSection({
   );
 
   return (
-    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/25">
+    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Preparação da investigação
       </p>
@@ -212,7 +212,7 @@ export function EliminatedCluesArchive({
 
 export function EliminatedPlayerArchive({ gameCase }: { gameCase: GameCase }) {
   return (
-    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/20">
+    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Fora da disputa
       </p>
@@ -247,7 +247,7 @@ export function EliminatedPlayerArchive({ gameCase }: { gameCase: GameCase }) {
 
 export function FinalSolutionSection({ onOpen }: { onOpen: () => void }) {
   return (
-    <section className="mt-6 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/20">
+    <section className="mt-6 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">

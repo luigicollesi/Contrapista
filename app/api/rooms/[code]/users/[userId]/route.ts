@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { updateRoomUser } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function PATCH(
   request: Request,
@@ -16,7 +17,17 @@ export async function PATCH(
   }
 
   const { code, userId } = await params;
-  const body = (await request.json()) as {
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-update-user",
+    code,
+    userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
     color?: string;
   };
 

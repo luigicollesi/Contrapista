@@ -2,6 +2,7 @@
 
 import { AuthModal, type AuthMode } from "@/components/public/auth-modal";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
+import { withCsrfHeader } from "@/lib/client-http";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -104,7 +105,7 @@ export function AuthModalControls() {
       const password = getFormValue(formData, "password");
 
       if (mode === "register") {
-        const response = await fetch("/api/auth/register", {
+        const response = await fetch("/api/auth/register", withCsrfHeader({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -112,7 +113,7 @@ export function AuthModalControls() {
             email,
             password,
           }),
-        });
+        }));
         const payload = (await response.json().catch(() => ({}))) as AuthResponse;
 
         if (!response.ok || !payload.ok) {
@@ -133,6 +134,7 @@ export function AuthModalControls() {
         return;
       }
 
+      await update();
       setMode(null);
     });
   }
@@ -142,11 +144,11 @@ export function AuthModalControls() {
     setFieldErrors({});
 
     startTransition(async () => {
-      const response = await fetch("/api/auth/username", {
+      const response = await fetch("/api/auth/username", withCsrfHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: getFormValue(formData, "username") }),
-      });
+      }));
       const payload = (await response.json().catch(() => ({}))) as AuthResponse;
 
       if (!response.ok || !payload.ok) {
@@ -317,7 +319,7 @@ export function AuthModalControls() {
         {needsUsername ? (
           <ResponsiveSheet
             backdropClassName="bg-[#050606]/85 backdrop-blur-sm"
-            contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#121616] p-5 shadow-black/60 sm:rounded-sm sm:p-6"
+            contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#121616] p-5 shadow-black/60 sm:w-[28rem] sm:rounded-sm sm:p-6"
             zIndexClassName="z-[90]"
           >
             <form

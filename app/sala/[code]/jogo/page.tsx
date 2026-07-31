@@ -32,7 +32,7 @@ import {
   WrongSolutionModal,
 } from "@/components/game/solution-modals";
 import type { GameCase, GameState, PlayerClue, Room, RoomEvent } from "@/components/game/types";
-import { requestJson } from "@/lib/client-http";
+import { readJsonResponse, requestJson, withCsrfHeader } from "@/lib/client-http";
 import {
   clearSession,
   leftCaseStorageKey,
@@ -163,10 +163,10 @@ export default function GamePage() {
         const roomResponse = await fetch(`/api/rooms/${code}`, {
           cache: "no-store",
         });
-        const roomData = (await roomResponse.json()) as {
+        const roomData = await readJsonResponse<{
           room?: Room;
           error?: string;
-        };
+        }>(roomResponse);
 
         if (!roomResponse.ok || !roomData.room) {
           throw new Error(roomData.error ?? "Sala não encontrada.");
@@ -178,11 +178,12 @@ export default function GamePage() {
 
         setRoom(roomData.room);
 
-        const isCurrentUserInRoom = Boolean(
-          userId && roomData.room.users.some((user) => user.id === userId),
-        );
+        const currentUserId = userId;
 
-        if (!isCurrentUserInRoom) {
+        if (
+          !currentUserId ||
+          !roomData.room.users.some((user) => user.id === currentUserId)
+        ) {
           throw new Error(
             "A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.",
           );
@@ -195,15 +196,15 @@ export default function GamePage() {
 
         if (!gameCase || gameCase.id !== roomData.room.activecase) {
           const caseResponse = await fetch(
-            `/api/cases/${roomData.room.activecase}`,
+            `/api/cases/${roomData.room.activecase}?roomCode=${encodeURIComponent(code)}&userId=${encodeURIComponent(currentUserId)}`,
             {
               cache: "no-store",
             },
           );
-          const caseData = (await caseResponse.json()) as {
+          const caseData = await readJsonResponse<{
             case?: GameCase;
             error?: string;
-          };
+          }>(caseResponse);
 
           if (!isActive) {
             return;
@@ -256,14 +257,14 @@ export default function GamePage() {
       isHeartbeatInFlightRef.current = true;
 
       try {
-        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, withCsrfHeader({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId }),
-        });
-        const data = await response.json();
+        }));
+        const data = await readJsonResponse<{ room?: Room }>(response);
 
         if (isActive && response.ok && data.room) {
           setRoom(data.room);
@@ -604,11 +605,11 @@ export default function GamePage() {
     }
 
     try {
-      await fetch(`/api/rooms/${code}/case/return`, {
+      await fetch(`/api/rooms/${code}/case/return`, withCsrfHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
-      });
+      }));
     } catch {
       // O marcador local impede que este jogador seja puxado de volta ao caso.
     }
@@ -626,13 +627,13 @@ export default function GamePage() {
 
     try {
       if (userId) {
-        await fetch(`/api/rooms/${code}/leave`, {
+        await fetch(`/api/rooms/${code}/leave`, withCsrfHeader({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId }),
-        });
+        }));
       }
     } finally {
       clearSession(code);

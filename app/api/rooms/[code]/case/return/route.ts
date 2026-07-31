@@ -1,4 +1,6 @@
+import { errorResponse } from "@/lib/api-response";
 import { returnRoomCaseToLobby } from "@/lib/rooms";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
@@ -12,11 +14,25 @@ export async function POST(
     return Response.json({ error: "Usuário não informado." }, { status: 400 });
   }
 
-  const room = await returnRoomCaseToLobby({ code, userId });
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "case-return",
+    code,
+    userId,
+  });
 
-  if (!room) {
-    return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
-  return Response.json({ room });
+  try {
+    const room = await returnRoomCaseToLobby({ code, userId });
+
+    if (!room) {
+      return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    }
+
+    return Response.json({ room });
+  } catch (error) {
+    return errorResponse(error, "Erro ao voltar para a ante-sala.");
+  }
 }

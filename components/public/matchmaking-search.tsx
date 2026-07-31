@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { readJsonResponse } from "@/lib/client-http";
+import { readJsonResponse, withCsrfHeader } from "@/lib/client-http";
 import { getBrowserId, saveSession } from "@/lib/client-session";
 
 type MatchmakingMode = "casual" | "ranked";
@@ -91,11 +91,11 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
     }
 
     async function joinQueue() {
-      const response = await fetch("/api/matchmaking", {
+      const response = await fetch("/api/matchmaking", withCsrfHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ browserId, mode }),
-      });
+      }));
 
       await handleResponse(response);
     }

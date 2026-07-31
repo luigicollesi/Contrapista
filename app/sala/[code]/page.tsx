@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
-import { readJsonResponse, requestJson } from "@/lib/client-http";
+import { readJsonResponse, requestJson, withCsrfHeader } from "@/lib/client-http";
 import {
   clearSession,
   getBrowserId,
@@ -394,14 +394,14 @@ export default function RoomPage() {
       isHeartbeatInFlightRef.current = true;
 
       try {
-        const response = await fetch(`/api/rooms/${code}/heartbeat`, {
+        const response = await fetch(`/api/rooms/${code}/heartbeat`, withCsrfHeader({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({ userId: currentUserId }),
-        });
-        const data = await response.json();
+        }));
+        const data = await readJsonResponse<{ room?: Room }>(response);
 
         if (isActive && response.ok && data.room) {
           setRoom(data.room);
@@ -865,7 +865,7 @@ export default function RoomPage() {
 
         {showProfileForm ? (
           <form
-            className="mt-6 grid gap-5 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/25 md:grid-cols-[1fr_auto]"
+            className="mt-6 grid gap-5 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black md:grid-cols-[1fr_auto] lg:p-6"
             onSubmit={currentUser ? updateUser : join}
           >
             <div>
@@ -1423,7 +1423,7 @@ export default function RoomPage() {
         {isCasePickerOpen ? (
           <ResponsiveSheet
             backdropClassName="bg-black/70 backdrop-blur-sm"
-            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:p-6"
+            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:w-[48rem] sm:p-6"
           >
             <div>
               <div className="flex items-start justify-between gap-4">

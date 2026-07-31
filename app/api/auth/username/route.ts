@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { setUserUsername, validateAuthInput } from "@/lib/auth-users";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function getUniqueConstraint(error: unknown) {
   return (
@@ -22,6 +23,22 @@ export async function POST(request: Request) {
       { ok: false, message: "Faça login para escolher um nome de usuário." },
       { status: 401 },
     );
+  }
+
+  const limited = rateLimitResponse({
+    body: {
+      ok: false,
+      message: "Muitas tentativas de nome de usuário. Aguarde um instante e tente novamente.",
+    },
+    identity: session.user.id,
+    limit: 8,
+    namespace: "auth-username",
+    request,
+    windowMs: 10 * 60_000,
+  });
+
+  if (limited) {
+    return limited;
   }
 
   const body = (await request.json().catch(() => null)) as {

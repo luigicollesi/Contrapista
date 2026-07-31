@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
-import { requestJson } from "@/lib/client-http";
+import { readJsonResponse, requestJson } from "@/lib/client-http";
 import {
   SESSION_STORAGE_KEY,
   getBrowserId,
@@ -46,7 +46,9 @@ export function HomeRoomActions() {
         const response = await fetch(`/api/rooms/${session.roomCode}`, {
           cache: "no-store",
         });
-        const data = await response.json();
+        const data = await readJsonResponse<{
+          room?: { users?: Array<{ id: string }> };
+        }>(response);
         const isStillInRoom = data.room?.users?.some(
           (user: { id: string }) => user.id === session.user.id,
         );
@@ -208,7 +210,7 @@ export function HomeRoomActions() {
       {isJoinOpen ? (
         <ResponsiveSheet
           backdropClassName="bg-black/65"
-          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:rounded-sm sm:p-6"
+          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:w-[28rem] sm:rounded-sm sm:p-6"
         >
           <form
             className="contents"

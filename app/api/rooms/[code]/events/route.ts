@@ -1,12 +1,14 @@
 import { errorResponse } from "@/lib/api-response";
 import { publishRoomEvent } from "@/lib/rooms";
+import { rateLimitResponse } from "@/lib/security/rate-limit";
+import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
-  const body = (await request.json()) as {
+  const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     type?: "solution" | "solution_guess" | "solution_manual_result";
     guess?: string;
@@ -22,6 +24,28 @@ export async function POST(
     (body.type === "solution_manual_result" && typeof body.correct !== "boolean")
   ) {
     return Response.json({ error: "Evento inválido." }, { status: 400 });
+  }
+
+  const limited = rateLimitResponse({
+    identity: body.userId,
+    limit: 8,
+    namespace: "room-events",
+    request,
+    windowMs: 60_000,
+  });
+
+  if (limited) {
+    return limited;
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-event",
+    code,
+    userId: body.userId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {
