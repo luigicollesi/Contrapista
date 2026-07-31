@@ -37,6 +37,7 @@ type RoomConfig = {
 
 type Room = {
   code: string;
+  mode: "custom" | "casual" | "ranked";
   users: RoomUser[];
   userCount: number;
   activecase: string | null;
@@ -203,7 +204,6 @@ export default function RoomPage() {
   const [room, setRoom] = useState<Room | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isSessionLoaded, setIsSessionLoaded] = useState(false);
-  const [nickname, setNickname] = useState("");
   const [color, setColor] = useState<PlayerColor | "">("");
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState("");
@@ -335,8 +335,12 @@ export default function RoomPage() {
 
   const currentUser = room?.users.find((user) => user.id === userId);
   const currentUserId = currentUser?.id;
+  const isMatchmadeRoom = room?.mode === "casual" || room?.mode === "ranked";
   const canEditConfig = Boolean(
-    currentUser && room?.users[0]?.id === currentUser.id && !room.activecase,
+    currentUser &&
+      !isMatchmadeRoom &&
+      room?.users[0]?.id === currentUser.id &&
+      !room.activecase,
   );
 
   useEffect(() => {
@@ -417,7 +421,7 @@ export default function RoomPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ browserId: getBrowserId(), nickname, color }),
+          body: JSON.stringify({ browserId: getBrowserId() }),
         },
         "Não foi possível entrar na sala.",
       );
@@ -431,7 +435,6 @@ export default function RoomPage() {
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
       setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
-      setNickname(data.user.nickname ?? "");
       setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
@@ -464,7 +467,7 @@ export default function RoomPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ nickname, color }),
+          body: JSON.stringify({ color }),
         },
         "Não foi possível atualizar usuário.",
       );
@@ -477,7 +480,6 @@ export default function RoomPage() {
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
       setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
-      setNickname(data.user.nickname ?? "");
       setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
@@ -690,7 +692,7 @@ export default function RoomPage() {
   );
   const readyCount =
     room?.users.filter((user) => hasCompleteProfile(user) && user.ready).length ?? 0;
-  const canSubmitProfile = Boolean(nickname.trim() && color);
+  const canSubmitProfile = currentUser ? Boolean(color) : true;
 
   return (
     <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
@@ -719,8 +721,8 @@ export default function RoomPage() {
               Ante-sala do caso
             </h1>
             <p className="mt-3 max-w-2xl text-stone-300">
-              Defina sua identificação e uma cor exclusiva. Quando todos confirmarem
-              prontidão, o dossiê será aberto para a sessão.
+              Sua identificação vem da conta logada. Escolha uma cor exclusiva
+              antes de confirmar prontidão para abrir o dossiê.
             </p>
           </div>
           <div className="rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-6 py-4 shadow-2xl shadow-black/25">
@@ -742,22 +744,14 @@ export default function RoomPage() {
             onSubmit={currentUser ? updateUser : join}
           >
             <div>
-              <label
-                className="text-sm font-semibold text-[#d7b861]"
-                htmlFor="nickname"
-              >
-                Nickname
-              </label>
-              <input
-                className="mt-2 h-13 w-full rounded-lg border border-stone-700 bg-[#0f120e] px-4 text-lg font-semibold text-[#fff3cf] outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20"
-                id="nickname"
-                maxLength={18}
-                onChange={(event) => setNickname(event.target.value)}
-                placeholder="Identificação na sessão"
-                required
-                value={nickname}
-              />
+              <p className="text-sm font-semibold text-[#d7b861]">
+                Identificação
+              </p>
+              <p className="mt-2 rounded-lg border border-stone-700 bg-[#0f120e] px-4 py-3 text-lg font-semibold text-[#fff3cf]">
+                {currentUser ? getUserName(currentUser) : "Entrar com seu nome de usuário"}
+              </p>
 
+              {currentUser ? (
               <div className="mt-5">
                 <p className="text-sm font-semibold text-[#d7b861]">
                   Cor exclusiva
@@ -796,6 +790,12 @@ export default function RoomPage() {
                   })}
                 </div>
               </div>
+              ) : (
+                <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300">
+                  Entre na sala para reservar sua presença. Depois, escolha uma
+                  cor antes de marcar pronto.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col gap-3 self-end sm:flex-row md:flex-col">
@@ -804,7 +804,6 @@ export default function RoomPage() {
                   className="h-14 rounded-lg border border-stone-600 px-8 font-semibold text-stone-100 transition hover:bg-white/10"
                   onClick={() => {
                     setIsEditing(false);
-                    setNickname(currentUser.nickname ?? "");
                     setColor(currentUser.color ?? "");
                   }}
                   type="button"
@@ -817,7 +816,7 @@ export default function RoomPage() {
                 disabled={isSaving || !canSubmitProfile}
                 type="submit"
               >
-                {currentUser ? "Salvar identificação" : "Entrar na sessão"}
+                {currentUser ? "Salvar cor" : "Entrar na sessão"}
               </button>
             </div>
           </form>
@@ -850,13 +849,12 @@ export default function RoomPage() {
               <button
                 className="h-11 rounded-lg border border-stone-600 bg-[#0f120e] px-5 font-semibold text-stone-100 shadow-sm transition hover:border-[#d7b861]"
                 onClick={() => {
-                  setNickname(currentUser.nickname ?? "");
                   setColor(currentUser.color ?? "");
                   setIsEditing(true);
                 }}
                 type="button"
               >
-                Editar identificação
+                Alterar cor
               </button>
               <button
                 className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] shadow-sm transition hover:bg-[#f3dfaa]"
@@ -905,7 +903,7 @@ export default function RoomPage() {
                   className="absolute inset-x-0 top-0 h-2"
                   style={{ backgroundColor: getUserColorHex(user.color) }}
                 />
-                {index === 0 ? (
+                {index === 0 && !isMatchmadeRoom ? (
                   <div className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[#d7b861]/60 bg-[#0f120e] text-lg text-[#d7b861] shadow-lg" title="Líder da investigação">
                     ♛
                   </div>
@@ -916,7 +914,7 @@ export default function RoomPage() {
                     <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#d7b861]">
                       {getUserColorName(user.color)}
                       {user.id === userId ? " / Você" : ""}
-                      {index === 0 ? " / Líder" : ""}
+                      {index === 0 && !isMatchmadeRoom ? " / Líder" : ""}
                     </p>
                     <h3 className="mt-2 truncate text-3xl font-black text-[#fff3cf]">
                       {getUserName(user)}
@@ -950,6 +948,21 @@ export default function RoomPage() {
           </div>
         </section>
 
+        {isMatchmadeRoom ? (
+          <section className="mt-7 rounded-lg border border-[#d7b861]/25 bg-[#171b16] px-6 py-5 shadow-2xl shadow-black/20">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+              Partida pareada
+            </p>
+            <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+              Configuração clássica fixa
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+              Esta sala foi formada automaticamente para uma partida{" "}
+              {room?.mode === "ranked" ? "rankeada" : "casual"} de 4 jogadores,
+              cada um por si. Não há líder da sala nem painel de configuração.
+            </p>
+          </section>
+        ) : (
         <section className="mt-7 overflow-hidden rounded-lg border border-[#d7b861]/30 bg-[#171b16] shadow-2xl shadow-black/25">
           <div className="border-b border-[#d7b861]/20 bg-[#0f120e] px-6 py-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
@@ -1170,6 +1183,7 @@ export default function RoomPage() {
             ) : null}
           </div>
         </section>
+        )}
 
       </section>
     </main>

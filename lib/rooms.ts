@@ -28,6 +28,8 @@ export type RoomConfig = {
   cluesPerPlayer: number;
 };
 
+export type RoomMode = "custom" | "casual" | "ranked";
+
 export type Room = {
   code: string;
   users: RoomUser[];
@@ -35,6 +37,7 @@ export type Room = {
   activeevent: RoomEvent | null;
   gamestate: GameState | null;
   config?: RoomConfig;
+  mode?: RoomMode;
 };
 
 export type RoomEvent = {
@@ -211,6 +214,7 @@ function publicRoom(room: Room) {
 
   return {
     code: room.code,
+    mode: room.mode ?? "custom",
     users: room.users,
     userCount: room.users.length,
     activecase: room.activecase,
@@ -749,7 +753,7 @@ function isRoomAcceptingNewUsers(room: Room, users: RoomUser[]) {
   );
 }
 
-async function ensureSchema() {
+export async function ensureRoomsSchema() {
   schemaReady ??= dbQuery(`
       CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -760,6 +764,7 @@ async function ensureSchema() {
         activeevent jsonb,
         gamestate jsonb,
         users jsonb NOT NULL DEFAULT '[]'::jsonb,
+        mode text NOT NULL DEFAULT 'custom',
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
@@ -784,6 +789,7 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS activeevent jsonb,
         ADD COLUMN IF NOT EXISTS gamestate jsonb,
         ADD COLUMN IF NOT EXISTS users jsonb NOT NULL DEFAULT '[]'::jsonb,
+        ADD COLUMN IF NOT EXISTS mode text NOT NULL DEFAULT 'custom',
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS config_id uuid;
@@ -858,6 +864,10 @@ async function ensureSchema() {
     });
 
   return schemaReady;
+}
+
+async function ensureSchema() {
+  return ensureRoomsSchema();
 }
 
 function removeDisconnectedUsersFromLobby(users: RoomUser[], now: number) {
@@ -1000,7 +1010,7 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
 
     const current = await executor.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1118,8 +1128,20 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
   }
 }
 
-export async function createRoom({ browserId }: { browserId?: string } = {}) {
+export async function createRoom({
+  browserId,
+  nickname,
+}: {
+  browserId?: string;
+  nickname: string;
+}) {
   await ensureSchema();
+
+  const trimmedNickname = nickname.trim().slice(0, 18);
+
+  if (!trimmedNickname) {
+    throw new Error("Faça login com um nome de usuário antes de criar sala.");
+  }
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
@@ -1128,7 +1150,7 @@ export async function createRoom({ browserId }: { browserId?: string } = {}) {
     const user: RoomUser = {
       id: crypto.randomUUID(),
       browserId: normalizedBrowserId,
-      nickname: null,
+      nickname: trimmedNickname,
       color: null,
       ready: false,
       joinedAt: now,
@@ -1144,7 +1166,7 @@ export async function createRoom({ browserId }: { browserId?: string } = {}) {
           INSERT INTO game_rooms (room_code, users, activecase)
           VALUES ($1, $2::jsonb, NULL)
           ON CONFLICT DO NOTHING
-          RETURNING id::text AS id, room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+          RETURNING id::text AS id, room_code AS code, users, activecase::text AS activecase, activeevent, gamestate, mode
         `,
         [code, JSON.stringify([user])],
       );
@@ -1182,6 +1204,7 @@ export async function createRoom({ browserId }: { browserId?: string } = {}) {
       return {
         room: publicRoom({
           code: room.code,
+          mode: room.mode,
           users: normalizeUsers(room.users),
           activecase: room.activecase,
           activeevent: room.activeevent,
@@ -1209,6 +1232,7 @@ export async function getRoom(code: string) {
     `
       SELECT
         gr.room_code AS code,
+        gr.mode,
         gr.users,
         gr.activecase::text AS activecase,
         gr.activeevent,
@@ -1236,6 +1260,7 @@ export async function getRoom(code: string) {
   const config = normalizeRoomConfig(room);
   const baseRoom = {
     code: room.code,
+    mode: room.mode,
     users,
     activecase: room.activecase,
     activeevent: room.activeevent,
@@ -1276,25 +1301,18 @@ export async function joinRoom({
   code,
   browserId,
   nickname,
-  color,
 }: {
   code: string;
   browserId?: string;
   nickname: string;
-  color: string;
 }) {
   await ensureSchema();
 
   const trimmedNickname = nickname.trim().slice(0, 18);
-  const normalizedColor = color.trim();
-  const hasProfileData = Boolean(trimmedNickname || normalizedColor);
-  const profileColor = isPlayerColor(normalizedColor)
-    ? normalizePlayerColor(normalizedColor)
-    : null;
   const normalizedBrowserId = normalizeBrowserId(browserId);
 
-  if (hasProfileData && (!trimmedNickname || !profileColor)) {
-    throw new Error("Dados de usuário inválidos.");
+  if (!trimmedNickname) {
+    throw new Error("Faça login com um nome de usuário antes de entrar na sala.");
   }
 
   const client = await getDbClient();
@@ -1305,7 +1323,7 @@ export async function joinRoom({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1352,6 +1370,7 @@ export async function joinRoom({
       return {
         room: publicRoom({
           code,
+          mode: room.mode,
           users: updatedUsers,
           activecase: room.activecase,
           activeevent: room.activeevent,
@@ -1366,17 +1385,13 @@ export async function joinRoom({
       throw new Error("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
     }
 
-    if (hasProfileData && profileColor) {
-      ensureColorAvailable({ users, color: profileColor });
-    }
-
     const now = Date.now();
 
     const user: RoomUser = {
       id: crypto.randomUUID(),
       browserId: normalizedBrowserId,
-      nickname: hasProfileData ? trimmedNickname : null,
-      color: hasProfileData ? profileColor : null,
+      nickname: trimmedNickname,
+      color: null,
       ready: false,
       joinedAt: now,
       lastSeenAt: now,
@@ -1398,6 +1413,7 @@ export async function joinRoom({
     return {
       room: publicRoom({
         code,
+        mode: room.mode,
         users: updatedUsers,
         activecase: room.activecase,
         activeevent: room.activeevent,
@@ -1429,7 +1445,7 @@ export async function leaveRoom({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1499,6 +1515,7 @@ export async function leaveRoom({
 
     return publicRoom({
       code,
+      mode: room.mode,
       users: updatedUsers,
       activecase: room.activecase,
       activeevent: updatedEvent,
@@ -1529,7 +1546,7 @@ export async function heartbeatRoomUser({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1576,6 +1593,7 @@ export async function heartbeatRoomUser({
 
     return publicRoom({
       code,
+      mode: room.mode,
       users,
       activecase: room.activecase,
       activeevent: room.activeevent,
@@ -1592,24 +1610,21 @@ export async function heartbeatRoomUser({
 export async function updateRoomUser({
   code,
   userId,
-  nickname,
   color,
 }: {
   code: string;
   userId: string;
-  nickname: string;
   color: string;
 }) {
   await ensureSchema();
 
-  const trimmedNickname = nickname.trim().slice(0, 18);
   const normalizedColor = color.trim();
   const profileColor = isPlayerColor(normalizedColor)
     ? normalizePlayerColor(normalizedColor)
     : null;
 
-  if (!trimmedNickname || !profileColor) {
-    throw new Error("Dados de usuário inválidos.");
+  if (!profileColor) {
+    throw new Error("Escolha uma cor válida.");
   }
 
   const client = await getDbClient();
@@ -1619,7 +1634,7 @@ export async function updateRoomUser({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1648,7 +1663,6 @@ export async function updateRoomUser({
 
       updatedUser = {
         ...user,
-        nickname: trimmedNickname,
         color: profileColor,
         ready: false,
         lastSeenAt: Date.now(),
@@ -1677,6 +1691,7 @@ export async function updateRoomUser({
     return {
       room: publicRoom({
         code,
+        mode: room.mode,
         users: updatedUsers,
         activecase: room.activecase,
         activeevent: room.activeevent,
@@ -1711,7 +1726,7 @@ export async function updateRoomConfig({
 
     const current = await client.query<Room & { config_id: string | null }>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate, config_id::text AS config_id
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate, config_id::text AS config_id
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1728,6 +1743,11 @@ export async function updateRoomConfig({
     if (room.activecase) {
       await client.query("ROLLBACK");
       throw new Error("A configuração não pode ser alterada com dossiê ativo.");
+    }
+
+    if ((room.mode ?? "custom") !== "custom") {
+      await client.query("ROLLBACK");
+      throw new Error("Partidas pareadas usam configuração clássica fixa.");
     }
 
     const users = normalizeUsers(room.users);
@@ -1798,6 +1818,7 @@ export async function updateRoomConfig({
 
     return publicRoom({
       code,
+      mode: room.mode,
       users: updatedUsers,
       activecase: room.activecase,
       activeevent: room.activeevent,
@@ -1830,7 +1851,7 @@ export async function setRoomUserReady({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1853,7 +1874,7 @@ export async function setRoomUserReady({
       userExists = true;
 
       if (ready && !hasCompleteProfile(user)) {
-        throw new Error("Escolha nome e cor antes de marcar pronto.");
+        throw new Error("Escolha uma cor antes de marcar pronto.");
       }
 
       return {
@@ -1882,6 +1903,7 @@ export async function setRoomUserReady({
 
     return publicRoom({
       code,
+      mode: room.mode,
       users: updatedUsers,
       activecase: room.activecase,
       activeevent: room.activeevent,
@@ -2791,7 +2813,7 @@ export async function returnRoomCaseToLobby({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -2853,6 +2875,7 @@ export async function returnRoomCaseToLobby({
 
       return publicRoom({
         code,
+        mode: room.mode,
         users: resetUsers,
         activecase: null,
         activeevent: null,
@@ -2881,6 +2904,7 @@ export async function returnRoomCaseToLobby({
 
     return publicRoom({
       code,
+      mode: room.mode,
       users,
       activecase: room.activecase,
       activeevent: room.activeevent,
@@ -2899,7 +2923,7 @@ export async function finishRoomCase({ code }: { code: string }) {
 
   const current = await dbQuery<Room>(
     `
-      SELECT room_code AS code, users, activecase::text AS activecase, activeevent, gamestate
+      SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
       FROM game_rooms
       WHERE room_code = $1
     `,
@@ -2931,6 +2955,7 @@ export async function finishRoomCase({ code }: { code: string }) {
 
   return publicRoom({
     code,
+    mode: room.mode,
     users,
     activecase: null,
     activeevent: null,

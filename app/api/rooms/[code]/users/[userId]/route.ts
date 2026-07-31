@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { updateRoomUser } from "@/lib/rooms";
 
@@ -5,9 +6,17 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ code: string; userId: string }> },
 ) {
+  const session = await auth();
+
+  if (!session?.user?.id || !session.user.name) {
+    return Response.json(
+      { error: "Faça login para atualizar sua cor." },
+      { status: 401 },
+    );
+  }
+
   const { code, userId } = await params;
   const body = (await request.json()) as {
-    nickname?: string;
     color?: string;
   };
 
@@ -15,7 +24,6 @@ export async function PATCH(
     const result = await updateRoomUser({
       code,
       userId,
-      nickname: body.nickname ?? "",
       color: body.color ?? "",
     });
 

@@ -7,7 +7,8 @@ Aplicação web em Next.js para criar salas temporárias e jogar Contrapista, um
 O projeto permite:
 
 - criar uma sala privada com código aleatório de 4 números;
-- entrar em uma sala por código, sem login;
+- entrar em uma sala por código, com conta pública opcional;
+- criar conta e fazer login por email/senha, Google ou GitHub em modal público;
 - escolher nickname e cor exclusiva por jogador;
 - manter a sessão do jogador no `localStorage`;
 - ajustar parâmetros da partida na ante-sala;
@@ -15,6 +16,8 @@ O projeto permite:
 - gerar um caso automaticamente com IA via OpenRouter;
 - salvar o caso na tabela `cases`;
 - vincular o caso ativo na sala por `game_rooms.activecase`;
+- parear jogadores em filas casual e rankeada para mesas clássicas de 4 jogadores;
+- oferecer um problema diário sorteado do banco com tentativa individual por usuário;
 - conduzir uma partida por fases sincronizadas em `game_rooms.gamestate`;
 - distribuir pistas por jogador a partir dos arrays de pistas verdadeiras e falsas;
 - sortear a ordem dos jogadores por roleta;
@@ -29,6 +32,7 @@ O projeto permite:
 - Next.js 16 App Router
 - React 19
 - Tailwind CSS 4
+- Auth.js / NextAuth 5
 - PostgreSQL Neon via `pg`
 - OpenRouter via chamadas compatíveis com Chat Completions
 
@@ -54,6 +58,11 @@ Crie ou mantenha um arquivo `.env` com:
 
 ```env
 DATABASE=postgresql://...
+AUTH_SECRET=uma-string-segura-com-32-bytes-ou-mais
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+AUTH_GITHUB_ID=...
+AUTH_GITHUB_SECRET=...
 
 LLM_PROVIDER=openrouter
 LLM_OPENROUTER_API_KEY=key_1,key_2,key_3
@@ -161,8 +170,10 @@ GET   /api/cases/[caseId]                Lê caso salvo
 lib/rooms.ts                 Estado e regras de sala, jogo, eventos e config
 lib/cases.ts                 Prompt, validação, geração e persistência de casos
 lib/db.ts                    Pool PostgreSQL
+lib/auth-users.ts            Schema, cadastro e autenticação de usuários
 lib/player-colors.ts         Cores permitidas
 lib/ai                       Configuração, fallback e cliente de IA
+auth.ts                      Configuração Auth.js com credentials, Google e GitHub
 ```
 
 ## Modelo de Dados
@@ -181,6 +192,7 @@ Campos relevantes:
 - `activeevent`
 - `gamestate`
 - `users`
+- `mode`
 - `config_id`
 - `created_at`
 - `updated_at`
@@ -189,12 +201,83 @@ Regras:
 
 - `room_code` é o código de 4 números da sala;
 - `users` guarda jogadores em JSON;
+- `mode` indica `custom`, `casual` ou `ranked`;
 - cada jogador tem `id`, `nickname`, `color`, `ready` e `joinedAt`;
 - `color` deve ser única por sala;
 - `activecase` aponta para `cases.id`;
 - `activeevent` sincroniza eventos de palpite e resultado;
 - `gamestate` sincroniza fases, roleta, turno atual, pistas compartilhadas, votos para pular, eliminados e retorno à ante-sala;
 - sala vazia é removida imediatamente.
+- salas `casual` e `ranked` são pareadas automaticamente, usam configuração clássica fixa e não possuem líder/configuração editável.
+- salas e modos de jogo exigem usuário logado com `username` definido;
+- na ante-sala, o nickname vem da conta e o jogador escolhe apenas uma cor antes de marcar pronto.
+
+### `matchmaking_queue`
+
+Usada para parear jogadores em filas públicas.
+
+Campos relevantes:
+
+- `id`
+- `browser_id`
+- `user_id`
+- `mode`
+- `rating`
+- `matched_room_code`
+- `room_user_id`
+- `created_at`
+- `updated_at`
+
+Regras:
+
+- `casual` pareia os primeiros 4 jogadores disponíveis;
+- `ranked` exige usuário logado e pareia 4 jogadores com rating próximo;
+- quando a mesa fecha, uma sala `game_rooms` é criada com `mode` correspondente e 4 usuários ainda sem identificação;
+- entradas em fila usam heartbeat; jogadores sem comunicação recente deixam de ser candidatos ao pareamento;
+- quando a mesa fecha, uma sala `game_rooms` é criada com `mode` correspondente, nomes vindos das contas e cores ainda vazias;
+- a ante-sala pareada não mostra painel de configuração nem líder da sala.
+
+### `daily_problems`
+
+Usada para guardar o caso diário escolhido.
+
+Campos relevantes:
+
+- `problem_date`
+- `case_id`
+- `created_at`
+
+Regras:
+
+- há no máximo um problema por dia;
+- o caso é sorteado aleatoriamente da tabela `cases` na primeira abertura do dia;
+- dias anteriores permanecem registrados e podem ser abertos pelo calendário;
+- o calendário exibe o mês completo, mas só habilita datas presentes em `daily_problems`.
+
+### `daily_problem_attempts`
+
+Usada para controlar o último palpite individual do problema diário.
+
+Campos relevantes:
+
+- `user_id`
+- `problem_date`
+- `submitted_answer`
+- `is_correct`
+- `cooldown_until`
+- `answered_at`
+- `created_at`
+- `updated_at`
+
+Regras:
+
+- chave primária composta por `user_id` e `problem_date`;
+- há no máximo um palpite salvo por usuário em cada problema diário;
+- ao enviar um novo palpite, o palpite anterior expirado é removido e substituído;
+- quem acerta passa a ver sua própria resposta e a resposta oficial;
+- quem erra mantém apenas o último palpite enviado e entra em cooldown de 1 hora;
+- acertos incrementam `user_achievements.daily_problems_solved`;
+- as pistas são exibidas juntas e embaralhadas de forma estável, sem indicar quais são verdadeiras ou falsas.
 
 ### `game_rooms_config`
 
@@ -210,6 +293,55 @@ Campos relevantes:
 - `final_guess_time_seconds`
 - `true_clues_per_player`
 - `clues_per_player`
+
+### `users`
+
+Usada para contas públicas do site.
+
+Campos relevantes:
+
+- `id`
+- `name`
+- `username`
+- `email`
+- `email_normalized`
+- `provider`
+- `password_hash`
+- `created_at`
+- `updated_at`
+
+Regras:
+
+- `email_normalized` é único;
+- `username` é único quando definido e é o nome público exibido no site;
+- OAuth não usa automaticamente o nome vindo de Google/GitHub; o usuário escolhe `username` depois do primeiro login;
+- `provider` indica `credentials`, `google` ou `github`;
+- o mesmo email só pode autenticar pelo provider usado no primeiro cadastro;
+- senhas são armazenadas como hash `scrypt` com salt individual;
+- Auth.js usa sessão JWT;
+- login/cadastro aparecem em modal no cabeçalho público, não em páginas próprias.
+
+### `user_achievements`
+
+Usada para métricas de perfil conectadas ao usuário.
+
+Campos relevantes:
+
+- `user_id`
+- `total_matches_played`
+- `ranked_matches_played`
+- `total_matches_won`
+- `ranked_matches_won`
+- `ranked_rating`
+- `daily_problems_solved`
+- `created_at`
+- `updated_at`
+
+Regras:
+
+- `user_id` referencia `users.id` com remoção em cascata;
+- uma linha é criada automaticamente quando o usuário é cadastrado ou consolidado via OAuth;
+- valores começam em `0`, exceto `ranked_rating`, que começa em `1000`.
 
 Valores padrão:
 
@@ -291,7 +423,11 @@ A geração exige:
 
 ## Sessão e Sincronização
 
-- Não existe login.
+- Existe login público opcional por Auth.js, com email/senha, Google e GitHub.
+- A sessão de conta é independente da sessão de jogador da sala.
+- A página `/jogar` é pública, mas suas ações derivadas exigem conta logada com nome público definido.
+- Rotas protegidas por navegação: `/jogar/busca`, `/jogar/diario` e `/sala/*`.
+- APIs protegidas: `/api/rooms/*`, `/api/matchmaking`, `/api/daily-problem` e `/api/cases/*`.
 - A sessão do jogador fica em `localStorage` com a chave `contrapista-session`.
 - Há marcadores locais por sala para evitar que um jogador que já voltou à ante-sala seja puxado de volta para o caso ativo.
 - A sincronização entre jogadores usa polling a cada 2 segundos e estado persistido em PostgreSQL.

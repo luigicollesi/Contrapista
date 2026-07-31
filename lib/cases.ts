@@ -18,6 +18,14 @@ export type GameCase = {
   created_at?: string;
 };
 
+export type CaseSummary = {
+  id: string;
+  title: string;
+  totalClues: number;
+  falseCluePercentage: number;
+  created_at?: string;
+};
+
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
 const MIN_CASE_GENERATION_ATTEMPTS = 3;
@@ -686,6 +694,47 @@ export async function getCase(caseId: string) {
         false_clues: normalizeClueArray(row.false_clues),
       }
     : null;
+}
+
+export async function listCaseSummaries(limit = 50): Promise<CaseSummary[]> {
+  await ensureCaseSchema();
+
+  const result = await dbQuery<{
+    id: string;
+    title: string;
+    true_count: number | string;
+    false_count: number | string;
+    created_at?: string;
+  }>(
+    `
+      SELECT
+        id::text AS id,
+        title,
+        jsonb_array_length(true_clues) AS true_count,
+        jsonb_array_length(false_clues) AS false_count,
+        created_at
+      FROM cases
+      ORDER BY created_at DESC
+      LIMIT $1
+    `,
+    [limit],
+  );
+
+  return result.rows.map((row) => {
+    const trueCount = Number(row.true_count) || 0;
+    const falseCount = Number(row.false_count) || 0;
+    const totalClues = trueCount + falseCount;
+    const falseCluePercentage =
+      totalClues > 0 ? Math.round((falseCount / totalClues) * 100) : 0;
+
+    return {
+      id: row.id,
+      title: row.title,
+      totalClues,
+      falseCluePercentage,
+      created_at: row.created_at,
+    };
+  });
 }
 
 export async function createCaseForRoom(roomCode: string) {

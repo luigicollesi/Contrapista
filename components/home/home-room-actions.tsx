@@ -166,7 +166,7 @@ export function HomeRoomActions() {
           </span>
           <span className="mt-5 block text-base leading-7 text-[#3a3021]">
             Gera um código de acesso e abre uma sala privada para o grupo
-            preparar a sessão sem cadastro ou exposição pública.
+            preparar a sessão com conta opcional e sem exposição pública.
           </span>
           <span className="mt-6 inline-flex h-10 items-center rounded-full bg-[#17130d] px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#7c1f2a]">
             Abrir dossiê

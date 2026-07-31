@@ -1,5 +1,4 @@
-import Image from "next/image";
-import { HomeRoomActions } from "@/components/home/home-room-actions";
+import Link from "next/link";
 
 const manualHighlights = [
   {
@@ -66,34 +65,20 @@ const manualDetails = [
   "Errar a solução tira o jogador da disputa, mas abre seu arquivo para os demais.",
   "Um palpite final suspende a mesa: naquele momento, todos aguardam a tese ser registrada.",
   "A conclusão permanece disponível para cada jogador até ele decidir voltar à ante-sala.",
-  "A sala guarda sua presença no navegador, sem exigir cadastro ou conta.",
+  "A conta é opcional; a sala ainda guarda sua presença no navegador durante a partida.",
 ];
 
-function BrandHeader() {
-  return (
-    <header className="mb-6 flex items-center justify-between gap-4 sm:mb-8">
-      <div className="flex items-center gap-3">
-        <div className="brand-mark flex h-12 w-12 items-center justify-center overflow-hidden rounded-sm border border-[#d0a85c]/50 bg-[#171a1a] shadow-lg">
-          <Image
-            alt="Contrapista"
-            className="h-10 w-10 object-contain"
-            height={40}
-            src="/contrapista-icon.png"
-            width={40}
-          />
-        </div>
-        <div>
-          <p className="font-serif text-2xl font-bold tracking-wide text-[#f5e7bd]">
-            Contrapista
-          </p>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#b98d47]">
-            Jogo online de investigação
-          </p>
-        </div>
-      </div>
-    </header>
-  );
-}
+const heroStats = [
+  { label: "Modos preparados", value: "4" },
+  { label: "Competição padrão", value: "4P" },
+  { label: "Pistas em disputa", value: "V/F" },
+];
+
+const valueProps = [
+  "Casos gerados com pistas verdadeiras e falsas.",
+  "Debate social com risco real ao sustentar uma tese.",
+  "Salas privadas, modos públicos e perfil persistente.",
+];
 
 function EvidencePreview() {
   return (
@@ -149,10 +134,62 @@ function HomeHero() {
           narrativa fácil. Conduza a sessão, sustente hipóteses e exponha a
           contradição que fecha o caso.
         </p>
-        <HomeRoomActions />
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link
+            className="inline-flex h-12 items-center justify-center rounded-sm bg-[#d0a85c] px-6 text-sm font-black uppercase tracking-[0.18em] text-[#17130d] transition hover:bg-[#f3dfaa]"
+            href="/jogar"
+          >
+            Ver modos de jogo
+          </Link>
+          <Link
+            className="inline-flex h-12 items-center justify-center rounded-sm border border-[#d0a85c]/45 px-6 text-sm font-bold uppercase tracking-[0.18em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+            href="/instrucoes"
+          >
+            Como funciona
+          </Link>
+        </div>
+        <div className="mt-10 grid max-w-2xl gap-3 sm:grid-cols-3">
+          {heroStats.map((stat) => (
+            <div className="border-l border-[#d0a85c]/35 pl-3" key={stat.label}>
+              <p className="font-serif text-3xl font-bold text-[#f2e6c8]">
+                {stat.value}
+              </p>
+              <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-stone-400">
+                {stat.label}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
       <EvidencePreview />
+    </section>
+  );
+}
+
+function ValueProposition() {
+  return (
+    <section className="mt-14 border-y border-[#d0a85c]/20 py-8 sm:mt-16">
+      <div className="grid gap-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.32em] text-[#d0a85c]">
+            Por que jogar
+          </p>
+          <h2 className="mt-4 font-serif text-4xl font-bold text-[#f2e6c8] sm:text-5xl">
+            Um jogo de dedução feito para conflito de versões
+          </h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {valueProps.map((item, index) => (
+            <article className="border-l border-[#d0a85c]/30 pl-4" key={item}>
+              <span className="font-mono text-sm font-black text-[#d0a85c]">
+                0{index + 1}
+              </span>
+              <p className="mt-3 text-base leading-7 text-stone-300">{item}</p>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
@@ -287,9 +324,9 @@ export function HomePage() {
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
       <div className="absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-[#7c1f2a]/30 via-[#1e2626]/20 to-transparent" />
-      <div className="home-shell relative mx-auto flex w-full max-w-7xl flex-col px-4 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8 lg:pb-14 lg:pt-5">
-        <BrandHeader />
+      <div className="home-shell relative mx-auto flex w-full max-w-7xl flex-col px-4 pb-10 pt-8 sm:px-6 sm:pb-12 sm:pt-10 lg:px-8 lg:pb-14">
         <HomeHero />
+        <ValueProposition />
         <FieldManual />
       </div>
     </main>
