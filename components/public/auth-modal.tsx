@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId } from "react";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 export type AuthMode = "login" | "register";
 
@@ -67,7 +68,7 @@ function TextField({
       {label}
       <input
         autoComplete={autoComplete}
-        className="mt-2 h-11 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] px-3 text-stone-50 outline-none transition placeholder:text-stone-600 focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20"
+        className="mt-2 h-12 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] px-3 text-base text-stone-50 outline-none transition placeholder:text-stone-600 focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 sm:h-11 sm:text-sm"
         name={name}
         required
         type={type}
@@ -95,7 +96,7 @@ function ProviderButton({
 
   return (
     <button
-      className={`inline-flex h-11 w-full items-center justify-center rounded-sm border px-4 text-sm font-black transition disabled:cursor-wait disabled:opacity-70 ${className}`}
+      className={`inline-flex h-12 w-full items-center justify-center rounded-sm border px-4 text-sm font-black transition disabled:cursor-wait disabled:opacity-70 sm:h-11 ${className}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -137,14 +138,14 @@ export function AuthModal({
   }, [isPending, onClose]);
 
   return (
-    <div
-      aria-labelledby={titleId}
-      aria-modal="true"
-      className="fixed inset-0 z-[80] flex min-h-dvh items-center justify-center bg-[#050606]/85 px-4 py-6 backdrop-blur-sm"
-      role="dialog"
+    <ResponsiveSheet
+      ariaLabelledBy={titleId}
+      backdropClassName="bg-[#050606]/85 backdrop-blur-sm"
+      contentClassName="relative grid max-w-5xl border border-[#d0a85c]/40 bg-[#101414] shadow-black/60 lg:grid-cols-[0.86fr_1.14fr]"
+      zIndexClassName="z-[80]"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(208,168,92,0.16),transparent_42%),linear-gradient(135deg,rgba(124,31,42,0.18),transparent_38%)]" />
-      <section className="relative grid w-full max-w-5xl overflow-hidden rounded-sm border border-[#d0a85c]/40 bg-[#101414] shadow-2xl shadow-black/60 lg:grid-cols-[0.86fr_1.14fr]">
+      <div className="relative grid lg:grid-cols-[0.86fr_1.14fr]">
         <aside className="hidden border-r border-[#d0a85c]/20 bg-[#171a1a] p-8 lg:flex lg:flex-col lg:justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.3em] text-[#d0a85c]">
@@ -167,25 +168,25 @@ export function AuthModal({
           </div>
         </aside>
 
-        <div className="p-5 sm:p-7 lg:p-8">
+        <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] sm:p-7 lg:p-8">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d0a85c]">
                 {copy.eyebrow}
               </p>
               <h2
-                className="mt-2 font-serif text-4xl font-bold text-[#f2e6c8]"
+                className="mt-2 font-serif text-3xl font-bold leading-tight text-[#f2e6c8] sm:text-4xl"
                 id={titleId}
               >
                 {copy.title}
               </h2>
-              <p className="mt-3 max-w-xl text-sm leading-7 text-stone-300">
+              <p className="mt-3 max-w-xl text-sm leading-6 text-stone-300 sm:leading-7">
                 {copy.body}
               </p>
             </div>
             <button
               aria-label="Fechar modal"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-sm border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d0a85c] hover:text-[#f5e7bd]"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d0a85c] hover:text-[#f5e7bd] sm:h-10 sm:w-10"
               disabled={isPending}
               onClick={onClose}
               type="button"
@@ -194,7 +195,7 @@ export function AuthModal({
             </button>
           </div>
 
-          <div className="mt-7 grid gap-2 sm:grid-cols-2">
+          <div className="mt-5 grid gap-2 sm:mt-7 sm:grid-cols-2">
             <ProviderButton
               disabled={isPending}
               onClick={() => onProviderSignIn("google")}
@@ -217,7 +218,7 @@ export function AuthModal({
             <span className="h-px flex-1 bg-stone-700" />
           </div>
 
-          <form action={onSubmit} className="mt-6 space-y-4">
+          <form action={onSubmit} className="mt-5 space-y-4 sm:mt-6">
             {mode === "register" ? (
               <TextField
                 autoComplete="name"
@@ -252,7 +253,7 @@ export function AuthModal({
             ) : null}
 
             <button
-              className="inline-flex h-11 w-full items-center justify-center rounded-sm bg-[#d0a85c] px-4 text-sm font-black uppercase tracking-[0.18em] text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-wait disabled:opacity-70"
+              className="inline-flex h-12 w-full items-center justify-center rounded-sm bg-[#d0a85c] px-4 text-sm font-black uppercase tracking-[0.18em] text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-wait disabled:opacity-70 sm:h-11"
               disabled={isPending}
               type="submit"
             >
@@ -271,7 +272,7 @@ export function AuthModal({
             {copy.switchMode}
           </button>
         </div>
-      </section>
-    </div>
+      </div>
+    </ResponsiveSheet>
   );
 }

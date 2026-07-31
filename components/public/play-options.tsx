@@ -4,6 +4,7 @@ import { useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
 import { requestJson } from "@/lib/client-http";
 import { getBrowserId, saveSession } from "@/lib/client-session";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 type PlayModeId = "casual" | "ranked" | "custom" | "daily";
 
@@ -143,7 +144,7 @@ export function PlayOptions() {
 
   return (
     <>
-      <section className="mt-12 border-y border-[#d0a85c]/20">
+      <section className="mt-8 border-y border-[#d0a85c]/20 sm:mt-12">
         {modes.map((mode, index) => {
           const isCustom = mode.id === "custom";
           const isMatchmaking = mode.id === "casual" || mode.id === "ranked";
@@ -151,11 +152,11 @@ export function PlayOptions() {
 
           return (
             <article
-              className="grid gap-5 border-b border-[#d0a85c]/15 py-7 last:border-b-0 lg:grid-cols-[110px_minmax(0,1fr)_260px] lg:items-center"
+              className="responsive-container grid gap-4 border-b border-[#d0a85c]/15 py-5 last:border-b-0 sm:py-7 lg:grid-cols-[110px_minmax(0,1fr)_260px] lg:items-center"
               key={mode.id}
             >
               <div className="flex items-center gap-4 lg:block">
-                <span className="block font-mono text-4xl font-black text-[#d0a85c]">
+                <span className="block font-mono text-3xl font-black text-[#d0a85c] sm:text-4xl">
                   0{index + 1}
                 </span>
                 <span
@@ -175,16 +176,16 @@ export function PlayOptions() {
                     </span>
                   ) : null}
                 </div>
-                <h2 className="mt-3 font-serif text-4xl font-bold text-[#f2e6c8] sm:text-5xl">
+                <h2 className="mt-2 font-serif text-3xl font-bold leading-tight text-[#f2e6c8] sm:mt-3 sm:text-5xl">
                   {mode.title}
                 </h2>
-                <p className="mt-4 text-base leading-7 text-stone-300">
+                <p className="mt-3 text-sm leading-6 text-stone-300 sm:mt-4 sm:text-base sm:leading-7">
                   {mode.body}
                 </p>
-                <div className="mt-5 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2 sm:mt-5">
                   {mode.facts.map((fact) => (
                     <span
-                      className="border border-[#d0a85c]/20 px-3 py-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-400"
+                      className="border border-[#d0a85c]/20 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-stone-400 sm:px-3 sm:py-2 sm:text-xs sm:tracking-[0.14em]"
                       key={fact}
                     >
                       {fact}
@@ -198,7 +199,7 @@ export function PlayOptions() {
                 ) : null}
               </div>
 
-              <div className="flex flex-col gap-3 lg:items-stretch">
+              <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-col lg:gap-3 lg:items-stretch">
                 <button
                   className="inline-flex h-12 items-center justify-center rounded-sm bg-[#d0a85c] px-5 text-sm font-black uppercase tracking-[0.16em] text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-55"
                   disabled={(!isCustom && !isMatchmaking && !isDaily) || isLoading}
@@ -236,9 +237,13 @@ export function PlayOptions() {
       </section>
 
       {isJoinOpen ? (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm">
+        <ResponsiveSheet
+          backdropClassName="bg-black/70 backdrop-blur-sm"
+          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:rounded-sm sm:p-6"
+          zIndexClassName="z-[80]"
+        >
           <form
-            className="w-full max-w-md rounded-sm border border-[#d0a85c]/40 bg-[#171a1a] p-6 text-stone-50 shadow-2xl"
+            className="contents"
             onSubmit={enterRoom}
           >
             <div className="flex items-start justify-between gap-4">
@@ -266,7 +271,7 @@ export function PlayOptions() {
             <input
               aria-label="Código da sala"
               autoFocus
-              className="mt-6 h-16 w-full rounded-sm border border-[#d0a85c]/50 bg-[#0b0d0d] px-5 text-center font-mono text-3xl font-bold tracking-[0.42em] text-[#f2e6c8] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20"
+              className="mt-6 h-16 w-full rounded-sm border border-[#d0a85c]/50 bg-[#0b0d0d] px-5 text-center font-mono text-3xl font-bold tracking-[0.32em] text-[#f2e6c8] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20 sm:tracking-[0.42em]"
               inputMode="numeric"
               maxLength={4}
               onChange={(event) =>
@@ -290,7 +295,7 @@ export function PlayOptions() {
               Entrar na sala
             </button>
           </form>
-        </div>
+        </ResponsiveSheet>
       ) : null}
     </>
   );

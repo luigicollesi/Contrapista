@@ -25,18 +25,18 @@ export function FixedPhaseActions({
   const timerSeconds = useCountdownSeconds(timerEndsAt);
 
   return (
-    <div className="fixed right-4 top-4 z-[90] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 sm:flex-nowrap">
-      <div className="rounded-full border border-[#d7b861]/45 bg-[#171b16]/95 px-4 py-2 text-right shadow-2xl shadow-black/35 backdrop-blur">
-        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#c8a24a]">
+    <div className="fixed inset-x-3 bottom-3 z-[90] flex max-w-[calc(100vw-1.5rem)] items-center justify-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-w-[calc(100vw-2rem)]">
+      <div className="rounded-full border border-[#d7b861]/45 bg-[#171b16]/95 px-3 py-2 text-right shadow-2xl shadow-black/35 backdrop-blur sm:px-4">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#c8a24a] sm:text-[10px] sm:tracking-[0.22em]">
           {timerLabel}
         </p>
-        <p className="mt-0.5 font-mono text-2xl font-black leading-none text-[#fff3cf]">
+        <p className="mt-0.5 font-mono text-xl font-black leading-none text-[#fff3cf] sm:text-2xl">
           {formatTimer(timerSeconds)}
         </p>
       </div>
       {canSkipPhase ? (
         <button
-          className="flex h-12 items-center gap-2 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-4 font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70"
+          className="flex h-11 items-center gap-1.5 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-3 text-sm font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70 sm:h-12 sm:gap-2 sm:px-4 sm:text-base"
           disabled={hasVotedToSkip}
           onClick={onSkip}
           title="Pular fase por consenso"

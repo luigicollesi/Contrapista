@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type SubmitEvent } fro
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 import { readJsonResponse, requestJson } from "@/lib/client-http";
 import {
   clearSession,
@@ -819,15 +820,15 @@ export default function RoomPage() {
   const canSubmitProfile = currentUser ? Boolean(color) : true;
 
   return (
-    <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
+    <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-3 py-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
       <section className="relative mx-auto w-full max-w-7xl">
-        <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
-          <div>
+        <header className="grid gap-4 border-b border-[#d7b861]/25 pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:pb-6">
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#c8a24a] sm:text-sm sm:tracking-[0.28em]">
                 Sala reservada
               </p>
               {currentUser ? (
@@ -841,22 +842,22 @@ export default function RoomPage() {
                 </Link>
               )}
             </div>
-            <h1 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf] sm:text-5xl">
+            <h1 className="mt-2 font-serif text-3xl font-bold leading-tight text-[#fff3cf] sm:text-5xl">
               Ante-sala do caso
             </h1>
-            <p className="mt-3 max-w-2xl text-stone-300">
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300 sm:mt-3 sm:text-base">
               Sua identificação vem da conta logada. Escolha uma cor exclusiva
               antes de confirmar prontidão para abrir o dossiê.
             </p>
           </div>
-          <div className="rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-6 py-4 shadow-2xl shadow-black/25">
+          <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-4 py-3 shadow-2xl shadow-black/25 sm:block sm:px-6 sm:py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
               Código
             </p>
-            <p className="mt-1 font-mono text-4xl font-bold tracking-[0.32em] text-[#fff3cf]">
+            <p className="justify-self-end font-mono text-3xl font-bold tracking-[0.24em] text-[#fff3cf] sm:mt-1 sm:text-4xl sm:tracking-[0.32em]">
               {code}
             </p>
-            <p className="mt-2 text-sm text-stone-400">
+            <p className="col-span-2 mt-1 text-sm text-stone-400 sm:mt-2">
               {readyCount}/{room?.userCount ?? 0} prontos
             </p>
           </div>
@@ -1420,12 +1421,11 @@ export default function RoomPage() {
         )}
 
         {isCasePickerOpen ? (
-          <div
-            aria-modal="true"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
-            role="dialog"
+          <ResponsiveSheet
+            backdropClassName="bg-black/70 backdrop-blur-sm"
+            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:p-6"
           >
-            <div className="w-full max-w-3xl rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-6 text-stone-50 shadow-2xl shadow-black/50">
+            <div>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
@@ -1498,7 +1498,7 @@ export default function RoomPage() {
                 })}
               </div>
             </div>
-          </div>
+          </ResponsiveSheet>
         ) : null}
       </section>
     </main>

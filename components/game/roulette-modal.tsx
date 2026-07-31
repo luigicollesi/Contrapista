@@ -49,12 +49,12 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Roleta de ordem
       </p>
-      <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         Sorteando o próximo jogador
       </h2>
-      <div className="mt-6 flex flex-col items-center gap-6">
+      <div className="mt-5 flex flex-col items-center gap-5 sm:mt-6 sm:gap-6">
         <div
-          className="relative h-72 w-72 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)]"
+          className="relative h-64 w-64 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)] sm:h-72 sm:w-72"
           key={rouletteSpinKey}
           style={{ "--target-rotation": `${targetRotation}deg` } as CSSProperties}
         >
@@ -67,7 +67,7 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
           <div className="absolute left-1/2 top-0 h-10 w-5 -translate-x-1/2 rounded-b-full bg-[#fff3cf] shadow-lg" />
           <div className="absolute inset-16 rounded-full border border-[#d7b861]/50 bg-[#171b16] shadow-inner" />
           <div className="absolute inset-0 flex items-center justify-center px-12 text-center">
-            <p className="font-serif text-2xl font-bold text-[#fff3cf]">
+            <p className="font-serif text-xl font-bold text-[#fff3cf] sm:text-2xl">
               {selectedPlayer ? getPlayerName(selectedPlayer) : "Sorteando..."}
             </p>
           </div>

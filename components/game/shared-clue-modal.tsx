@@ -16,7 +16,7 @@ export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Pista compartilhada
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             {sharedClue.actorNickname} abriu um fragmento
           </h2>
         </div>
@@ -44,7 +44,7 @@ export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
         </p>
       ) : null}
 
-      <p className="mt-5 whitespace-pre-line text-xl leading-9 text-stone-200">
+      <p className="mt-4 whitespace-pre-line text-lg leading-8 text-stone-200 sm:mt-5 sm:text-xl sm:leading-9">
         {sharedClue.clueText}
       </p>
       <p className="mt-5 text-sm font-semibold text-stone-400">

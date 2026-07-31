@@ -47,28 +47,28 @@ export function GamePhasePanel({
   const currentPlayerName = players[currentTurnIndex]?.name;
 
   return (
-    <section className="sticky top-2 z-20 mt-5 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-4 shadow-2xl shadow-black/20 backdrop-blur">
-      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+    <section className="sticky top-2 z-20 mt-4 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-3 shadow-2xl shadow-black/20 backdrop-blur sm:mt-5 sm:p-4">
+      <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d7b861] sm:text-xs sm:tracking-[0.24em]">
             Rodada {round}
           </p>
-          <h2 className="mt-1 text-2xl font-bold text-[#fff3cf]">
+          <h2 className="mt-1 truncate text-xl font-bold text-[#fff3cf] sm:text-2xl">
             {phaseLabel}
           </h2>
-          <p className="mt-1 text-sm text-stone-400">
+          <p className="mt-1 text-xs leading-5 text-stone-400 sm:text-sm">
             {phaseDescription(phase, currentPlayerName)}
           </p>
         </div>
 
         {phase !== "roulette" ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
             {players.map((player, index) => {
               const isCurrent = index === currentTurnIndex;
 
               return (
                 <span
-                  className={`rounded-full border px-3 py-1 text-sm font-semibold ${
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold sm:text-sm ${
                     isCurrent
                       ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
                       : "border-stone-700 bg-[#0f120e] text-stone-300"

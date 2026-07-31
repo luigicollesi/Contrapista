@@ -29,23 +29,23 @@ export function ReadyInvestigationSection({
   );
 
   return (
-    <section className="mt-8 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/25">
+    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/25">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Preparação da investigação
       </p>
-      <h2 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-3xl font-bold leading-tight text-[#fff3cf] sm:text-4xl">
         Confirme presença para abrir o dossiê
       </h2>
-      <p className="mt-3 max-w-2xl text-stone-300">
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300 sm:mt-3 sm:text-base">
         A leitura inicial começa somente quando todos estiverem prontos.
       </p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid gap-2 sm:mt-6 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
         {users.map((user) => {
           const isReady = readyUserIds.includes(user.id);
 
           return (
             <article
-              className="rounded-lg border bg-[#0f120e] p-4"
+              className="rounded-lg border bg-[#0f120e] p-3 sm:p-4"
               key={user.id}
               style={{ borderColor: `${getPlayerColorHex(user.color)}66` }}
             >
@@ -67,9 +67,9 @@ export function ReadyInvestigationSection({
           );
         })}
       </div>
-      <div className="mt-6 flex justify-end">
+      <div className="mt-5 flex justify-stretch sm:mt-6 sm:justify-end">
         <button
-          className="h-12 rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-12 w-full rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           disabled={currentUserReady}
           onClick={onReady}
           type="button"
@@ -83,17 +83,17 @@ export function ReadyInvestigationSection({
 
 export function CaseDossier({ gameCase }: { gameCase: GameCase }) {
   return (
-    <article className="mt-7 overflow-hidden rounded-lg border border-[#d7b861]/35 bg-[#171b16] shadow-2xl shadow-black/25">
-      <div className="border-b border-[#d7b861]/25 bg-[#0f120e] px-6 py-4">
+    <article className="mt-6 overflow-hidden rounded-lg border border-[#d7b861]/35 bg-[#171b16] shadow-2xl shadow-black/25 sm:mt-7">
+      <div className="border-b border-[#d7b861]/25 bg-[#0f120e] px-4 py-4 sm:px-6">
         <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d7b861]">
           Dossiê principal
         </p>
-        <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+        <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
           {gameCase.title}
         </h2>
       </div>
-      <div className="px-6 py-6">
-        <div className="max-w-4xl whitespace-pre-line text-lg leading-8 text-stone-300">
+      <div className="px-4 py-5 sm:px-6 sm:py-6">
+        <div className="max-w-4xl whitespace-pre-line text-sm leading-7 text-stone-300 sm:text-lg sm:leading-8">
           {gameCase.case_text}
         </div>
       </div>
@@ -113,28 +113,28 @@ export function PlayerCluesSection({
   sharedClueIds,
 }: PlayerCluesSectionProps) {
   return (
-    <section className="mt-8">
+    <section className="mt-6 sm:mt-8">
       <div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Fragmentos reservados
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             Fragmentos sob sua custódia
           </h2>
         </div>
-        <p className="text-sm text-stone-400">
+        <p className="text-xs leading-5 text-stone-400 sm:text-sm">
           A proporção entre fragmentos corretos e falsos segue a configuração da
           sala.
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
         {clues.map((clue, index) => {
           const wasShared = sharedClueIds.includes(clue.id);
 
           return (
             <button
-              className={`relative min-h-48 rounded border p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:rotate-0 ${
+              className={`responsive-container relative min-h-36 rounded border p-4 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:rotate-0 sm:min-h-48 sm:p-5 ${
                 wasShared
                   ? "rotate-0 border-[#8b1e1e]/70 bg-[#c8b37d] text-[#4b3724] opacity-75"
                   : "rotate-[-1deg] border-[#d7b861]/35 bg-[#f2dfad] text-[#21170f] hover:border-[#8b1e1e]"
@@ -151,8 +151,8 @@ export function PlayerCluesSection({
               <p className="font-mono text-xs font-bold uppercase tracking-[0.22em] text-[#8b1e1e]">
                 {String(index + 1).padStart(2, "0")}
               </p>
-              <p className="mt-5 line-clamp-4 text-lg leading-8">{clue.text}</p>
-              <span className="mt-5 inline-flex text-sm font-bold text-[#8b1e1e]">
+              <p className="mt-4 line-clamp-4 text-base leading-7 sm:mt-5 sm:text-lg sm:leading-8">{clue.text}</p>
+              <span className="mt-4 inline-flex text-sm font-bold text-[#8b1e1e] sm:mt-5">
                 {wasShared ? "Reabrir fragmento" : "Abrir fragmento"}
               </span>
             </button>
@@ -169,11 +169,11 @@ export function EliminatedCluesArchive({
   groups: EliminatedClueGroup[];
 }) {
   return (
-    <section className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/20 lg:p-6">
+    <section className="mt-6 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-4 shadow-2xl shadow-black/20 sm:mt-8 sm:p-5 lg:p-6">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Arquivo dos eliminados
       </p>
-      <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         Pistas fora da disputa
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
@@ -212,11 +212,11 @@ export function EliminatedCluesArchive({
 
 export function EliminatedPlayerArchive({ gameCase }: { gameCase: GameCase }) {
   return (
-    <section className="mt-8 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/20">
+    <section className="mt-6 rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/20">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Fora da disputa
       </p>
-      <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         Arquivo completo liberado
       </h2>
       <p className="mt-2 text-stone-400">
@@ -247,13 +247,13 @@ export function EliminatedPlayerArchive({ gameCase }: { gameCase: GameCase }) {
 
 export function FinalSolutionSection({ onOpen }: { onOpen: () => void }) {
   return (
-    <section className="mt-8 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-5 shadow-2xl shadow-black lg:p-6/20">
+    <section className="mt-6 rounded-lg border border-[#8b1e1e]/50 bg-[#171b16] p-4 shadow-2xl shadow-black sm:mt-8 sm:p-5 lg:p-6/20">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Encerramento
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             Conclusão final
           </h2>
           <p className="mt-2 text-stone-400">

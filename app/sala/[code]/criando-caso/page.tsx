@@ -475,7 +475,7 @@ export default function CreatingCasePage() {
   }
 
   return (
-    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-3 py-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
@@ -489,16 +489,16 @@ export default function CreatingCasePage() {
           ))}
         </div>
       </div>
-      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-8 lg:grid-cols-[.82fr_1.18fr] lg:gap-12">
+      <section className="relative mx-auto grid w-full max-w-7xl items-center gap-6 sm:gap-8 lg:grid-cols-[.82fr_1.18fr] lg:gap-12">
         <div className="mx-auto w-full max-w-2xl lg:mx-0">
           <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d7b861]">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861] sm:text-sm sm:tracking-[0.32em]">
               Sala {code}
             </p>
             <LeaveRoomButton isLeaving={isLeaving} onClick={leaveRoom} />
             {canCancelCreation ? (
               <button
-                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-400/45 bg-red-950/35 px-4 py-2 text-sm font-bold text-red-100 shadow-lg shadow-black/20 transition hover:border-red-300 hover:bg-red-900/55 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-400/45 bg-red-950/35 px-3 py-2 text-xs font-bold text-red-100 shadow-lg shadow-black/20 transition hover:border-red-300 hover:bg-red-900/55 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:text-sm"
                 disabled={isCancelingCreation}
                 onClick={cancelCaseCreation}
                 type="button"
@@ -507,10 +507,10 @@ export default function CreatingCasePage() {
               </button>
             ) : null}
           </div>
-          <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
+          <h1 className="mt-4 max-w-2xl font-serif text-3xl font-bold leading-tight text-[#fff3cf] sm:mt-5 sm:text-6xl">
             A mesa está consolidando um dossiê inédito.
           </h1>
-          <p className="mt-6 max-w-xl text-lg leading-8 text-stone-300">
+          <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300 sm:mt-6 sm:text-lg sm:leading-8">
             A IA está estruturando narrativa, evidências conflitantes e resposta
             final. Esta etapa pode levar alguns instantes.
           </p>
@@ -532,9 +532,9 @@ export default function CreatingCasePage() {
           ) : null}
         </div>
 
-        <div className="relative min-h-[620px] w-full sm:min-h-[640px] lg:min-h-[640px]">
+        <div className="relative min-h-[460px] w-full sm:min-h-[640px] lg:min-h-[640px]">
           <div className="case-board-glow absolute inset-x-4 top-0 h-28 rounded-full bg-[#d7b861]/20 blur-3xl sm:inset-x-14" />
-          <div className="relative mx-auto flex min-h-[560px] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-4 shadow-2xl shadow-black/40 sm:min-h-[640px] sm:p-6 lg:min-h-[640px]">
+          <div className="relative mx-auto flex min-h-[440px] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#d7b861]/40 bg-[#171b16] p-4 shadow-2xl shadow-black/40 sm:min-h-[640px] sm:p-6 lg:min-h-[640px]">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_22%_20%,rgba(215,184,97,.16),transparent_18%),radial-gradient(circle_at_80%_70%,rgba(139,30,30,.18),transparent_22%)]" />
             <div className="case-map-lines absolute inset-0 opacity-35" />
             <div className="case-scan-line absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#d7b861]/20 to-transparent" />

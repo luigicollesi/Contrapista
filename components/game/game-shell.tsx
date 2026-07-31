@@ -34,7 +34,7 @@ export function MissingGameScreen({ code }: { code: string }) {
 
 export function GameShell({ children }: { children: ReactNode }) {
   return (
-    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
+    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-3 pb-28 pt-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
@@ -51,12 +51,12 @@ type GameHeaderProps = {
 
 export function GameHeader({ code, isLeaving, onLeave }: GameHeaderProps) {
   return (
-    <header className="flex flex-col justify-between gap-5 border-b border-[#d7b861]/25 pb-6 sm:flex-row sm:items-end">
-      <div>
-        <p className="text-sm font-bold uppercase tracking-[0.28em] text-[#c8a24a]">
+    <header className="flex items-end justify-between gap-3 border-b border-[#d7b861]/25 pb-4 sm:gap-5 sm:pb-6">
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#c8a24a] sm:text-sm sm:tracking-[0.28em]">
           Investigação ativa
         </p>
-        <h1 className="mt-2 font-serif text-4xl font-bold text-[#fff3cf] sm:text-5xl">
+        <h1 className="mt-1 truncate font-serif text-3xl font-bold text-[#fff3cf] sm:mt-2 sm:text-5xl">
           Sala {code}
         </h1>
       </div>

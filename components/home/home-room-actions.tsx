@@ -9,6 +9,7 @@ import {
   readSavedSession,
   saveSession,
 } from "@/lib/client-session";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 type HomeSessionUser = {
   id: string;
@@ -205,9 +206,12 @@ export function HomeRoomActions() {
       ) : null}
 
       {isJoinOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4 py-6">
+        <ResponsiveSheet
+          backdropClassName="bg-black/65"
+          contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 sm:rounded-sm sm:p-6"
+        >
           <form
-            className="w-full max-w-md rounded-sm border border-[#d0a85c]/40 bg-[#171a1a] p-5 text-stone-50 shadow-2xl sm:p-6"
+            className="contents"
             onSubmit={enterRoom}
           >
             <div className="flex items-start justify-between gap-4">
@@ -235,7 +239,7 @@ export function HomeRoomActions() {
             <input
               aria-label="Código reservado"
               autoFocus
-              className="mt-6 h-16 w-full rounded-lg border border-[#d0a85c]/50 bg-[#0b0d0d] px-5 text-center font-mono text-3xl font-bold tracking-[0.42em] text-[#f2e6c8] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20"
+              className="mt-6 h-16 w-full rounded-lg border border-[#d0a85c]/50 bg-[#0b0d0d] px-5 text-center font-mono text-3xl font-bold tracking-[0.32em] text-[#f2e6c8] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20 sm:tracking-[0.42em]"
               inputMode="numeric"
               maxLength={4}
               onChange={(event) =>
@@ -259,7 +263,7 @@ export function HomeRoomActions() {
               Entrar no dossiê
             </button>
           </form>
-        </div>
+        </ResponsiveSheet>
       ) : null}
     </>
   );

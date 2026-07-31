@@ -35,22 +35,22 @@ export function FinalGuessModal({
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Palpite final
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             Escreva sua tese
           </h2>
           <p className="mt-3 text-sm font-semibold text-stone-400">
             Envio automático em {formatTimer(guessRemainingSeconds)}.
           </p>
           <textarea
-            className="mt-5 min-h-64 w-full rounded-lg border border-[#d7b861]/35 bg-[#0f120e] p-4 text-lg leading-8 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20"
+            className="mt-4 min-h-44 w-full rounded-lg border border-[#d7b861]/35 bg-[#0f120e] p-3 text-base leading-7 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20 sm:mt-5 sm:min-h-64 sm:p-4 sm:text-lg sm:leading-8"
             disabled={isSubmittingGuess}
             onChange={(changeEvent) => onChangeGuess(changeEvent.target.value)}
             placeholder="Descreva culpado, método, motivo e as respostas centrais do caso."
             value={finalGuess}
           />
-          <div className="mt-6 flex justify-end">
+          <div className="mt-5 flex justify-stretch sm:mt-6 sm:justify-end">
             <button
-              className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-12 w-full rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:w-auto"
               disabled={isSubmittingGuess}
               onClick={onSubmit}
               type="button"
@@ -64,10 +64,10 @@ export function FinalGuessModal({
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Palpite em curso
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             {event.actorNickname} está registrando uma tese
           </h2>
-          <p className="mt-5 text-lg leading-8 text-stone-300">
+          <p className="mt-4 text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
             O jogo está pausado até o envio ou fim do cronômetro.
           </p>
         </>
@@ -82,14 +82,14 @@ export function PendingSolutionModal({ event }: { event: SolutionEvent }) {
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Palpite enviado
       </p>
-      <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         {event.actorNickname} sustentou uma tese
       </h2>
       <div className="mt-5 rounded-lg border border-[#d7b861]/30 bg-[#0f120e] p-4">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
           Resposta enviada
         </p>
-        <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+        <p className="mt-3 whitespace-pre-line text-base leading-7 text-stone-200 sm:text-lg sm:leading-8">
           {event.guess?.trim() || "Nenhuma resposta foi escrita."}
         </p>
       </div>
@@ -124,7 +124,7 @@ export function ManualReviewModal({
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Revisão manual
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             Precisamos da sua honestidade
           </h2>
           <p className="mt-4 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
@@ -136,7 +136,7 @@ export function ManualReviewModal({
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
               Sua tese
             </p>
-            <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+            <p className="mt-3 whitespace-pre-line text-base leading-7 text-stone-200 sm:text-lg sm:leading-8">
               {event.guess?.trim() || "Nenhuma resposta foi escrita."}
             </p>
           </div>
@@ -144,20 +144,20 @@ export function ManualReviewModal({
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
               Resposta oficial
             </p>
-            <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+            <p className="mt-3 whitespace-pre-line text-base leading-7 text-stone-200 sm:text-lg sm:leading-8">
               {finalAnswer}
             </p>
           </div>
-          <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <div className="mt-5 grid gap-3 sm:mt-6 sm:flex sm:flex-wrap sm:justify-end">
             <button
-              className="h-11 rounded-lg border border-red-400/45 bg-red-950/40 px-5 font-bold text-red-100 transition hover:bg-red-900/60"
+              className="h-12 rounded-lg border border-red-400/45 bg-red-950/40 px-5 font-bold text-red-100 transition hover:bg-red-900/60 sm:h-11"
               onClick={() => onJudge(false)}
               type="button"
             >
               Eu errei
             </button>
             <button
-              className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+              className="h-12 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] sm:h-11"
               onClick={() => onJudge(true)}
               type="button"
             >
@@ -170,7 +170,7 @@ export function ManualReviewModal({
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Avaliação indisponível
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             {event.actorNickname} está revisando a própria tese
           </h2>
           <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
@@ -182,7 +182,7 @@ export function ManualReviewModal({
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
               Resposta enviada
             </p>
-            <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+            <p className="mt-3 whitespace-pre-line text-base leading-7 text-stone-200 sm:text-lg sm:leading-8">
               {event.guess?.trim() || "Nenhuma resposta foi escrita."}
             </p>
           </div>
@@ -205,7 +205,7 @@ export function WrongSolutionModal({ event, onClose }: WrongSolutionModalProps) 
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-red-300">
             Palpite incorreto
           </p>
-          <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+          <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
             {event.actorNickname} saiu da disputa
           </h2>
         </div>
@@ -222,7 +222,7 @@ export function WrongSolutionModal({ event, onClose }: WrongSolutionModalProps) 
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-200">
           Resposta enviada
         </p>
-        <p className="mt-3 whitespace-pre-line text-lg leading-8 text-stone-200">
+        <p className="mt-3 whitespace-pre-line text-base leading-7 text-stone-200 sm:text-lg sm:leading-8">
           {event.guess?.trim() || "Nenhuma resposta foi escrita."}
         </p>
       </div>
@@ -251,19 +251,19 @@ export function CorrectSolutionModal({
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Caso encerrado
       </p>
-      <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         {event.actorNickname} acertou e venceu o caso
       </h2>
       <p className="mt-3 text-stone-400">
         A tese enviada bate com a solução oficial. A investigação está
         encerrada.
       </p>
-      <p className="mt-5 whitespace-pre-line text-lg leading-8 text-stone-300">
+      <p className="mt-4 whitespace-pre-line text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
         {finalAnswer}
       </p>
-      <div className="mt-6 flex justify-end">
+      <div className="mt-5 flex justify-stretch sm:mt-6 sm:justify-end">
         <button
-          className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+          className="h-12 w-full rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] sm:h-11 sm:w-auto"
           onClick={onBackToLobby}
           type="button"
         >

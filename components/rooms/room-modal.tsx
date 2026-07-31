@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 export function RoomModal({ children }: { children: ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-      <section className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-5 text-stone-50 shadow-2xl sm:p-6">
-        {children}
-      </section>
-    </div>
+    <ResponsiveSheet
+      contentClassName="max-w-2xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 sm:max-h-[90vh] sm:p-6"
+    >
+      {children}
+    </ResponsiveSheet>
   );
 }

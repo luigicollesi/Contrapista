@@ -10,6 +10,7 @@ import {
   type SubmitEvent,
 } from "react";
 import { readJsonResponse } from "@/lib/client-http";
+import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 
 type DailyProblem = {
   date: string;
@@ -282,24 +283,24 @@ export function DailyProblem() {
   }
 
   return (
-    <main className="sy-theme min-h-screen bg-[#0e1111] px-4 py-10 text-stone-50 sm:px-6 lg:px-8">
+    <main className="sy-theme min-h-screen bg-[#0e1111] px-3 py-6 text-stone-50 sm:px-6 sm:py-10 lg:px-8">
       <section className="mx-auto max-w-7xl">
-        <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d0a85c]">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d0a85c] sm:text-sm sm:tracking-[0.32em]">
           Problema diário
         </p>
-        <div className="mt-4 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <h1 className="max-w-4xl font-serif text-5xl font-bold text-[#f2e6c8] sm:text-7xl">
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <h1 className="max-w-4xl font-serif text-4xl font-bold leading-tight text-[#f2e6c8] sm:text-7xl">
             Desafio do dia
           </h1>
           <button
-            className="inline-flex h-11 w-fit items-center justify-center rounded-sm border border-[#d0a85c]/50 px-5 text-sm font-black uppercase tracking-[0.16em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+            className="inline-flex h-11 w-full items-center justify-center rounded-sm border border-[#d0a85c]/50 px-5 text-sm font-black uppercase tracking-[0.16em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10 sm:w-fit"
             onClick={openCalendar}
             type="button"
           >
             Escolher data
           </button>
         </div>
-        <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
+        <p className="mt-4 max-w-3xl text-sm leading-6 text-stone-300 sm:mt-6 sm:text-lg sm:leading-8">
           Um caso por dia. As pistas aparecem juntas, sem indicar quais são
           verdadeiras ou falsas. Você tem novas tentativas apenas depois do
           intervalo de espera.
@@ -318,26 +319,26 @@ export function DailyProblem() {
         ) : null}
 
         {problem ? (
-          <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <article className="border-y border-[#d0a85c]/20 py-8">
+          <div className="mt-7 grid gap-6 sm:mt-10 lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-8">
+            <article className="border-y border-[#d0a85c]/20 py-6 sm:py-8">
               <p className="text-xs font-black uppercase tracking-[0.24em] text-[#d0a85c]">
                 {formatSelectedDate(problem.date)}
               </p>
-              <h2 className="mt-3 font-serif text-4xl font-bold text-[#f2e6c8]">
+              <h2 className="mt-3 font-serif text-3xl font-bold leading-tight text-[#f2e6c8] sm:text-4xl">
                 {problem.title}
               </h2>
-              <p className="mt-6 whitespace-pre-wrap text-base leading-8 text-stone-300">
+              <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-stone-300 sm:mt-6 sm:text-base sm:leading-8">
                 {problem.caseText}
               </p>
 
-              <section className="mt-10">
-                <h3 className="font-serif text-3xl font-bold text-[#f2e6c8]">
+              <section className="mt-7 sm:mt-10">
+                <h3 className="font-serif text-2xl font-bold text-[#f2e6c8] sm:text-3xl">
                   Pistas disponíveis
                 </h3>
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                <div className="mt-4 grid gap-2 sm:mt-5 md:grid-cols-2 md:gap-3">
                   {problem.clues.map((clue, index) => (
                     <div
-                      className="border-l border-[#d0a85c]/35 bg-[#171a1a]/70 px-4 py-3 text-sm leading-7 text-stone-300"
+                      className="border-l border-[#d0a85c]/35 bg-[#171a1a]/70 px-3 py-2.5 text-sm leading-6 text-stone-300 sm:px-4 sm:py-3 sm:leading-7"
                       key={`${index}:${clue}`}
                     >
                       {clue}
@@ -349,14 +350,14 @@ export function DailyProblem() {
 
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <form
-                className="rounded-sm border border-[#d0a85c]/30 bg-[#171a1a] p-5 shadow-2xl shadow-black/25"
+                className="rounded-sm border border-[#d0a85c]/30 bg-[#171a1a] p-4 shadow-2xl shadow-black/25 sm:p-5"
                 onSubmit={submitAnswer}
               >
-                <h3 className="font-serif text-3xl font-bold text-[#f2e6c8]">
+                <h3 className="font-serif text-2xl font-bold text-[#f2e6c8] sm:text-3xl">
                   Sua tese
                 </h3>
                 <textarea
-                  className="mt-5 min-h-36 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] p-3 text-stone-50 outline-none transition focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 disabled:opacity-60"
+                  className="mt-4 min-h-32 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] p-3 text-base text-stone-50 outline-none transition focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 disabled:opacity-60 sm:mt-5 sm:min-h-36 sm:text-sm"
                   disabled={problem.solved || Boolean(cooldownMessage) || isPending}
                   onChange={(event) => setAnswer(event.target.value)}
                   placeholder="Explique a solução do caso..."
@@ -383,7 +384,7 @@ export function DailyProblem() {
                   </p>
                 ) : null}
                 <button
-                  className="mt-5 h-12 w-full rounded-sm bg-[#d0a85c] px-5 text-sm font-black uppercase tracking-[0.16em] text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-55"
+                  className="mt-5 h-12 w-full rounded-sm bg-[#d0a85c] px-5 text-sm font-black uppercase tracking-[0.12em] text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-55 sm:tracking-[0.16em]"
                   disabled={!canSubmit || isPending}
                   type="submit"
                 >
@@ -422,12 +423,11 @@ export function DailyProblem() {
         </Link>
 
         {isCalendarOpen ? (
-          <div
-            aria-modal="true"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
-            role="dialog"
+          <ResponsiveSheet
+            backdropClassName="bg-black/70 backdrop-blur-sm"
+            contentClassName="max-w-lg border border-[#d0a85c]/35 bg-[#121515] p-4 text-stone-50 shadow-black/50 sm:rounded-sm sm:p-5"
           >
-            <div className="w-full max-w-lg rounded-sm border border-[#d0a85c]/35 bg-[#121515] p-5 text-stone-50 shadow-2xl shadow-black/50">
+            <div>
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-[#d0a85c]">
@@ -447,9 +447,9 @@ export function DailyProblem() {
                 </button>
               </div>
 
-              <div className="mt-6 flex items-center justify-between gap-3">
+              <div className="mt-6 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:gap-3">
                 <button
-                  className="h-10 rounded-sm border border-[#d0a85c]/35 px-4 text-xs font-black uppercase tracking-[0.14em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+                  className="h-10 rounded-sm border border-[#d0a85c]/35 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10 sm:px-4 sm:tracking-[0.14em]"
                   onClick={() =>
                     setCalendarMonth(
                       (currentMonth) =>
@@ -468,7 +468,7 @@ export function DailyProblem() {
                   {monthFormatter.format(calendarMonth)}
                 </p>
                 <button
-                  className="h-10 rounded-sm border border-[#d0a85c]/35 px-4 text-xs font-black uppercase tracking-[0.14em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+                  className="h-10 rounded-sm border border-[#d0a85c]/35 px-3 text-xs font-black uppercase tracking-[0.08em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10 sm:px-4 sm:tracking-[0.14em]"
                   onClick={() =>
                     setCalendarMonth(
                       (currentMonth) =>
@@ -485,15 +485,15 @@ export function DailyProblem() {
                 </button>
               </div>
 
-              <div className="mt-6 grid grid-cols-7 gap-2 text-center text-xs font-black uppercase tracking-[0.12em] text-[#d0a85c]">
+              <div className="mt-6 grid grid-cols-7 gap-1 text-center text-[10px] font-black uppercase tracking-[0.08em] text-[#d0a85c] sm:gap-2 sm:text-xs sm:tracking-[0.12em]">
                 {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((weekday) => (
                   <span key={weekday}>{weekday}</span>
                 ))}
               </div>
-              <div className="mt-3 grid grid-cols-7 gap-2">
+              <div className="mt-3 grid grid-cols-7 gap-1 sm:gap-2">
                 {calendarDays.map((day) => {
                   if (!day.day || !day.date) {
-                    return <span aria-hidden="true" className="h-11" key={day.key} />;
+                    return <span aria-hidden="true" className="h-10 sm:h-11" key={day.key} />;
                   }
 
                   const isAvailable = availableDateSet.has(day.date);
@@ -507,7 +507,7 @@ export function DailyProblem() {
                           : `Sem problema em ${formatSelectedDate(day.date)}`
                       }
                       className={[
-                        "h-11 rounded-sm border text-sm font-bold transition",
+                        "h-10 rounded-sm border text-sm font-bold transition sm:h-11",
                         isSelected
                           ? "border-[#d0a85c] bg-[#d0a85c] text-[#17130d]"
                           : "border-[#d0a85c]/25 text-[#f5e7bd]",
@@ -530,7 +530,7 @@ export function DailyProblem() {
                 Apenas os dias com problema diário já vinculado podem ser abertos.
               </p>
             </div>
-          </div>
+          </ResponsiveSheet>
         ) : null}
       </section>
     </main>
