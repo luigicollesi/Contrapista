@@ -61,6 +61,16 @@ const CASE_CREATION_FETCH_ATTEMPTS = 5;
 const CASE_CREATION_RETRY_DELAY_MS = 2500;
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
+type RoomConfig = {
+  readingTimeSeconds: number;
+  clueSelectionTimeSeconds: number;
+  revealedClueAnalysisTimeSeconds: number;
+  roundAnalysisTimeSeconds: number;
+  finalGuessTimeSeconds: number;
+  trueCluesPerPlayer: number;
+  cluesPerPlayer: number;
+};
+
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -103,6 +113,8 @@ async function readCaseCreationRoomState(code: string) {
     room?: {
       activecase?: string | null;
       allReady?: boolean;
+      config?: RoomConfig;
+      mode?: "custom" | "casual" | "ranked";
       users?: Array<{ id: string }>;
     } | null;
     error?: string;
@@ -122,11 +134,14 @@ export default function CreatingCasePage() {
   const [error, setError] = useState("");
   const [retryNotice, setRetryNotice] = useState("");
   const [isLeaving, setIsLeaving] = useState(false);
+  const [isCancelingCreation, setIsCancelingCreation] = useState(false);
+  const [canCancelCreation, setCanCancelCreation] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [estimatedSeconds, setEstimatedSeconds] = useState<number | null>(null);
   const isHeartbeatInFlightRef = useRef(false);
   const isWatchingRoomRef = useRef(false);
+  const isCancelingCreationRef = useRef(false);
   const progress = ((stepIndex + 1) / steps.length) * 100;
 
   useEffect(() => {
@@ -201,7 +216,12 @@ export default function CreatingCasePage() {
           return;
         }
 
-        if (data.room && !data.room.activecase && data.room.allReady === false) {
+        if (
+          data.room &&
+          !data.room.activecase &&
+          data.room.allReady === false &&
+          !isCancelingCreationRef.current
+        ) {
           const message =
             "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
           sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
@@ -244,12 +264,14 @@ export default function CreatingCasePage() {
           return;
         }
 
+        setCanCancelCreation(room.mode === "custom");
+
         if (room.activecase) {
           router.replace(`/sala/${code}/jogo`);
           return;
         }
 
-        if (room.allReady === false) {
+        if (room.allReady === false && !isCancelingCreationRef.current) {
           const message =
             "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
           sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
@@ -354,6 +376,10 @@ export default function CreatingCasePage() {
           return;
         }
 
+        if (isCancelingCreationRef.current) {
+          return;
+        }
+
         const message =
           caughtError instanceof Error
             ? caughtError.message
@@ -402,6 +428,52 @@ export default function CreatingCasePage() {
     }
   }
 
+  async function cancelCaseCreation() {
+    if (isCancelingCreation) {
+      return;
+    }
+
+    const userId = readUserId(code);
+
+    if (!userId) {
+      setError("Sessão local não encontrada. Volte para a ante-sala.");
+      return;
+    }
+
+    isCancelingCreationRef.current = true;
+    setIsCancelingCreation(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/rooms/${code}/case/cancel`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await readJsonResponse<{ error?: string }>(response, 160);
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Não foi possível cancelar a criação.");
+      }
+
+      sessionStorage.setItem(
+        CASE_CREATION_NOTICE_KEY,
+        "A criação do caso foi cancelada. Todos voltaram para a ante-sala sem prontidão.",
+      );
+      router.replace(`/sala/${code}`);
+    } catch (caughtError) {
+      isCancelingCreationRef.current = false;
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível cancelar a criação.",
+      );
+      setIsCancelingCreation(false);
+    }
+  }
+
   return (
     <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-4 py-6 text-stone-50 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
       <div className="absolute inset-0 opacity-20">
@@ -424,6 +496,16 @@ export default function CreatingCasePage() {
               Sala {code}
             </p>
             <LeaveRoomButton isLeaving={isLeaving} onClick={leaveRoom} />
+            {canCancelCreation ? (
+              <button
+                className="inline-flex min-h-10 items-center justify-center rounded-lg border border-red-400/45 bg-red-950/35 px-4 py-2 text-sm font-bold text-red-100 shadow-lg shadow-black/20 transition hover:border-red-300 hover:bg-red-900/55 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isCancelingCreation}
+                onClick={cancelCaseCreation}
+                type="button"
+              >
+                {isCancelingCreation ? "Cancelando" : "Cancelar criação"}
+              </button>
+            ) : null}
           </div>
           <h1 className="mt-5 max-w-2xl font-serif text-4xl font-bold leading-tight text-[#fff3cf] sm:text-6xl">
             A mesa está consolidando um dossiê inédito.

@@ -6,7 +6,6 @@ import {
   normalizePlayerColor,
   type PlayerColor,
 } from "@/lib/player-colors";
-import { getClueDistribution } from "@/lib/room-config";
 
 export type RoomUser = {
   id: string;
@@ -29,11 +28,14 @@ export type RoomConfig = {
 };
 
 export type RoomMode = "custom" | "casual" | "ranked";
+export type CaseSelectionMode = "generate" | "manual" | "automatic";
 
 export type Room = {
   code: string;
   users: RoomUser[];
   activecase: string | null;
+  selectedcase?: string | null;
+  caseSelectionMode?: CaseSelectionMode;
   activeevent: RoomEvent | null;
   gamestate: GameState | null;
   config?: RoomConfig;
@@ -218,6 +220,8 @@ function publicRoom(room: Room) {
     users: room.users,
     userCount: room.users.length,
     activecase: room.activecase,
+    selectedcase: room.selectedcase ?? null,
+    caseSelectionMode: room.caseSelectionMode ?? "generate",
     activeevent: room.activeevent,
     gamestate: room.gamestate,
     config,
@@ -476,20 +480,49 @@ function finishRouletteSpin(
   } satisfies GameState;
 }
 
-function getPlayerTrueClueIds(userIndex: number, config: RoomConfig) {
-  const distribution = getClueDistribution(config);
+function getDistributedPlayerClues({
+  caseId,
+  falseClues,
+  trueClues,
+  userIndex,
+  playerCount,
+}: {
+  caseId: string;
+  falseClues: string[];
+  trueClues: string[];
+  userIndex: number;
+  playerCount: number;
+}) {
+  if (playerCount <= 0) {
+    return [];
+  }
 
-  return Array.from({ length: distribution.trueCluesPerPlayer }, (_, index) =>
-    `true-${userIndex * distribution.trueCluesPerPlayer + index}`,
+  const trueItems = trueClues.map((text, index) => ({
+    id: `true-${index}`,
+    text,
+    isFalse: false,
+  }));
+  const falseItems = falseClues.map((text, index) => ({
+    id: `false-${index}`,
+    text,
+    isFalse: true,
+  }));
+  const totalClues = trueItems.length + falseItems.length;
+  const cluesPerPlayer = Math.floor(totalClues / playerCount);
+  const usableClueCount = cluesPerPlayer * playerCount;
+  const discardCount = totalClues - usableClueCount;
+  const falseDiscardCount = Math.min(discardCount, falseItems.length);
+  const trueDiscardCount = discardCount - falseDiscardCount;
+  const keptFalseItems = falseItems.slice(0, falseItems.length - falseDiscardCount);
+  const keptTrueItems = trueItems.slice(0, trueItems.length - trueDiscardCount);
+  const distributed = seededShuffle(
+    [...keptTrueItems, ...keptFalseItems],
+    `${caseId}:distributed-clues:${playerCount}`,
   );
-}
 
-function getPlayerFalseClueIds(userIndex: number, config: RoomConfig) {
-  const distribution = getClueDistribution(config);
-
-  return Array.from({ length: distribution.falseCluesPerPlayer }, (_, index) =>
-    `false-${userIndex * distribution.falseCluesPerPlayer + index}`,
-  );
+  return distributed
+    .slice(userIndex * cluesPerPlayer, (userIndex + 1) * cluesPerPlayer)
+    .map((clue, index) => ({ ...clue, number: index + 1 }));
 }
 
 function getSharedClueIds(state: GameState, userId: string) {
@@ -529,6 +562,43 @@ async function getCaseTrueClues(caseId: string, client?: DatabaseClient) {
   };
 }
 
+async function getCaseClueCount(caseId: string, client?: DatabaseClient) {
+  const executor = client ?? { query: dbQuery };
+  const result = await executor.query<{
+    total_count: number | string;
+  }>(
+    `
+      SELECT
+        jsonb_array_length(true_clues) + jsonb_array_length(false_clues) AS total_count
+      FROM cases
+      WHERE id = $1::uuid
+      LIMIT 1
+    `,
+    [caseId],
+  );
+
+  return Number(result.rows[0]?.total_count ?? 0) || 0;
+}
+
+async function getRandomCaseWithMoreCluesThan(
+  playerCount: number,
+  client?: DatabaseClient,
+) {
+  const executor = client ?? { query: dbQuery };
+  const result = await executor.query<{ id: string }>(
+    `
+      SELECT id::text AS id
+      FROM cases
+      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) > $1
+      ORDER BY random()
+      LIMIT 1
+    `,
+    [playerCount],
+  );
+
+  return result.rows[0]?.id ?? null;
+}
+
 async function buildAutoSharedClueState({
   state,
   users,
@@ -557,33 +627,19 @@ async function buildAutoSharedClueState({
   }
 
   const { trueClues, falseClues } = await getCaseTrueClues(caseId, client);
-  const trueClueIds = getPlayerTrueClueIds(actorIndex, config);
-  const falseClueIds = getPlayerFalseClueIds(actorIndex, config);
+  const actorClues = getDistributedPlayerClues({
+    caseId,
+    falseClues,
+    trueClues,
+    userIndex: actorIndex,
+    playerCount: users.length,
+  });
   const usedIds = getSharedClueIds(state, actor.id);
+  const clue =
+    actorClues.find((item) => !item.isFalse && !usedIds.includes(item.id)) ??
+    actorClues.find((item) => item.isFalse && !usedIds.includes(item.id));
 
-  let clueId = trueClueIds.find((id) => !usedIds.includes(id));
-  let clueText = "";
-  let clueNumber = 0;
-  let autoSharedFalse = false;
-
-  if (clueId && trueClues.length) {
-    const clueIndex = Number(clueId.split("-")[1] ?? 0);
-    clueText = trueClues[clueIndex % trueClues.length] ?? "";
-    clueNumber = trueClueIds.indexOf(clueId) + 1;
-  }
-
-  if (!clueText) {
-    clueId = falseClueIds.find((id) => !usedIds.includes(id));
-
-    if (clueId && falseClues.length) {
-      const clueIndex = Number(clueId.split("-")[1] ?? 0);
-      clueText = falseClues[clueIndex % falseClues.length] ?? "";
-      clueNumber = trueClueIds.length + falseClueIds.indexOf(clueId) + 1;
-      autoSharedFalse = true;
-    }
-  }
-
-  if (!clueId || !clueText) {
+  if (!clue) {
     return null;
   }
 
@@ -592,16 +648,16 @@ async function buildAutoSharedClueState({
     phase: "shared_clue",
     phaseStartedAt: now,
     phaseEndsAt: now + durationMs(config.revealedClueAnalysisTimeSeconds),
-    sharedClueIds: markClueShared(state, actor.id, clueId),
+    sharedClueIds: markClueShared(state, actor.id, clue.id),
     sharedClue: {
       id: crypto.randomUUID(),
       actorId: actor.id,
       actorNickname: displayUserName(actor),
-      clueText,
-      clueNumber,
-      clueId,
+      clueText: clue.text,
+      clueNumber: clue.number,
+      clueId: clue.id,
       autoShared: true,
-      autoSharedFalse,
+      autoSharedFalse: clue.isFalse,
       createdAt: now,
     },
   } satisfies GameState;
@@ -761,6 +817,8 @@ export async function ensureRoomsSchema() {
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         room_code text NOT NULL UNIQUE,
         activecase uuid,
+        selectedcase uuid,
+        case_selection_mode text NOT NULL DEFAULT 'generate',
         activeevent jsonb,
         gamestate jsonb,
         users jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -786,6 +844,8 @@ export async function ensureRoomsSchema() {
       ALTER TABLE game_rooms
         ADD COLUMN IF NOT EXISTS room_code text,
         ADD COLUMN IF NOT EXISTS activecase uuid,
+        ADD COLUMN IF NOT EXISTS selectedcase uuid,
+        ADD COLUMN IF NOT EXISTS case_selection_mode text NOT NULL DEFAULT 'generate',
         ADD COLUMN IF NOT EXISTS activeevent jsonb,
         ADD COLUMN IF NOT EXISTS gamestate jsonb,
         ADD COLUMN IF NOT EXISTS users jsonb NOT NULL DEFAULT '[]'::jsonb,
@@ -793,6 +853,16 @@ export async function ensureRoomsSchema() {
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS config_id uuid;
+
+      UPDATE game_rooms
+      SET case_selection_mode = 'manual'
+      WHERE selectedcase IS NOT NULL
+        AND case_selection_mode = 'generate';
+
+      UPDATE game_rooms
+      SET case_selection_mode = 'generate',
+          selectedcase = NULL
+      WHERE case_selection_mode NOT IN ('generate', 'manual', 'automatic');
 
       DO $$
       BEGIN
@@ -1010,7 +1080,15 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
 
     const current = await executor.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT
+          room_code AS code,
+          mode,
+          users,
+          activecase::text AS activecase,
+          selectedcase::text AS selectedcase,
+          case_selection_mode AS "caseSelectionMode",
+          activeevent,
+          gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1235,6 +1313,8 @@ export async function getRoom(code: string) {
         gr.mode,
         gr.users,
         gr.activecase::text AS activecase,
+        gr.selectedcase::text AS selectedcase,
+        gr.case_selection_mode AS "caseSelectionMode",
         gr.activeevent,
         gr.gamestate,
         cfg.reading_time_seconds AS "readingTimeSeconds",
@@ -1263,6 +1343,8 @@ export async function getRoom(code: string) {
     mode: room.mode,
     users,
     activecase: room.activecase,
+    selectedcase: room.selectedcase,
+    caseSelectionMode: room.caseSelectionMode,
     activeevent: room.activeevent,
     gamestate: normalizeGameState(room.gamestate),
     config,
@@ -1323,7 +1405,15 @@ export async function joinRoom({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT
+          room_code AS code,
+          mode,
+          users,
+          activecase::text AS activecase,
+          selectedcase::text AS selectedcase,
+          case_selection_mode AS "caseSelectionMode",
+          activeevent,
+          gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1373,6 +1463,8 @@ export async function joinRoom({
           mode: room.mode,
           users: updatedUsers,
           activecase: room.activecase,
+          selectedcase: room.selectedcase,
+          caseSelectionMode: room.caseSelectionMode,
           activeevent: room.activeevent,
           gamestate: normalizeGameState(room.gamestate),
         }),
@@ -1413,11 +1505,13 @@ export async function joinRoom({
     return {
       room: publicRoom({
         code,
-        mode: room.mode,
-        users: updatedUsers,
-        activecase: room.activecase,
-        activeevent: room.activeevent,
-        gamestate: normalizeGameState(room.gamestate),
+          mode: room.mode,
+          users: updatedUsers,
+          activecase: room.activecase,
+          selectedcase: room.selectedcase,
+          caseSelectionMode: room.caseSelectionMode,
+          activeevent: room.activeevent,
+          gamestate: normalizeGameState(room.gamestate),
       }),
       user,
     };
@@ -1445,7 +1539,15 @@ export async function leaveRoom({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT
+          room_code AS code,
+          mode,
+          users,
+          activecase::text AS activecase,
+          selectedcase::text AS selectedcase,
+          case_selection_mode AS "caseSelectionMode",
+          activeevent,
+          gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1546,7 +1648,7 @@ export async function heartbeatRoomUser({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, selectedcase::text AS selectedcase, case_selection_mode AS "caseSelectionMode", activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1596,6 +1698,8 @@ export async function heartbeatRoomUser({
       mode: room.mode,
       users,
       activecase: room.activecase,
+      selectedcase: room.selectedcase,
+      caseSelectionMode: room.caseSelectionMode,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
     });
@@ -1634,7 +1738,7 @@ export async function updateRoomUser({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, selectedcase::text AS selectedcase, case_selection_mode AS "caseSelectionMode", activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1691,10 +1795,12 @@ export async function updateRoomUser({
     return {
       room: publicRoom({
         code,
-        mode: room.mode,
-        users: updatedUsers,
-        activecase: room.activecase,
-        activeevent: room.activeevent,
+          mode: room.mode,
+          users: updatedUsers,
+          activecase: room.activecase,
+          selectedcase: room.selectedcase,
+          caseSelectionMode: room.caseSelectionMode,
+          activeevent: room.activeevent,
         gamestate: normalizeGameState(room.gamestate),
       }),
       user: updatedUser,
@@ -1726,7 +1832,7 @@ export async function updateRoomConfig({
 
     const current = await client.query<Room & { config_id: string | null }>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate, config_id::text AS config_id
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, selectedcase::text AS selectedcase, case_selection_mode AS "caseSelectionMode", activeevent, gamestate, config_id::text AS config_id
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1821,6 +1927,8 @@ export async function updateRoomConfig({
       mode: room.mode,
       users: updatedUsers,
       activecase: room.activecase,
+      selectedcase: room.selectedcase,
+      caseSelectionMode: room.caseSelectionMode,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
       config: nextConfig,
@@ -1851,7 +1959,7 @@ export async function setRoomUserReady({
 
     const current = await client.query<Room>(
       `
-        SELECT room_code AS code, mode, users, activecase::text AS activecase, activeevent, gamestate
+        SELECT room_code AS code, mode, users, activecase::text AS activecase, selectedcase::text AS selectedcase, case_selection_mode AS "caseSelectionMode", activeevent, gamestate
         FROM game_rooms
         WHERE room_code = $1
         FOR UPDATE
@@ -1889,14 +1997,48 @@ export async function setRoomUserReady({
       throw new Error("Usuário não encontrado na sala.");
     }
 
+    let nextUsers = updatedUsers;
+    let activecase = room.activecase;
+    let selectedcase = room.selectedcase ?? null;
+    let caseSelectionMode = room.caseSelectionMode ?? "generate";
+    const allUsersReady = areAllRoomUsersReady(nextUsers);
+    const selectedCaseToStart =
+      allUsersReady && caseSelectionMode === "manual" && selectedcase
+        ? selectedcase
+        : null;
+
+    if (selectedCaseToStart) {
+      const totalClues = await getCaseClueCount(selectedCaseToStart, client);
+
+      if (totalClues <= nextUsers.length) {
+        nextUsers = nextUsers.map((user) => ({ ...user, ready: false }));
+        selectedcase = null;
+        caseSelectionMode = "generate";
+      } else {
+        activecase = selectedcase;
+        selectedcase = null;
+      }
+    } else if (allUsersReady && caseSelectionMode === "automatic") {
+      const randomCaseId = await getRandomCaseWithMoreCluesThan(nextUsers.length, client);
+
+      if (randomCaseId) {
+        activecase = randomCaseId;
+      } else {
+        nextUsers = nextUsers.map((user) => ({ ...user, ready: false }));
+      }
+    }
+
     await client.query(
       `
         UPDATE game_rooms
         SET users = $2::jsonb,
+            activecase = $3::uuid,
+            selectedcase = $4::uuid,
+            case_selection_mode = $5,
             updated_at = now()
         WHERE room_code = $1
       `,
-      [code, JSON.stringify(updatedUsers)],
+      [code, JSON.stringify(nextUsers), activecase, selectedcase, caseSelectionMode],
     );
 
     await client.query("COMMIT");
@@ -1904,8 +2046,10 @@ export async function setRoomUserReady({
     return publicRoom({
       code,
       mode: room.mode,
-      users: updatedUsers,
-      activecase: room.activecase,
+      users: nextUsers,
+      activecase,
+      selectedcase,
+      caseSelectionMode,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
     });
@@ -1930,6 +2074,7 @@ export async function setRoomActiveCase({
     `
       UPDATE game_rooms
       SET activecase = $2::uuid,
+          selectedcase = NULL,
           updated_at = now()
       WHERE room_code = $1
         AND activecase IS NULL
@@ -1947,6 +2092,219 @@ export async function setRoomActiveCase({
   );
 
   return result.rowCount === 1;
+}
+
+export async function cancelCustomCaseCreation({
+  code,
+  userId,
+}: {
+  code: string;
+  userId: string;
+}) {
+  await ensureSchema();
+
+  const client = await getDbClient();
+
+  try {
+    await client.query("BEGIN");
+
+    const current = await client.query<Room & RoomConfig>(
+      `
+        SELECT
+          gr.room_code AS code,
+          gr.mode,
+          gr.users,
+          gr.activecase::text AS activecase,
+          gr.selectedcase::text AS selectedcase,
+          gr.case_selection_mode AS "caseSelectionMode",
+          gr.activeevent,
+          gr.gamestate,
+          cfg.reading_time_seconds AS "readingTimeSeconds",
+          cfg.clue_selection_time_seconds AS "clueSelectionTimeSeconds",
+          cfg.revealed_clue_analysis_time_seconds AS "revealedClueAnalysisTimeSeconds",
+          cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
+          cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
+          cfg.true_clues_per_player AS "trueCluesPerPlayer",
+          cfg.clues_per_player AS "cluesPerPlayer"
+        FROM game_rooms gr
+        LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
+        WHERE gr.room_code = $1
+        FOR UPDATE OF gr
+      `,
+      [code],
+    );
+    const room = current.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const users = normalizeUsers(room.users);
+    const requester = users.find((user) => user.id === userId);
+
+    if (!requester) {
+      await client.query("ROLLBACK");
+      throw new Error("Usuário não encontrado na sala.");
+    }
+
+    const config = normalizeRoomConfig(room);
+
+    if ((room.mode ?? "custom") !== "custom") {
+      await client.query("ROLLBACK");
+      throw new Error("A criação só pode ser cancelada em sala personalizada.");
+    }
+
+    if (room.activecase) {
+      await client.query("ROLLBACK");
+      throw new Error("O caso já foi criado. Volte pela tela de jogo.");
+    }
+
+    const resetUsers = users.map((user) => ({ ...user, ready: false }));
+
+    await client.query(
+      `
+        UPDATE game_rooms
+        SET users = $2::jsonb,
+            activeevent = NULL,
+            gamestate = NULL,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, JSON.stringify(resetUsers)],
+    );
+
+    await client.query("COMMIT");
+
+    return publicRoom({
+      code,
+      mode: room.mode,
+      users: resetUsers,
+      activecase: null,
+      selectedcase: room.selectedcase,
+      caseSelectionMode: room.caseSelectionMode,
+      activeevent: null,
+      gamestate: null,
+      config,
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function selectRoomCase({
+  caseId,
+  code,
+  mode = caseId ? "manual" : "generate",
+  userId,
+}: {
+  caseId: string | null;
+  code: string;
+  mode?: CaseSelectionMode;
+  userId: string;
+}) {
+  await ensureSchema();
+
+  const client = await getDbClient();
+
+  try {
+    await client.query("BEGIN");
+
+    const current = await client.query<Room>(
+      `
+        SELECT
+          room_code AS code,
+          mode,
+          users,
+          activecase::text AS activecase,
+          selectedcase::text AS selectedcase,
+          case_selection_mode AS "caseSelectionMode",
+          activeevent,
+          gamestate
+        FROM game_rooms
+        WHERE room_code = $1
+        FOR UPDATE
+      `,
+      [code],
+    );
+    const room = current.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const users = normalizeUsers(room.users);
+    const leader = users[0];
+
+    if (room.mode !== "custom") {
+      throw new Error("A seleção de caso só está disponível em salas personalizadas.");
+    }
+
+    if (room.activecase) {
+      throw new Error("Não é possível trocar o caso depois que o jogo começou.");
+    }
+
+    if (!leader || leader.id !== userId) {
+      throw new Error("Apenas o primeiro participante pode escolher o caso da sala.");
+    }
+
+    if (!["generate", "manual", "automatic"].includes(mode)) {
+      throw new Error("Modo de seleção de caso inválido.");
+    }
+
+    if (mode === "manual" && !caseId) {
+      throw new Error("Escolha um caso para usar o modo manual.");
+    }
+
+    if (mode !== "manual" && caseId) {
+      throw new Error("Apenas o modo manual pode vincular um caso específico.");
+    }
+
+    if (mode === "manual" && caseId) {
+      const totalClues = await getCaseClueCount(caseId, client);
+
+      if (totalClues <= users.length) {
+        throw new Error("Escolha um caso com mais pistas do que jogadores na sala.");
+      }
+    }
+
+    const updatedUsers = users.map((user) => ({ ...user, ready: false }));
+    const selectedCaseId = mode === "manual" ? caseId : null;
+
+    await client.query(
+      `
+        UPDATE game_rooms
+        SET selectedcase = $2::uuid,
+            case_selection_mode = $3,
+            users = $4::jsonb,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, selectedCaseId, mode, JSON.stringify(updatedUsers)],
+    );
+
+    await client.query("COMMIT");
+
+    return publicRoom({
+      code,
+      mode: room.mode,
+      users: updatedUsers,
+      activecase: room.activecase,
+      selectedcase: selectedCaseId,
+      caseSelectionMode: mode,
+      activeevent: room.activeevent,
+      gamestate: normalizeGameState(room.gamestate),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function getCaseFinalAnswer(caseId: string, client?: DatabaseClient) {
@@ -2745,8 +3103,10 @@ export async function shareRoomClue({
       throw new Error("Não é a vez desse jogador compartilhar uma pista.");
     }
 
-    const distribution = getClueDistribution(config);
-    const allPlayerClueCount = distribution.cluesPerPlayer;
+    const totalClues = room.activecase
+      ? await getCaseClueCount(room.activecase, client)
+      : 0;
+    const allPlayerClueCount = users.length > 0 ? Math.floor(totalClues / users.length) : 0;
     const safeClueId = clueId?.trim() || `manual-${clueNumber}`;
     const alreadySharedIds = getSharedClueIds(nextState, actor.id);
 

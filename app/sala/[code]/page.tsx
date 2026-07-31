@@ -41,8 +41,17 @@ type Room = {
   users: RoomUser[];
   userCount: number;
   activecase: string | null;
+  selectedcase: string | null;
+  caseSelectionMode: "generate" | "manual" | "automatic";
   allReady: boolean;
   config: RoomConfig;
+};
+
+type CaseSummary = {
+  id: string;
+  title: string;
+  totalClues: number;
+  falseCluePercentage: number;
 };
 
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
@@ -210,6 +219,9 @@ export default function RoomPage() {
   const [notice, setNotice] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [isRoomMissing, setIsRoomMissing] = useState(false);
+  const [isCasePickerOpen, setIsCasePickerOpen] = useState(false);
+  const [caseOptions, setCaseOptions] = useState<CaseSummary[]>([]);
+  const [isLoadingCases, setIsLoadingCases] = useState(false);
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
   const [isConfigDirty, setIsConfigDirty] = useState(false);
   const isConfigDirtyRef = useRef(false);
@@ -342,6 +354,8 @@ export default function RoomPage() {
       room?.users[0]?.id === currentUser.id &&
       !room.activecase,
   );
+  const caseSelectionMode = room?.caseSelectionMode ?? "generate";
+  const selectedCase = caseOptions.find((item) => item.id === room?.selectedcase);
 
   useEffect(() => {
     if (canEditConfig || !isConfigDirtyRef.current) {
@@ -494,6 +508,10 @@ export default function RoomPage() {
   }
 
   function updateConfigDraft(key: keyof RoomConfig, value: string) {
+    if (!canEditConfig || isSaving) {
+      return;
+    }
+
     const field = configFields.find((item) => item.key === key);
     const numericValue = Number(value);
 
@@ -531,6 +549,10 @@ export default function RoomPage() {
   }
 
   function cancelConfigChanges() {
+    if (!canEditConfig || isSaving) {
+      return;
+    }
+
     isConfigDirtyRef.current = false;
     setIsConfigDirty(false);
     setConfigDraft(room?.config ?? DEFAULT_ROOM_CONFIG);
@@ -572,6 +594,85 @@ export default function RoomPage() {
     }
   }
 
+  async function loadCaseOptions() {
+    setError("");
+    setIsLoadingCases(true);
+
+    try {
+      const data = await requestJson<{
+        cases: CaseSummary[];
+        room: Room;
+      }>(
+        `/api/rooms/${code}/case/selection`,
+        { method: "GET" },
+        "Não foi possível carregar casos.",
+      );
+
+      setCaseOptions(data.cases);
+      setRoom(data.room);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível carregar casos.",
+      );
+    } finally {
+      setIsLoadingCases(false);
+    }
+  }
+
+  function openCasePicker() {
+    if (!canEditConfig || isSaving) {
+      return;
+    }
+
+    setIsCasePickerOpen(true);
+    void loadCaseOptions();
+  }
+
+  async function updateCaseSelectionMode({
+    caseId = null,
+    mode,
+  }: {
+    caseId?: string | null;
+    mode: Room["caseSelectionMode"];
+  }) {
+    if (!currentUser || !canEditConfig || isSaving) {
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setIsSaving(true);
+
+    try {
+      const data = await requestJson<{ room: Room }>(
+        `/api/rooms/${code}/case/selection`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ caseId, mode, userId: currentUser.id }),
+        },
+        "Não foi possível escolher caso.",
+      );
+
+      setRoom(data.room);
+      setIsCasePickerOpen(false);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não foi possível escolher caso.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function selectCase(caseId: string) {
+    return updateCaseSelectionMode({ caseId, mode: "manual" });
+  }
+
   async function toggleReady(ready: boolean) {
     if (!currentUser) {
       return;
@@ -598,6 +699,29 @@ export default function RoomPage() {
 
       if (!isConfigDirtyRef.current) {
         setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+      }
+
+      if (data.room.activecase) {
+        router.push(`/sala/${code}/jogo`);
+        return;
+      }
+
+      if (ready && room?.selectedcase && !data.room.selectedcase && !data.room.allReady) {
+        setNotice(
+          "Modo manual cancelado: o caso escolhido não tem pistas suficientes para a quantidade atual de jogadores.",
+        );
+      }
+
+      if (
+        ready &&
+        room?.caseSelectionMode === "automatic" &&
+        data.room.caseSelectionMode === "automatic" &&
+        !data.room.activecase &&
+        !data.room.allReady
+      ) {
+        setNotice(
+          "Modo automático não encontrou caso compatível no banco. Escolha um caso manualmente, gere um caso novo ou reduza a quantidade de jogadores.",
+        );
       }
 
       if (!data.room.activecase && data.room.allReady) {
@@ -963,6 +1087,115 @@ export default function RoomPage() {
             </p>
           </section>
         ) : (
+          <>
+          <section className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] px-6 py-5 shadow-2xl shadow-black/20">
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+                  Caso da mesa
+                </p>
+                <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  {room?.caseSelectionMode === "manual"
+                    ? "Caso existente vinculado"
+                    : room?.caseSelectionMode === "automatic"
+                      ? "Escolha automática"
+                      : "Geração de caso"}
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+                  {room?.caseSelectionMode === "manual"
+                    ? `A sala irá direto para o jogo quando todos ficarem prontos${selectedCase ? `: ${selectedCase.title}` : "."}`
+                    : room?.caseSelectionMode === "automatic"
+                      ? "Quando todos ficarem prontos, a sala sorteará um caso do banco com pistas suficientes para os jogadores."
+                      : "Quando todos ficarem prontos, a sala criará um caso novo com IA."}
+                </p>
+              </div>
+              <div
+                aria-label="Modo de caso da mesa"
+                className="grid w-full gap-2 sm:grid-cols-3 lg:w-[34rem]"
+                role="radiogroup"
+              >
+                <button
+                  aria-checked={caseSelectionMode === "generate"}
+                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    caseSelectionMode === "generate"
+                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
+                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                  }`}
+                  disabled={!canEditConfig || isSaving || caseSelectionMode === "generate"}
+                  onClick={() => updateCaseSelectionMode({ mode: "generate" })}
+                  role="radio"
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
+                    Gerar
+                    <span
+                      className={`h-3 w-3 rounded-full border ${
+                        caseSelectionMode === "generate"
+                          ? "border-[#17130d] bg-[#17130d]"
+                          : "border-stone-500"
+                      }`}
+                    />
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 opacity-85">
+                    Cria um caso novo com IA.
+                  </span>
+                </button>
+                <button
+                  aria-checked={caseSelectionMode === "automatic"}
+                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    caseSelectionMode === "automatic"
+                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
+                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                  }`}
+                  disabled={!canEditConfig || isSaving || caseSelectionMode === "automatic"}
+                  onClick={() => updateCaseSelectionMode({ mode: "automatic" })}
+                  role="radio"
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
+                    Automático
+                    <span
+                      className={`h-3 w-3 rounded-full border ${
+                        caseSelectionMode === "automatic"
+                          ? "border-[#17130d] bg-[#17130d]"
+                          : "border-stone-500"
+                      }`}
+                    />
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 opacity-85">
+                    Sorteia um caso compatível.
+                  </span>
+                </button>
+                <button
+                  aria-checked={caseSelectionMode === "manual"}
+                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    caseSelectionMode === "manual"
+                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
+                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                  }`}
+                  disabled={!canEditConfig || isSaving}
+                  onClick={openCasePicker}
+                  role="radio"
+                  type="button"
+                >
+                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
+                    Manual
+                    <span
+                      className={`h-3 w-3 rounded-full border ${
+                        caseSelectionMode === "manual"
+                          ? "border-[#17130d] bg-[#17130d]"
+                          : "border-stone-500"
+                      }`}
+                    />
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 opacity-85">
+                    {selectedCase ? selectedCase.title : "Escolha no arquivo."}
+                  </span>
+                </button>
+              </div>
+            </div>
+          </section>
+
         <section className="mt-7 overflow-hidden rounded-lg border border-[#d7b861]/30 bg-[#171b16] shadow-2xl shadow-black/25">
           <div className="border-b border-[#d7b861]/20 bg-[#0f120e] px-6 py-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
@@ -1183,8 +1416,90 @@ export default function RoomPage() {
             ) : null}
           </div>
         </section>
+          </>
         )}
 
+        {isCasePickerOpen ? (
+          <div
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+            role="dialog"
+          >
+            <div className="w-full max-w-3xl rounded-lg border border-[#d7b861]/35 bg-[#171b16] p-6 text-stone-50 shadow-2xl shadow-black/50">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+                    Arquivo de casos
+                  </p>
+                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                    Escolha um caso pronto
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+                    A lista mostra apenas casos com mais pistas do que jogadores
+                    na sala. Ao escolher, todos voltam para aguardando.
+                  </p>
+                </div>
+                <button
+                  aria-label="Fechar seleção de caso"
+                  className="h-9 w-9 rounded-lg border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d7b861]"
+                  onClick={() => setIsCasePickerOpen(false)}
+                  type="button"
+                >
+                  X
+                </button>
+              </div>
+
+              {isLoadingCases ? (
+                <p className="mt-6 rounded-lg border border-[#d7b861]/20 bg-[#0f120e] p-5 text-stone-300">
+                  Carregando casos...
+                </p>
+              ) : null}
+
+              {!isLoadingCases && caseOptions.length === 0 ? (
+                <p className="mt-6 rounded-lg border border-dashed border-stone-600 bg-[#0f120e] p-5 text-stone-300">
+                  Nenhum caso disponível tem pistas suficientes para esta sala.
+                </p>
+              ) : null}
+
+              <div className="mt-6 grid max-h-[55vh] gap-3 overflow-y-auto pr-1">
+                {caseOptions.map((item) => {
+                  const isSelected = item.id === room?.selectedcase;
+
+                  return (
+                    <button
+                      className={`rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isSelected
+                          ? "border-[#d7b861] bg-[#2a2112]"
+                          : "border-[#d7b861]/25 bg-[#0f120e] hover:border-[#d7b861]"
+                      }`}
+                      disabled={isSaving || isSelected}
+                      key={item.id}
+                      onClick={() => selectCase(item.id)}
+                      type="button"
+                    >
+                      <span className="font-serif text-2xl font-bold text-[#fff3cf]">
+                        {item.title}
+                      </span>
+                      <span className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.14em] text-stone-400">
+                        <span className="rounded-full border border-[#d7b861]/25 px-3 py-1">
+                          {item.totalClues} pistas
+                        </span>
+                        <span className="rounded-full border border-[#d7b861]/25 px-3 py-1">
+                          {item.falseCluePercentage}% falsas
+                        </span>
+                        {isSelected ? (
+                          <span className="rounded-full bg-[#d7b861] px-3 py-1 text-[#17130d]">
+                            Selecionado
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

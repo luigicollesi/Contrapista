@@ -38,7 +38,6 @@ import {
   leftCaseStorageKey,
   readUserId,
 } from "@/lib/client-session";
-import { getClueDistribution } from "@/lib/room-config";
 
 const EMPTY_USER_IDS: string[] = [];
 
@@ -68,32 +67,6 @@ function seededShuffle<T>(items: T[], seedValue: string) {
   return shuffled;
 }
 
-function pickClues({
-  clues,
-  start,
-  count,
-  prefix,
-}: {
-  clues: string[];
-  start: number;
-  count: number;
-  prefix: string;
-}): PlayerClue[] {
-  return Array.from({ length: count })
-    .map((_, index) => {
-      const clue = clues[(start + index) % clues.length];
-
-      return clue
-        ? {
-            id: `${prefix}-${start + index}`,
-            text: clue,
-            number: index + 1,
-          }
-        : null;
-    })
-    .filter((clue): clue is PlayerClue => Boolean(clue));
-}
-
 function getPlayerCluesForUser({
   gameCase,
   room,
@@ -103,28 +76,43 @@ function getPlayerCluesForUser({
   room: Room;
   userId: string;
 }) {
+  const playerCount = room.users.length;
   const userIndex = Math.max(
     0,
     room.users.findIndex((user) => user.id === userId),
   );
-  const distribution = getClueDistribution(room.config);
-  const trueStart = userIndex * distribution.trueCluesPerPlayer;
-  const falseStart = userIndex * distribution.falseCluesPerPlayer;
-  const trueClues = pickClues({
-    clues: gameCase.true_clues,
-    start: trueStart,
-    count: distribution.trueCluesPerPlayer,
-    prefix: "true",
-  });
-  const falseClues = pickClues({
-    clues: gameCase.false_clues,
-    start: falseStart,
-    count: distribution.falseCluesPerPlayer,
-    prefix: "false",
-  });
+
+  if (playerCount <= 0) {
+    return [];
+  }
+
+  const trueClues = gameCase.true_clues.map((text, index) => ({
+    id: `true-${index}`,
+    text,
+  }));
+  const falseClues = gameCase.false_clues.map((text, index) => ({
+    id: `false-${index}`,
+    text,
+  }));
+  const totalClues = trueClues.length + falseClues.length;
+  const cluesPerPlayer = Math.floor(totalClues / playerCount);
+  const usableClueCount = cluesPerPlayer * playerCount;
+  const discardCount = totalClues - usableClueCount;
+  const falseDiscardCount = Math.min(discardCount, falseClues.length);
+  const trueDiscardCount = discardCount - falseDiscardCount;
+  const keptFalseClues = falseClues.slice(0, falseClues.length - falseDiscardCount);
+  const keptTrueClues = trueClues.slice(0, trueClues.length - trueDiscardCount);
+  const distributedClues = seededShuffle(
+    [...keptTrueClues, ...keptFalseClues],
+    `${gameCase.id}:distributed-clues:${playerCount}`,
+  );
+  const playerClues = distributedClues.slice(
+    userIndex * cluesPerPlayer,
+    (userIndex + 1) * cluesPerPlayer,
+  );
 
   return seededShuffle(
-    [...trueClues, ...falseClues],
+    playerClues,
     `${gameCase.id}:${userId}:player-clues`,
   ).map((clue, index) => ({ ...clue, number: index + 1 }));
 }

@@ -61,6 +61,7 @@ function isRoomStateError(message: string) {
     normalized.includes("sala não encontrada durante") ||
     normalized.includes("não há jogadores") ||
     normalized.includes("sala mudou de estado") ||
+    normalized.includes("sala não estava mais pronta") ||
     normalized.includes("todos os jogadores precisam estar prontos")
   );
 }
@@ -114,7 +115,9 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
   if (isRoomStateError(message)) {
     return {
       status: 409,
-      error: `${message} Voltem para a ante-sala e tentem novamente.`,
+      error: message.includes("Voltem")
+        ? message
+        : `${message} Voltem para a ante-sala e tentem novamente.`,
     };
   }
 

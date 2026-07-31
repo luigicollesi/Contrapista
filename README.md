@@ -12,6 +12,7 @@ O projeto permite:
 - escolher nickname e cor exclusiva por jogador;
 - manter a sessão do jogador no `localStorage`;
 - ajustar parâmetros da partida na ante-sala;
+- escolher um caso existente em salas personalizadas;
 - marcar participantes como prontos antes da geração do caso;
 - gerar um caso automaticamente com IA via OpenRouter;
 - salvar o caso na tabela `cases`;
@@ -189,6 +190,7 @@ Campos relevantes:
 - `id`
 - `room_code`
 - `activecase`
+- `selectedcase`
 - `activeevent`
 - `gamestate`
 - `users`
@@ -205,12 +207,17 @@ Regras:
 - cada jogador tem `id`, `nickname`, `color`, `ready` e `joinedAt`;
 - `color` deve ser única por sala;
 - `activecase` aponta para `cases.id`;
+- `selectedcase` aponta para um caso escolhido na ante-sala personalizada antes do início;
 - `activeevent` sincroniza eventos de palpite e resultado;
 - `gamestate` sincroniza fases, roleta, turno atual, pistas compartilhadas, votos para pular, eliminados e retorno à ante-sala;
 - sala vazia é removida imediatamente.
 - salas `casual` e `ranked` são pareadas automaticamente, usam configuração clássica fixa e não possuem líder/configuração editável.
 - salas e modos de jogo exigem usuário logado com `username` definido;
 - na ante-sala, o nickname vem da conta e o jogador escolhe apenas uma cor antes de marcar pronto.
+- em salas personalizadas, o primeiro participante pode escolher um caso existente;
+- ao escolher um caso, todos voltam para aguardando;
+- quando todos ficam prontos com um caso escolhido, o backend valida se há pistas suficientes e inicia o jogo direto;
+- se a validação falhar, todos voltam para aguardando e a seleção é removida.
 
 ### `matchmaking_queue`
 
@@ -392,12 +399,13 @@ A função `GET /api/rooms/[code]` também avança fases expiradas quando a sala
 
 ## Distribuição de Pistas
 
-Cada jogador recebe `cluesPerPlayer` fragmentos. A quantidade de pistas verdadeiras vem de `trueCluesPerPlayer`; o restante vem de `false_clues`.
+Cada jogador recebe uma quantidade igual de fragmentos do caso ativo.
 
 A tela de jogo monta os fragmentos de forma determinística:
 
 - usa a posição do jogador na lista da sala;
-- pega uma faixa de `true_clues` e uma faixa de `false_clues`;
+- redistribui `true_clues` e `false_clues` sem reutilizar pistas;
+- descarta sobras que não fecham divisão igual, priorizando descartar pistas falsas;
 - embaralha com seed baseada em `case.id` e `userId`;
 - registra em `gamestate.sharedClueIds` quais fragmentos já foram revelados.
 

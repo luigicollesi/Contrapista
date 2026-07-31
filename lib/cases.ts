@@ -40,6 +40,15 @@ const CASE_JSON_KEYS = [
 
 let lastCaseCreationDurationSeconds: number | null = null;
 
+class CaseSavedWithoutRoomActivationError extends Error {
+  constructor(readonly gameCase: GameCase) {
+    super(
+      "O caso foi salvo, mas a sala não estava mais pronta para ativá-lo. Voltem para a ante-sala e iniciem novamente quando quiserem.",
+    );
+    this.name = "CaseSavedWithoutRoomActivationError";
+  }
+}
+
 export function getLastCaseCreationDurationSeconds() {
   return lastCaseCreationDurationSeconds;
 }
@@ -261,6 +270,18 @@ async function assertRoomStillReadyForCaseCreation(roomCode: string) {
   }
 }
 
+function isCaseCreationStateError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.toLowerCase();
+
+  return (
+    normalized.includes("sala não encontrada durante") ||
+    normalized.includes("não há jogadores") ||
+    normalized.includes("sala mudou de estado") ||
+    normalized.includes("todos os jogadores precisam estar prontos")
+  );
+}
+
 function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
   function numberOrDefault(key: keyof RoomConfig) {
     const value = config?.[key];
@@ -384,10 +405,13 @@ async function repairGeneratedJson(
   text: string,
   parseError: unknown,
   sessionId: string,
+  beforeRequest?: () => Promise<void>,
 ) {
   const jsonText = extractJson(text);
   const errorMessage =
     parseError instanceof Error ? parseError.message : "erro desconhecido";
+
+  await beforeRequest?.();
 
   const repair = await chatCompletion({
     temperature: 0,
@@ -417,11 +441,15 @@ ${jsonText}
   return parseGeneratedJson(repair.text);
 }
 
-async function parseCaseResponse(text: string, sessionId: string) {
+async function parseCaseResponse(
+  text: string,
+  sessionId: string,
+  beforeRequest?: () => Promise<void>,
+) {
   try {
     return parseGeneratedJson(text);
   } catch (parseError) {
-    return repairGeneratedJson(text, parseError, sessionId);
+    return repairGeneratedJson(text, parseError, sessionId, beforeRequest);
   }
 }
 
@@ -595,6 +623,7 @@ async function generateCaseWithAi(
   playerCount: number,
   config: RoomConfig,
   sessionId: string,
+  beforeRequest?: () => Promise<void>,
 ) {
   const distribution = getClueDistribution(config);
   const requiredTrueClues = playerCount * distribution.trueCluesPerPlayer;
@@ -608,6 +637,8 @@ async function generateCaseWithAi(
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
+      await beforeRequest?.();
+
       const chat = await chatCompletion({
         temperature: attempt === 0 ? 0.35 : 0.1,
         maxTokens: 4600,
@@ -644,11 +675,15 @@ async function generateCaseWithAi(
       });
 
       return assertGeneratedCase(
-        await parseCaseResponse(chat.text, sessionId),
+        await parseCaseResponse(chat.text, sessionId, beforeRequest),
         requiredTrueClues,
         requiredFalseClues,
       );
     } catch (error) {
+      if (isCaseCreationStateError(error)) {
+        throw error;
+      }
+
       previousError = error instanceof Error ? error.message : String(error);
       errors.push(previousError);
 
@@ -696,9 +731,13 @@ export async function getCase(caseId: string) {
     : null;
 }
 
-export async function listCaseSummaries(limit = 50): Promise<CaseSummary[]> {
+export async function listCaseSummaries(
+  limit = 50,
+  options: { minTotalClues?: number } = {},
+): Promise<CaseSummary[]> {
   await ensureCaseSchema();
 
+  const minTotalClues = Math.max(0, Math.floor(options.minTotalClues ?? 0));
   const result = await dbQuery<{
     id: string;
     title: string;
@@ -714,10 +753,11 @@ export async function listCaseSummaries(limit = 50): Promise<CaseSummary[]> {
         jsonb_array_length(false_clues) AS false_count,
         created_at
       FROM cases
+      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) > $2
       ORDER BY created_at DESC
       LIMIT $1
     `,
-    [limit],
+    [limit, minTotalClues],
   );
 
   return result.rows.map((row) => {
@@ -792,12 +832,14 @@ export async function createCaseForRoom(roomCode: string) {
 
     const roomConfig = normalizeCaseConfig(room);
     const caseCreationStartedAt = Date.now();
+    const ensureRoomReadyForNextAiRequest = () =>
+      assertRoomStillReadyForCaseCreation(roomCode);
     const generatedCase = await generateCaseWithAi(
       playerCount,
       roomConfig,
       roomCaseGenerationSessionId(roomCode),
+      ensureRoomReadyForNextAiRequest,
     );
-    await assertRoomStillReadyForCaseCreation(roomCode);
     const result = await dbQuery<GameCase>(
       `
         INSERT INTO cases (
@@ -831,24 +873,24 @@ export async function createCaseForRoom(roomCode: string) {
       throw new Error("O banco de dados não retornou o caso criado.");
     }
 
+    const normalizedCreatedCase = {
+      ...createdCase,
+      true_clues: normalizeClueArray(createdCase.true_clues),
+      false_clues: normalizeClueArray(createdCase.false_clues),
+    };
+
     const activated = await setRoomActiveCase({
       code: roomCode,
       caseId: createdCase.id,
     });
 
     if (!activated) {
-      throw new Error(
-        "A sala mudou de estado antes de receber o caso criado. Voltem para a ante-sala e tentem novamente.",
-      );
+      throw new CaseSavedWithoutRoomActivationError(normalizedCreatedCase);
     }
 
     rememberCaseCreationDuration(caseCreationStartedAt);
 
-    return {
-      ...createdCase,
-      true_clues: normalizeClueArray(createdCase.true_clues),
-      false_clues: normalizeClueArray(createdCase.false_clues),
-    };
+    return normalizedCreatedCase;
   })();
 
   caseGenerationLocks.set(roomCode, generation);

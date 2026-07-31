@@ -1,9 +1,19 @@
+import { auth } from "@/auth";
 import { getCase } from "@/lib/cases";
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ caseId: string }> },
 ) {
+  const session = await auth();
+
+  if (!session?.user?.id || !session.user.name) {
+    return Response.json(
+      { error: "Faça login para acessar o caso da partida." },
+      { status: 401 },
+    );
+  }
+
   const { caseId } = await params;
   const gameCase = await getCase(caseId);
 
