@@ -31,12 +31,12 @@ const modeCopy = {
   casual: {
     title: "Buscando jogo casual",
     eyebrow: "4 jogadores · cada um por si",
-    body: "Estamos procurando outros investigadores para uma mesa clássica sem impacto no rating.",
+    body: "Procurando mais 3 jogadores para uma partida sem impacto no rating.",
   },
   ranked: {
     title: "Buscando jogo rankeado",
     eyebrow: "4 jogadores · rating similar",
-    body: "Estamos priorizando jogadores com rating próximo para uma mesa competitiva cada um por si.",
+    body: "Procurando jogadores com rating próximo para uma partida competitiva.",
   },
 } satisfies Record<
   MatchmakingMode,
@@ -78,7 +78,7 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
       }
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível consultar a fila.");
+        throw new Error(data.error ?? "Não deu para consultar a fila.");
       }
 
       if (data.matched && data.room?.code && data.user) {
@@ -116,7 +116,7 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível entrar na fila.",
+              : "Não deu para entrar na fila.",
           );
         }
       });
@@ -128,7 +128,7 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível consultar a fila.",
+              : "Não deu para consultar a fila.",
           );
         }
       });
@@ -165,8 +165,8 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
               </p>
             </div>
             <div className="max-w-sm text-sm leading-7 text-stone-300">
-              A mesa será criada automaticamente quando houver 4 jogadores
-              compatíveis. A configuração será clássica e fixa.
+              A sala abre automaticamente quando houver 4 jogadores prontos
+              para o mesmo modo.
             </div>
           </div>
         </div>

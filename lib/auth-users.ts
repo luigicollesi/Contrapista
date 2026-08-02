@@ -7,6 +7,8 @@ import { dbQuery } from "@/lib/db";
 const scrypt = promisify(scryptCallback);
 const PASSWORD_KEY_LENGTH = 64;
 export const AUTH_PROVIDERS = ["credentials", "google", "github"] as const;
+export const CURRENT_TERMS_VERSION = "2026-08-02";
+export const CURRENT_PRIVACY_VERSION = "2026-08-02";
 
 export type AuthProvider = (typeof AUTH_PROVIDERS)[number];
 
@@ -17,6 +19,12 @@ export type AuthUser = {
   email: string;
   provider: AuthProvider;
   password_hash: string | null;
+  privacy_acknowledged: boolean;
+  privacy_acknowledged_at: string | null;
+  privacy_version: string | null;
+  terms_accepted: boolean;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -53,6 +61,12 @@ export async function ensureUsersSchema() {
       password_hash text NOT NULL CHECK (btrim(password_hash) <> ''),
       provider text NOT NULL DEFAULT 'credentials',
       username text,
+      privacy_acknowledged boolean NOT NULL DEFAULT false,
+      privacy_acknowledged_at timestamptz,
+      privacy_version text,
+      terms_accepted boolean NOT NULL DEFAULT false,
+      terms_accepted_at timestamptz,
+      terms_version text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT users_email_normalized_unique UNIQUE (email_normalized)
@@ -64,7 +78,26 @@ export async function ensureUsersSchema() {
 
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'credentials',
-      ADD COLUMN IF NOT EXISTS username text;
+      ADD COLUMN IF NOT EXISTS username text,
+      ADD COLUMN IF NOT EXISTS privacy_acknowledged boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS privacy_acknowledged_at timestamptz,
+      ADD COLUMN IF NOT EXISTS privacy_version text,
+      ADD COLUMN IF NOT EXISTS terms_accepted boolean NOT NULL DEFAULT false,
+      ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz,
+      ADD COLUMN IF NOT EXISTS terms_version text;
+
+    UPDATE users
+    SET terms_accepted = true
+    WHERE terms_accepted = false
+      AND terms_accepted_at IS NOT NULL;
+
+    UPDATE users
+    SET
+      privacy_acknowledged = true,
+      privacy_acknowledged_at = COALESCE(privacy_acknowledged_at, terms_accepted_at, now()),
+      privacy_version = COALESCE(privacy_version, '${CURRENT_PRIVACY_VERSION}')
+    WHERE privacy_acknowledged = false
+      AND terms_accepted = true;
 
     UPDATE users
     SET username = name
@@ -136,6 +169,10 @@ export function validateAuthInput(input: {
   };
 }
 
+export function hasAcceptedTerms(value: unknown) {
+  return value === true || value === "true" || value === "on" || value === "1";
+}
+
 async function hashPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const derivedKey = (await scrypt(
@@ -168,13 +205,17 @@ async function verifyPassword(password: string, passwordHash: string) {
 }
 
 function toPublicAuthUser(user: AuthUser): PublicAuthUser {
+  const isProfileComplete = Boolean(
+    user.username && user.terms_accepted && user.privacy_acknowledged,
+  );
+
   return {
     id: user.id,
-    name: user.username,
+    name: isProfileComplete ? user.username : null,
     email: user.email,
     provider: user.provider,
     username: user.username,
-    needsUsername: !user.username,
+    needsUsername: !isProfileComplete,
   };
 }
 
@@ -286,6 +327,12 @@ export async function getUserByEmail(email: string) {
         email,
         provider,
         password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
         created_at,
         updated_at
       FROM users
@@ -310,6 +357,12 @@ export async function getUserById(userId: string) {
         email,
         provider,
         password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
         created_at,
         updated_at
       FROM users
@@ -335,6 +388,10 @@ export async function authenticateUser(email: string, password: string) {
     return null;
   }
 
+  if (!user.terms_accepted || !user.privacy_acknowledged) {
+    return null;
+  }
+
   await ensureUserAchievements(user.id);
 
   return toPublicAuthUser(user);
@@ -350,8 +407,20 @@ export async function createCredentialsUser(input: {
   const passwordHash = await hashPassword(input.password);
   const result = await dbQuery<AuthUser>(
     `
-      INSERT INTO users (name, username, email, provider, password_hash)
-      VALUES ($1, $1, $2, 'credentials', $3)
+      INSERT INTO users (
+        name,
+        username,
+        email,
+        provider,
+        password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version
+      )
+      VALUES ($1, $1, $2, 'credentials', $3, true, now(), $4, true, now(), $5)
       RETURNING
         id::text AS id,
         name,
@@ -359,10 +428,22 @@ export async function createCredentialsUser(input: {
         email,
         provider,
         password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
         created_at,
         updated_at
     `,
-    [input.username.trim(), normalizeEmail(input.email), passwordHash],
+    [
+      input.username.trim(),
+      normalizeEmail(input.email),
+      passwordHash,
+      CURRENT_PRIVACY_VERSION,
+      CURRENT_TERMS_VERSION,
+    ],
   );
 
   const user = result.rows[0];
@@ -400,6 +481,12 @@ export async function getOrCreateOAuthUser(input: {
         email,
         provider,
         password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
         created_at,
         updated_at
     `,
@@ -416,6 +503,7 @@ export async function getOrCreateOAuthUser(input: {
 export async function setUserUsername(input: {
   userId: string;
   username: string;
+  acceptedTerms: boolean;
 }) {
   await ensureUsersSchema();
 
@@ -426,6 +514,24 @@ export async function setUserUsername(input: {
       SET
         username = $2,
         name = $2,
+        privacy_acknowledged = $3::boolean,
+        privacy_acknowledged_at = CASE
+          WHEN $3::boolean THEN COALESCE(privacy_acknowledged_at, now())
+          ELSE privacy_acknowledged_at
+        END,
+        privacy_version = CASE
+          WHEN $3::boolean THEN COALESCE(privacy_version, $5)
+          ELSE privacy_version
+        END,
+        terms_accepted = $3::boolean,
+        terms_accepted_at = CASE
+          WHEN $3::boolean THEN COALESCE(terms_accepted_at, now())
+          ELSE terms_accepted_at
+        END,
+        terms_version = CASE
+          WHEN $3::boolean THEN COALESCE(terms_version, $4)
+          ELSE terms_version
+        END,
         updated_at = now()
       WHERE id = $1
       RETURNING
@@ -435,10 +541,22 @@ export async function setUserUsername(input: {
         email,
         provider,
         password_hash,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
         created_at,
         updated_at
     `,
-    [input.userId, username],
+    [
+      input.userId,
+      username,
+      input.acceptedTerms,
+      CURRENT_TERMS_VERSION,
+      CURRENT_PRIVACY_VERSION,
+    ],
   );
 
   const user = result.rows[0];
@@ -450,4 +568,37 @@ export async function setUserUsername(input: {
   await ensureUserAchievements(user.id);
 
   return toPublicAuthUser(user);
+}
+
+function isUndefinedTableError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "42P01"
+  );
+}
+
+export async function deleteUserAccount(userId: string) {
+  await ensureUsersSchema();
+
+  await dbQuery(
+    `DELETE FROM matchmaking_queue WHERE user_id = $1::uuid`,
+    [userId],
+  ).catch((error: unknown) => {
+    if (!isUndefinedTableError(error)) {
+      throw error;
+    }
+  });
+
+  const result = await dbQuery<{ id: string }>(
+    `
+      DELETE FROM users
+      WHERE id = $1::uuid
+      RETURNING id::text AS id
+    `,
+    [userId],
+  );
+
+  return Boolean(result.rows[0]);
 }

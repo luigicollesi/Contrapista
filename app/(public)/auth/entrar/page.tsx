@@ -20,12 +20,12 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
           Entre para jogar
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-300">
-          Criar sala, buscar partida, entrar em uma mesa ou resolver o problema
-          diário exige uma conta com nome de usuário definido.
+          Para criar sala, entrar em fila ou resolver o problema diário, entre
+          com uma conta e escolha um nome de usuário.
         </p>
         <p className="mt-5 max-w-2xl text-sm leading-7 text-stone-400">
-          Use os botões de login ou cadastro no cabeçalho. Depois do acesso, você
-          pode voltar diretamente para o destino protegido.
+          Use login ou cadastro no cabeçalho. Depois volte para esta página e
+          tente de novo.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link

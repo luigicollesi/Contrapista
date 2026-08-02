@@ -11,9 +11,9 @@ export default function PlayPage() {
           Escolha como investigar
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-          Partidas casuais e rankeadas são pensadas para 4 jogadores, todos
-          competindo individualmente. Salas personalizadas seguem o fluxo atual
-          por código, enquanto o problema diário prepara uma experiência solo.
+          Jogue com outras pessoas, monte uma sala para o seu grupo ou resolva
+          o caso do dia sozinho. Cada modo começa de um jeito, mas todos cobram
+          a mesma coisa: atenção aos detalhes.
         </p>
 
         <PlayOptions />

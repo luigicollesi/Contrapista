@@ -316,6 +316,12 @@ Campos relevantes:
 - `email_normalized`
 - `provider`
 - `password_hash`
+- `privacy_acknowledged`
+- `privacy_acknowledged_at`
+- `privacy_version`
+- `terms_accepted`
+- `terms_accepted_at`
+- `terms_version`
 - `created_at`
 - `updated_at`
 
@@ -326,9 +332,15 @@ Regras:
 - OAuth não usa automaticamente o nome vindo de Google/GitHub; o usuário escolhe `username` depois do primeiro login;
 - `provider` indica `credentials`, `google` ou `github`;
 - o mesmo email só pode autenticar pelo provider usado no primeiro cadastro;
+- o aceite dos termos é obrigatório ao efetivar o cadastro, seja no cadastro por email/senha ou na escolha do `username` após OAuth;
+- `terms_accepted` e `privacy_acknowledged` bloqueiam login/ações quando falsos;
+- `terms_accepted_at` e `privacy_acknowledged_at` registram quando o aceite/ciência foi feito;
+- `terms_version` e `privacy_version` guardam as versões aceitas;
+- a tela de perfil permite excluir a conta com confirmação em modal por código hexadecimal gerado pelo backend; a UI avisa 30 segundos e o servidor guarda o código por 40 segundos;
 - senhas são armazenadas como hash `scrypt` com salt individual;
 - Auth.js usa sessão JWT;
 - login/cadastro aparecem em modal no cabeçalho público, não em páginas próprias.
+- `/termos` e `/privacidade` são páginas públicas e não exibem o modal obrigatório de escolha de nome, permitindo leitura antes do aceite.
 
 ### `user_achievements`
 
@@ -437,7 +449,7 @@ A geração exige:
 - A sessão de conta é independente da sessão de jogador da sala.
 - A página `/jogar` é pública, mas suas ações derivadas exigem conta logada com nome público definido.
 - Rotas protegidas por navegação: `/jogar/busca`, `/jogar/diario` e `/sala/*`.
-- APIs protegidas: `/api/rooms/*`, `/api/matchmaking`, `/api/daily-problem` e `/api/cases/*`.
+- APIs protegidas: `/api/rooms/*`, `/api/matchmaking`, `/api/daily-problem`, `/api/cases/*` e `/api/users/*`.
 - A sessão do jogador fica em `localStorage` com a chave `contrapista-session`.
 - Há marcadores locais por sala para evitar que um jogador que já voltou à ante-sala seja puxado de volta para o caso ativo.
 - A sincronização entre jogadores usa polling a cada 2 segundos e estado persistido em PostgreSQL.

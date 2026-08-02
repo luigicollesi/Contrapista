@@ -2,6 +2,7 @@
 
 import { useEffect, useId } from "react";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
+import Link from "next/link";
 
 export type AuthMode = "login" | "register";
 
@@ -18,16 +19,16 @@ type AuthModalProps = {
 
 const modalCopy = {
   login: {
-    eyebrow: "Retorno ao arquivo",
+    eyebrow: "Acesso",
     title: "Entrar na conta",
-    body: "Acesse seu perfil para acompanhar histórico, casos e recursos da mesa pública.",
+    body: "Entre para jogar, salvar seu perfil e acessar os modos públicos.",
     submit: "Entrar",
     switchMode: "Ainda não tenho conta",
   },
   register: {
-    eyebrow: "Novo investigador",
+    eyebrow: "Cadastro",
     title: "Criar conta",
-    body: "Reserve seu acesso ao Contrapista e prepare a base para recursos persistentes da conta.",
+    body: "Crie uma conta para jogar, entrar em filas e manter seu nome no perfil.",
     submit: "Criar conta",
     switchMode: "Já tenho uma conta",
   },
@@ -74,6 +75,38 @@ function TextField({
         type={type}
       />
       <FieldError>{error}</FieldError>
+    </label>
+  );
+}
+
+export function TermsAcceptance({ error }: { error?: string }) {
+  return (
+    <label className="flex gap-3 rounded-sm border border-[#d0a85c]/25 bg-[#0e1111]/70 p-3 text-sm leading-6 text-stone-300">
+      <input
+        className="mt-1 h-4 w-4 shrink-0 accent-[#d0a85c]"
+        name="termsAccepted"
+        required
+        type="checkbox"
+        value="true"
+      />
+      <span>
+        Li e aceito os{" "}
+        <Link
+          className="font-bold text-[#f5e7bd] underline-offset-4 hover:underline"
+          href="/termos"
+        >
+          Termos de Uso
+        </Link>{" "}
+        e estou ciente da{" "}
+        <Link
+          className="font-bold text-[#f5e7bd] underline-offset-4 hover:underline"
+          href="/privacidade"
+        >
+          Política de Privacidade
+        </Link>{" "}
+        do Contrapista.
+        <FieldError>{error}</FieldError>
+      </span>
     </label>
   );
 }
@@ -152,18 +185,18 @@ export function AuthModal({
               Contrapista
             </p>
             <h2 className="mt-5 font-serif text-4xl font-bold leading-tight text-[#f2e6c8]">
-              Toda conta abre um novo arquivo.
+              Seu nome fica salvo para a próxima mesa.
             </h2>
             <p className="mt-5 text-sm leading-7 text-stone-300">
-              Entre para manter seu acesso pronto enquanto a experiência pública
-              evolui para histórico de casos, perfis e mesas persistentes.
+              Use email e senha, Google ou GitHub. Depois escolha um nome único
+              para aparecer nas partidas.
             </p>
           </div>
           <div className="mt-10 space-y-3 border-t border-[#d0a85c]/20 pt-6 text-sm text-stone-300">
-            <p className="font-bold text-[#f5e7bd]">Acesso seguro</p>
+            <p className="font-bold text-[#f5e7bd]">Antes de jogar</p>
             <p className="leading-7">
-              Use email e senha ou continue com provedores OAuth configurados no
-              Auth.js.
+              Algumas ações pedem conta para manter sala, fila e perfil ligados
+              ao mesmo usuário.
             </p>
           </div>
         </aside>
@@ -245,6 +278,10 @@ export function AuthModal({
               name="password"
               type="password"
             />
+
+            {mode === "register" ? (
+              <TermsAcceptance error={fieldErrors.terms} />
+            ) : null}
 
             {message ? (
               <p className="rounded-sm border border-red-400/35 bg-red-950/25 px-3 py-2 text-sm text-red-100">

@@ -91,7 +91,7 @@ export function HomeRoomActions() {
           },
           body: JSON.stringify({ browserId: getBrowserId() }),
         },
-        "Não foi possível criar a sala.",
+        "Não deu para criar a sala.",
       );
 
       saveSession({
@@ -103,7 +103,7 @@ export function HomeRoomActions() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível criar a sala.",
+          : "Não deu para criar a sala.",
       );
     } finally {
       setIsLoading(false);
@@ -133,7 +133,7 @@ export function HomeRoomActions() {
           },
           body: JSON.stringify({ browserId: getBrowserId() }),
         },
-        "Sala não encontrada.",
+        "Não encontramos essa sala.",
       );
 
       saveSession({
@@ -145,7 +145,7 @@ export function HomeRoomActions() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível entrar na sala.",
+          : "Não deu para entrar na sala.",
       );
     } finally {
       setIsLoading(false);
@@ -168,11 +168,10 @@ export function HomeRoomActions() {
             Criar sala
           </span>
           <span className="mt-5 block text-base leading-7 text-[#3a3021]">
-            Gera um código de acesso e abre uma sala privada para o grupo
-            preparar a sessão com conta opcional e sem exposição pública.
+            Cria um código para seu grupo entrar na mesma sala.
           </span>
           <span className="mt-6 inline-flex h-10 items-center rounded-full bg-[#17130d] px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#7c1f2a]">
-            Abrir dossiê
+            Criar sala
           </span>
         </button>
 
@@ -193,7 +192,7 @@ export function HomeRoomActions() {
             Entrar
           </span>
           <span className="mt-5 block text-base leading-7 text-stone-300">
-            Use o código recebido para acessar uma investigação já aberta.
+            Use o código que alguém da mesa enviou para você.
           </span>
           <span className="mt-6 inline-flex h-10 items-center rounded-full border border-[#d0a85c]/60 px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#d0a85c] group-hover:text-[#17130d]">
             Informar código
@@ -219,10 +218,10 @@ export function HomeRoomActions() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d0a85c]">
-                  Acessar sessão
+                  Entrar na sala
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-bold text-[#f2e6c8]">
-                  Código reservado
+                  Código da sala
                 </h2>
               </div>
               <button
@@ -262,7 +261,7 @@ export function HomeRoomActions() {
               disabled={isLoading}
               type="submit"
             >
-              Entrar no dossiê
+              Entrar na sala
             </button>
           </form>
         </ResponsiveSheet>

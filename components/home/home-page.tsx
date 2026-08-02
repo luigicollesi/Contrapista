@@ -4,25 +4,25 @@ const manualHighlights = [
   {
     title: "Mesa de investigação",
     items: [
-      "O caso chega como um dossiê incompleto, cheio de indícios e lacunas.",
-      "A mesa precisa discutir, comparar versões e separar evidência de distração.",
-      "Vence a tese que responde ao caso com clareza, não a frase mais longa.",
+      "O caso começa incompleto, com detalhes que parecem não combinar.",
+      "A mesa discute versões, cruza pistas e corta distrações.",
+      "Ganha quem explica o caso, não quem fala mais bonito.",
     ],
   },
   {
     title: "Pistas em disputa",
     items: [
-      "Cada jogador segura fragmentos que podem confirmar ou desviar a investigação.",
-      "Nenhuma pista vem com selo de confiança; o valor dela nasce no debate.",
-      "Quem sai da disputa vira observador privilegiado do arquivo completo.",
+      "Cada jogador recebe pistas que podem ajudar ou confundir.",
+      "Nada vem marcado como certo. A mesa decide no debate.",
+      "Quem erra sai da disputa, mas passa a enxergar mais do arquivo.",
     ],
   },
   {
     title: "Pressão de rodada",
     items: [
-      "A partida alterna leitura, revelação, análise e silêncio estratégico.",
-      "O grupo pode preferir uma sessão lenta e meticulosa ou uma mesa mais severa.",
-      "Quando o tempo aperta, a intuição pesa tanto quanto a dedução.",
+      "A partida alterna leitura, revelação e tempo para pensar.",
+      "A sala escolhe se quer um ritmo calmo ou mais apertado.",
+      "Quando o relógio aperta, palpite e dedução se misturam.",
     ],
   },
 ];
@@ -31,41 +31,41 @@ const manualFlow = [
   {
     step: "01",
     title: "Reúna a mesa",
-    body: "Entre na sala, assuma um nome e escolha uma cor. Quando todos estiverem prontos, o dossiê pode ser aberto.",
+    body: "Entre na sala, escolha uma cor e espere todo mundo ficar pronto.",
   },
   {
     step: "02",
     title: "Defina o tom da investigação",
-    body: "Antes do caso começar, a mesa decide se quer uma apuração paciente, uma sessão tensa ou um confronto mais direto.",
+    body: "Antes de começar, a sala ajusta os tempos e escolhe como o caso será usado.",
   },
   {
     step: "03",
     title: "Leia sem revelar demais",
-    body: "Cada investigador examina o cenário e seus próprios fragmentos. É hora de notar contradições e escolher o que guardar.",
+    body: "Leia o caso e suas pistas em silêncio. Nem tudo precisa ir para a mesa logo de cara.",
   },
   {
     step: "04",
     title: "Deixe a ordem decidir",
-    body: "A roleta estabelece quem fala primeiro. A partir daí, cada voz entra no caso em seu momento.",
+    body: "A roleta define a ordem. Cada jogador tem seu momento de abrir uma pista.",
   },
   {
     step: "05",
     title: "Abra um fragmento",
-    body: "Na sua vez, revele uma pista. Ela pode iluminar o caminho, reforçar uma suspeita ou arrastar a mesa para uma falsa certeza.",
+    body: "Na sua vez, revele uma pista. Ela pode resolver uma dúvida ou criar outra.",
   },
   {
     step: "06",
     title: "Sustente uma tese",
-    body: "Depois das rodadas de análise, qualquer jogador pode assumir o risco de responder. Um acerto encerra o caso; um erro muda a mesa.",
+    body: "Quando achar que entendeu, tente responder. Acertou, acaba. Errou, continua sem você na disputa.",
   },
 ];
 
 const manualDetails = [
-  "Todos podem acelerar uma fase quando a mesa já tem o que precisa.",
-  "Errar a solução tira o jogador da disputa, mas abre seu arquivo para os demais.",
-  "Um palpite final suspende a mesa: naquele momento, todos aguardam a tese ser registrada.",
-  "A conclusão permanece disponível para cada jogador até ele decidir voltar à ante-sala.",
-  "A conta é opcional; a sala ainda guarda sua presença no navegador durante a partida.",
+  "A mesa pode pular uma fase quando todos já leram o suficiente.",
+  "Quem erra a solução sai da disputa e libera suas pistas para consulta.",
+  "Durante um palpite final, a partida pausa até a resposta ser enviada.",
+  "Depois do fim, cada jogador vê a solução antes de voltar para a ante-sala.",
+  "A conta guarda perfil e modos públicos; a sala usa o navegador para reconhecer você.",
 ];
 
 const heroStats = [
@@ -75,9 +75,9 @@ const heroStats = [
 ];
 
 const valueProps = [
-  "Casos gerados com pistas verdadeiras e falsas.",
-  "Debate social com risco real ao sustentar uma tese.",
-  "Salas privadas, modos públicos e perfil persistente.",
+  "Casos com pistas úteis e pistas que desviam.",
+  "Discussão de mesa com risco real ao responder.",
+  "Salas privadas, modos públicos e perfil salvo.",
 ];
 
 function EvidencePreview() {
@@ -130,9 +130,9 @@ function HomeHero() {
           Contrapista
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-200 sm:text-xl">
-          Uma sala reservada, versões em conflito e evidências que não aceitam
-          narrativa fácil. Conduza a sessão, sustente hipóteses e exponha a
-          contradição que fecha o caso.
+          Entre em uma sala, leia o caso e tente separar pista boa de
+          distração. A resposta certa quase sempre nasce da conversa, não de uma
+          pista isolada.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -176,7 +176,7 @@ function ValueProposition() {
             Por que jogar
           </p>
           <h2 className="mt-4 font-serif text-4xl font-bold text-[#f2e6c8] sm:text-5xl">
-            Um jogo de dedução feito para conflito de versões
+            Um jogo de dedução para discutir versões
           </h2>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
@@ -292,17 +292,17 @@ function FieldManual() {
             Como conduzir uma sessão
           </h2>
           <p className="mt-4 text-lg leading-8 text-stone-300">
-            Contrapista coloca a mesa diante de um caso incompleto. Cada
-            investigador tem peças do arquivo, mas ninguém sabe de imediato
-            quais delas sustentam a verdade.
+            Contrapista coloca a mesa diante de um caso incompleto. Cada pessoa
+            tem uma parte do arquivo, mas ninguém sabe de início o que é pista
+            boa e o que é desvio.
           </p>
           <div className="mt-6 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]/85 p-5 shadow-xl shadow-black/20">
             <h3 className="font-serif text-2xl font-bold text-[#f2e6c8]">
               Objetivo
             </h3>
             <p className="mt-3 text-sm leading-7 text-stone-300">
-              Construa uma resposta convincente para o caso antes que pistas
-              falsas, conclusões apressadas e apostas ruins tomem conta da mesa.
+              Monte uma resposta antes que pistas falsas, pressa e confiança
+              demais levem a mesa para o lado errado.
             </p>
           </div>
         </div>

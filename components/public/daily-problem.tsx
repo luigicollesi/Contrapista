@@ -55,7 +55,7 @@ function formatCooldown(cooldownUntil?: string | null) {
 
   const minutes = Math.ceil(diffMs / 60_000);
 
-  return `Tente novamente em ${minutes} minuto(s).`;
+  return `Tente de novo em ${minutes} min.`;
 }
 
 function toLocalDate(date: string) {
@@ -124,7 +124,7 @@ export function DailyProblem() {
     const data = await readJsonResponse<DailyProblemResponse>(response);
 
     if (!response.ok || !data.dates) {
-      throw new Error(data.error ?? "Não foi possível carregar o calendário.");
+      throw new Error(data.error ?? "Não deu para carregar o calendário.");
     }
 
     setAvailableDates(data.dates.map((item) => item.date));
@@ -145,7 +145,7 @@ export function DailyProblem() {
       const data = await readJsonResponse<DailyProblemResponse>(response);
 
       if (!response.ok || !data.problem) {
-        throw new Error(data.error ?? "Não foi possível carregar o desafio.");
+        throw new Error(data.error ?? "Não deu para carregar o desafio.");
       }
 
       setAnswer("");
@@ -155,7 +155,7 @@ export function DailyProblem() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível carregar o desafio.",
+          : "Não deu para carregar o desafio.",
       );
     } finally {
       setIsLoadingProblem(false);
@@ -174,7 +174,7 @@ export function DailyProblem() {
         }
 
         if (!response.ok || !data.problem) {
-          throw new Error(data.error ?? "Não foi possível carregar o desafio.");
+          throw new Error(data.error ?? "Não deu para carregar o desafio.");
         }
 
         setProblem(data.problem);
@@ -188,7 +188,7 @@ export function DailyProblem() {
         setError(
           caughtError instanceof Error
             ? caughtError.message
-            : "Não foi possível carregar o desafio.",
+            : "Não deu para carregar o desafio.",
         );
       })
       .finally(() => {
@@ -206,7 +206,7 @@ export function DailyProblem() {
         }
 
         if (!response.ok || !data.dates) {
-          throw new Error(data.error ?? "Não foi possível carregar o calendário.");
+          throw new Error(data.error ?? "Não deu para carregar o calendário.");
         }
 
         setAvailableDates(data.dates.map((item) => item.date));
@@ -216,7 +216,7 @@ export function DailyProblem() {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível carregar o calendário.",
+              : "Não deu para carregar o calendário.",
           );
         }
       });
@@ -244,18 +244,18 @@ export function DailyProblem() {
       }
 
       if (response.ok && data.correct) {
-        setNotice("Resposta correta. O gabarito oficial foi liberado.");
+        setNotice("Você acertou. A resposta oficial foi liberada.");
         setAnswer("");
         return;
       }
 
       if (response.status === 429) {
-        setError(data.cooldownUntil ? formatCooldown(data.cooldownUntil) : "Resposta incorreta. Aguarde para tentar novamente.");
+        setError(data.cooldownUntil ? formatCooldown(data.cooldownUntil) : "Ainda não foi dessa vez. Aguarde para tentar de novo.");
         return;
       }
 
       if (!response.ok) {
-        setError(data.error ?? "Não foi possível avaliar sua resposta.");
+        setError(data.error ?? "Não deu para avaliar sua resposta.");
       }
     });
   }
@@ -268,7 +268,7 @@ export function DailyProblem() {
         setError(
           caughtError instanceof Error
             ? caughtError.message
-            : "Não foi possível carregar o calendário.",
+            : "Não deu para carregar o calendário.",
         );
       });
     }
@@ -301,9 +301,8 @@ export function DailyProblem() {
           </button>
         </div>
         <p className="mt-4 max-w-3xl text-sm leading-6 text-stone-300 sm:mt-6 sm:text-lg sm:leading-8">
-          Um caso por dia. As pistas aparecem juntas, sem indicar quais são
-          verdadeiras ou falsas. Você tem novas tentativas apenas depois do
-          intervalo de espera.
+          Um caso por dia, com todas as pistas juntas. Algumas ajudam, outras
+          desviam. Se errar, espere o intervalo antes de tentar de novo.
         </p>
 
         {isLoadingProblem && !problem && !error ? (
@@ -360,12 +359,12 @@ export function DailyProblem() {
                   className="mt-4 min-h-32 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] p-3 text-base text-stone-50 outline-none transition focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 disabled:opacity-60 sm:mt-5 sm:min-h-36 sm:text-sm"
                   disabled={problem.solved || Boolean(cooldownMessage) || isPending}
                   onChange={(event) => setAnswer(event.target.value)}
-                  placeholder="Explique a solução do caso..."
+                  placeholder="Escreva sua solução..."
                   value={answer}
                 />
                 {problem.solved ? (
                   <p className="mt-3 text-sm font-semibold text-emerald-100">
-                    Você já acertou este problema.
+                    Você já resolveu este problema.
                   </p>
                 ) : null}
                 {cooldownMessage ? (
@@ -388,7 +387,7 @@ export function DailyProblem() {
                   disabled={!canSubmit || isPending}
                   type="submit"
                 >
-                  {isPending ? "Avaliando" : "Enviar tentativa"}
+                  {isPending ? "Avaliando" : "Enviar resposta"}
                 </button>
               </form>
 
@@ -527,7 +526,7 @@ export function DailyProblem() {
               </div>
 
               <p className="mt-5 text-sm leading-6 text-stone-300">
-                Apenas os dias com problema diário já vinculado podem ser abertos.
+                Só os dias com problema disponível podem ser abertos.
               </p>
             </div>
           </ResponsiveSheet>

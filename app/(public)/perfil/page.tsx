@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { DeleteAccountPanel } from "@/components/public/delete-account-panel";
 import { ensureUserAchievements } from "@/lib/auth-users";
 
 export const dynamic = "force-dynamic";
@@ -22,33 +23,37 @@ export default async function ProfilePage() {
 
         {!session ? (
           <div className="mt-10 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-6 text-stone-300">
-            Entre na sua conta pelo cabeçalho para visualizar o perfil.
+            Entre pelo cabeçalho para ver seu perfil.
           </div>
         ) : null}
 
         {session && achievements ? (
-          <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[
-              ["Partidas totais", achievements.total_matches_played],
-              ["Partidas rankeadas", achievements.ranked_matches_played],
-              ["Vitórias totais", achievements.total_matches_won],
-              ["Vitórias rankeadas", achievements.ranked_matches_won],
-              ["Rating rankeado", achievements.ranked_rating],
-              ["Problemas diários", achievements.daily_problems_solved],
-            ].map(([label, value]) => (
-              <article
-                className="rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-5 shadow-2xl shadow-black/20"
-                key={label}
-              >
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d0a85c]">
-                  {label}
-                </p>
-                <p className="mt-3 text-3xl font-black text-[#f2e6c8]">
-                  {value}
-                </p>
-              </article>
-            ))}
-          </div>
+          <>
+            <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {[
+                ["Partidas totais", achievements.total_matches_played],
+                ["Partidas rankeadas", achievements.ranked_matches_played],
+                ["Vitórias totais", achievements.total_matches_won],
+                ["Vitórias rankeadas", achievements.ranked_matches_won],
+                ["Rating rankeado", achievements.ranked_rating],
+                ["Problemas diários", achievements.daily_problems_solved],
+              ].map(([label, value]) => (
+                <article
+                  className="rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-5 shadow-2xl shadow-black/20"
+                  key={label}
+                >
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d0a85c]">
+                    {label}
+                  </p>
+                  <p className="mt-3 text-3xl font-black text-[#f2e6c8]">
+                    {value}
+                  </p>
+                </article>
+              ))}
+            </div>
+
+            <DeleteAccountPanel />
+          </>
         ) : null}
 
         <Link

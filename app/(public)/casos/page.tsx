@@ -40,7 +40,7 @@ export default async function CasesPage() {
     loadError =
       error instanceof Error
         ? error.message
-        : "Não foi possível carregar os casos.";
+        : "Não deu para carregar os casos.";
   }
 
   return (
@@ -53,20 +53,19 @@ export default async function CasesPage() {
           Casos disponíveis
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-          Consulte os casos já registrados sem revelar narrativa, pistas ou
-          solução. Esta vitrine expõe apenas dados seguros para escolha e
-          acompanhamento.
+          Veja quais casos já existem sem abrir narrativa, pistas ou solução.
+          A lista mostra só o que dá para consultar sem estragar a partida.
         </p>
 
         {loadError ? (
           <section className="mt-10 rounded-sm border border-red-400/40 bg-red-950/25 p-5 text-sm leading-7 text-red-100">
-            Não foi possível carregar a lista de casos agora.
+            Não deu para carregar a lista de casos agora.
           </section>
         ) : null}
 
         {!loadError && cases.length === 0 ? (
           <section className="mt-10 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-6 text-stone-300 shadow-2xl shadow-black/20">
-            Nenhum caso foi registrado ainda.
+            Ainda não há casos salvos.
           </section>
         ) : null}
 

@@ -1,35 +1,35 @@
 const flow = [
   {
     title: "1. Ante-sala",
-    body: "Entre com o código, escolha nome e cor, ajuste o ritmo da sessão e confirme prontidão quando a mesa estiver completa.",
+    body: "Entre na sala, escolha uma cor e marque pronto quando todo mundo estiver na mesa.",
   },
   {
     title: "2. Criação do caso",
-    body: "O sistema monta um dossiê com narrativa, pistas verdadeiras, pistas falsas e uma resposta oficial preservada até o fim.",
+    body: "A sala usa um caso salvo, sorteia um caso compatível ou cria um novo para a partida.",
   },
   {
     title: "3. Leitura inicial",
-    body: "Cada jogador lê o caso e os próprios fragmentos em silêncio, procurando padrões, contradições e hipóteses viáveis.",
+    body: "Cada jogador lê o caso e suas pistas sem revelar nada ainda.",
   },
   {
     title: "4. Compartilhamento",
-    body: "Na sua vez, o jogador escolhe um fragmento para abrir. A mesa não sabe se ele ajuda ou desvia a investigação.",
+    body: "Na sua vez, abra uma pista. A mesa precisa decidir se ela ajuda ou atrapalha.",
   },
   {
     title: "5. Palpite final",
-    body: "Qualquer jogador ativo pode sustentar uma tese. Se errar, sai da disputa e seus fragmentos ficam disponíveis para consulta.",
+    body: "Qualquer jogador ativo pode tentar resolver. Se errar, sai da disputa e libera suas pistas.",
   },
   {
     title: "6. Encerramento",
-    body: "Quando uma tese bate com a solução oficial, o caso termina e todos veem a resposta armazenada.",
+    body: "Quando alguém acerta, a partida acaba e a resposta oficial aparece para todos.",
   },
 ];
 
 const rules = [
   "Jogadores sem nome e cor não podem ficar prontos.",
-  "Jogadores inativos por tempo suficiente perdem a participação ativa na sessão.",
+  "Jogadores inativos por muito tempo saem da participação ativa.",
   "Pistas de eliminados ficam visíveis, mas não podem ser compartilhadas em novas rodadas.",
-  "Se a IA não conseguir avaliar um palpite, o autor compara com a resposta oficial e informa o resultado.",
+  "Se a IA não conseguir avaliar um palpite, o autor compara com a resposta oficial.",
 ];
 
 export default function InstructionsPage() {
@@ -43,9 +43,8 @@ export default function InstructionsPage() {
           Como jogar Contrapista
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-          A sessão gira em torno de uma investigação coletiva. Cada jogador
-          controla parte do arquivo, mas a mesa precisa decidir quais fragmentos
-          sustentam a verdade e quais empurram o grupo para uma conclusão falsa.
+          Cada pessoa recebe uma parte do caso. A mesa conversa, cruza pistas e
+          tenta descobrir quais detalhes levam à resposta certa.
         </p>
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -66,7 +65,7 @@ export default function InstructionsPage() {
 
         <section className="mt-12 rounded-sm border border-[#d0a85c]/30 bg-[#171a1a] p-6 shadow-2xl shadow-black/20">
           <h2 className="font-serif text-3xl font-bold text-[#f2e6c8]">
-            Regras operacionais
+            Regras rápidas
           </h2>
           <ul className="mt-5 grid gap-3 text-sm leading-7 text-stone-300 md:grid-cols-2">
             {rules.map((rule) => (

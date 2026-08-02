@@ -36,7 +36,7 @@ const modes: PlayMode[] = [
     id: "casual",
     title: "Jogo casual",
     eyebrow: "4 jogadores · cada um por si",
-    body: "Uma mesa rápida para jogar sem risco de rating. O foco é entrar, investigar e testar leitura social contra outros três jogadores.",
+    body: "Entre na fila e jogue uma partida completa sem mexer no seu rating.",
     facts: ["Exatamente 4 jogadores", "Sem ranking", "Fila automática"],
     action: "Buscar casual",
     accent: "#d0a85c",
@@ -45,7 +45,7 @@ const modes: PlayMode[] = [
     id: "ranked",
     title: "Jogo rankeado",
     eyebrow: "4 jogadores · rating ativo",
-    body: "A versão competitiva do Contrapista: todos contra todos, regras fixas e estatísticas rankeadas no perfil.",
+    body: "A mesma mesa de 4 jogadores, agora valendo rating e histórico no perfil.",
     facts: ["Exatamente 4 jogadores", "Impacta rating", "Histórico competitivo"],
     action: "Buscar rankeada",
     accent: "#7c1f2a",
@@ -53,8 +53,8 @@ const modes: PlayMode[] = [
   {
     id: "custom",
     title: "Sala personalizada",
-    eyebrow: "Código privado · fluxo atual",
-    body: "Crie uma sala com código para jogar com seu grupo ou entre em uma sessão já aberta. É o modo pronto para uso agora.",
+    eyebrow: "Código privado · seu grupo",
+    body: "Crie uma sala para jogar com amigos ou entre pelo código de uma mesa aberta.",
     facts: ["Código de 4 números", "Configuração da sala", "Convite direto"],
     action: "Criar sala",
     accent: "#f2e6c8",
@@ -62,9 +62,9 @@ const modes: PlayMode[] = [
   {
     id: "daily",
     title: "Problema diário",
-    eyebrow: "Desafio solo · estatística diária",
-    body: "Um caso curto para resolver sem formar mesa, pensado para alimentar sequência e problemas diários resolvidos.",
-    facts: ["Sem fila", "Desafio rápido", "Métrica diária"],
+    eyebrow: "Desafio solo · 1 caso por dia",
+    body: "Resolva o caso do dia no seu tempo, sem fila e sem formar sala.",
+    facts: ["Sem fila", "Caso do dia", "Conta no perfil"],
     action: "Resolver diário",
     accent: "#8fb3a2",
   },
@@ -89,7 +89,7 @@ export function PlayOptions() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ browserId: getBrowserId() }),
         },
-        "Não foi possível criar a sala.",
+        "Não deu para criar a sala agora.",
       );
 
       saveSession({ roomCode: data.room.code, user: data.user });
@@ -98,7 +98,7 @@ export function PlayOptions() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível criar a sala.",
+          : "Não deu para criar a sala agora.",
       );
     } finally {
       setIsLoading(false);
@@ -126,7 +126,7 @@ export function PlayOptions() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ browserId: getBrowserId() }),
         },
-        "Sala não encontrada.",
+        "Não encontramos essa sala.",
       );
 
       saveSession({ roomCode: code, user: data.user });
@@ -135,7 +135,7 @@ export function PlayOptions() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível entrar na sala.",
+          : "Não deu para entrar na sala.",
       );
     } finally {
       setIsLoading(false);

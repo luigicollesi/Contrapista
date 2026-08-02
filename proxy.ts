@@ -14,6 +14,7 @@ const protectedApiPrefixes = [
   "/api/daily-problem",
   "/api/matchmaking",
   "/api/rooms",
+  "/api/users",
 ];
 const csrfApiPrefixes = [
   ...protectedApiPrefixes,

@@ -1,4 +1,8 @@
-import { createCredentialsUser, validateAuthInput } from "@/lib/auth-users";
+import {
+  createCredentialsUser,
+  hasAcceptedTerms,
+  validateAuthInput,
+} from "@/lib/auth-users";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function getUniqueConstraint(error: unknown) {
@@ -35,6 +39,7 @@ export async function POST(request: Request) {
     username?: unknown;
     email?: unknown;
     password?: unknown;
+    termsAccepted?: unknown;
   } | null;
   const parsed = validateAuthInput({
     username: body?.username ?? body?.name,
@@ -45,6 +50,16 @@ export async function POST(request: Request) {
   if (!parsed.ok) {
     return Response.json(
       { ok: false, errors: parsed.errors },
+      { status: 400 },
+    );
+  }
+
+  if (!hasAcceptedTerms(body?.termsAccepted)) {
+    return Response.json(
+      {
+        ok: false,
+        errors: { terms: "Aceite os termos de uso para criar sua conta." },
+      },
       { status: 400 },
     );
   }

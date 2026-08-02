@@ -1691,6 +1691,33 @@ export async function leaveRoom({
   }
 }
 
+export async function leaveRoomsByAccountUserId(accountUserId: string) {
+  await ensureSchema();
+
+  const result = await dbQuery<{
+    code: string;
+    users: unknown;
+  }>(
+    `
+      SELECT room_code AS code, users
+      FROM game_rooms
+      WHERE users @> $1::jsonb
+      ORDER BY updated_at DESC
+    `,
+    [JSON.stringify([{ accountUserId }])],
+  );
+
+  const presences = result.rows.flatMap((room) =>
+    normalizeUsers(room.users)
+      .filter((user) => user.accountUserId === accountUserId)
+      .map((user) => ({ code: room.code, userId: user.id })),
+  );
+
+  for (const presence of presences) {
+    await leaveRoom(presence);
+  }
+}
+
 export async function heartbeatRoomUser({
   code,
   userId,

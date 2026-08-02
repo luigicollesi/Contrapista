@@ -1,10 +1,15 @@
 "use client";
 
-import { AuthModal, type AuthMode } from "@/components/public/auth-modal";
+import {
+  AuthModal,
+  TermsAcceptance,
+  type AuthMode,
+} from "@/components/public/auth-modal";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 import { withCsrfHeader } from "@/lib/client-http";
 import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 type AuthResponse = {
@@ -34,6 +39,7 @@ function signInWithProvider(provider: "google" | "github") {
 
 export function AuthModalControls() {
   const { data: session, status, update } = useSession();
+  const pathname = usePathname();
   const accountPreviewRef = useRef<HTMLDivElement | null>(null);
   const closeAccountTimer = useRef<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
@@ -46,6 +52,8 @@ export function AuthModalControls() {
   const [isPending, startTransition] = useTransition();
   const isAuthenticated = status === "authenticated";
   const needsUsername = Boolean(session?.user?.needsUsername);
+  const isLegalPage = pathname === "/termos" || pathname === "/privacidade";
+  const shouldShowRequiredUsernameModal = needsUsername && !isLegalPage;
 
   function clearAccountCloseTimer() {
     if (closeAccountTimer.current !== null) {
@@ -112,13 +120,14 @@ export function AuthModalControls() {
             username: getFormValue(formData, "username"),
             email,
             password,
+            termsAccepted: getFormValue(formData, "termsAccepted"),
           }),
         }));
         const payload = (await response.json().catch(() => ({}))) as AuthResponse;
 
         if (!response.ok || !payload.ok) {
           setFieldErrors(payload.errors ?? {});
-          setMessage(payload.message ?? "Não foi possível criar a conta.");
+          setMessage(payload.message ?? "Não deu para criar a conta.");
           return;
         }
       }
@@ -147,13 +156,16 @@ export function AuthModalControls() {
       const response = await fetch("/api/auth/username", withCsrfHeader({
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: getFormValue(formData, "username") }),
+        body: JSON.stringify({
+          termsAccepted: getFormValue(formData, "termsAccepted"),
+          username: getFormValue(formData, "username"),
+        }),
       }));
       const payload = (await response.json().catch(() => ({}))) as AuthResponse;
 
       if (!response.ok || !payload.ok) {
         setFieldErrors(payload.errors ?? {});
-        setMessage(payload.message ?? "Não foi possível salvar o nome.");
+        setMessage(payload.message ?? "Não deu para salvar o nome.");
         return;
       }
 
@@ -316,7 +328,7 @@ export function AuthModalControls() {
         >
           Sair
         </button>
-        {needsUsername ? (
+        {shouldShowRequiredUsernameModal ? (
           <ResponsiveSheet
             backdropClassName="bg-[#050606]/85 backdrop-blur-sm"
             contentClassName="max-w-md border border-[#d0a85c]/40 bg-[#121616] p-5 shadow-black/60 sm:w-[28rem] sm:rounded-sm sm:p-6"
@@ -333,8 +345,7 @@ export function AuthModalControls() {
                 Escolha seu nome
               </h2>
               <p className="mt-3 text-sm leading-7 text-stone-300">
-                O nome do Google ou GitHub não será usado automaticamente. Crie
-                um nome único para aparecer no Contrapista.
+                Escolha o nome que os outros jogadores verão nas partidas.
               </p>
               <label className="mt-6 block text-sm font-bold text-stone-200">
                 Nome de usuário
@@ -352,6 +363,9 @@ export function AuthModalControls() {
                   </span>
                 ) : null}
               </label>
+              <div className="mt-4">
+                <TermsAcceptance error={fieldErrors.terms} />
+              </div>
               {message ? (
                 <p className="mt-4 rounded-sm border border-red-400/35 bg-red-950/25 px-3 py-2 text-sm text-red-100">
                   {message}

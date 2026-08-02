@@ -8,9 +8,9 @@ type AuthErrorPageProps = {
 
 const errorCopy: Record<string, string> = {
   AccessDenied:
-    "Esse email já está vinculado a outro método de acesso ou o provedor recusou a autorização.",
+    "Esse email já usa outro tipo de login, ou o provedor recusou o acesso.",
   Configuration:
-    "A autenticação não está configurada corretamente no servidor.",
+    "O login não está configurado corretamente no servidor.",
   Verification:
     "O link de verificação expirou ou já foi usado.",
 };
@@ -20,7 +20,7 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
   const error = params?.error ?? "Default";
   const message =
     errorCopy[error] ??
-    "Não foi possível concluir o login. Tente novamente pelo cabeçalho.";
+    "Não deu para concluir o login. Tente novamente pelo cabeçalho.";
 
   return (
     <main className="sy-theme min-h-screen bg-[#0e1111] px-4 py-16 text-stone-50 sm:px-6 lg:px-8">

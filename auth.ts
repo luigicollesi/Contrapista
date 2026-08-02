@@ -106,9 +106,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const authUser = await getUserById(token.id);
 
         if (authUser) {
-          token.name = authUser.username;
+          token.name =
+            authUser.username &&
+            authUser.terms_accepted &&
+            authUser.privacy_acknowledged
+              ? authUser.username
+              : null;
           token.provider = authUser.provider;
-          token.needsUsername = !authUser.username;
+          token.needsUsername =
+            !authUser.username ||
+            !authUser.terms_accepted ||
+            !authUser.privacy_acknowledged;
         }
       }
 

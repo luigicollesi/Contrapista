@@ -1,5 +1,9 @@
 import { auth } from "@/auth";
-import { setUserUsername, validateAuthInput } from "@/lib/auth-users";
+import {
+  hasAcceptedTerms,
+  setUserUsername,
+  validateAuthInput,
+} from "@/lib/auth-users";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function getUniqueConstraint(error: unknown) {
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => null)) as {
+    termsAccepted?: unknown;
     username?: unknown;
   } | null;
   const parsed = validateAuthInput({
@@ -57,8 +62,19 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!hasAcceptedTerms(body?.termsAccepted)) {
+    return Response.json(
+      {
+        ok: false,
+        errors: { terms: "Aceite os termos de uso para salvar seu nome." },
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     const user = await setUserUsername({
+      acceptedTerms: true,
       userId: session.user.id,
       username: parsed.data.username,
     });
