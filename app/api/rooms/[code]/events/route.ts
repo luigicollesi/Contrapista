@@ -1,7 +1,11 @@
 import { errorResponse } from "@/lib/api-response";
-import { publishRoomEvent } from "@/lib/rooms";
+import { publishRoomEvent, resolvePendingFinalGuessEvent } from "@/lib/rooms";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
+import { after } from "next/server";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(
   request: Request,
@@ -51,6 +55,7 @@ export async function POST(
   try {
     const event = await publishRoomEvent({
       code,
+      deferFinalGuessEvaluation: body.type === "solution_guess",
       userId: body.userId,
       event:
         body.type === "solution_guess"
@@ -62,6 +67,21 @@ export async function POST(
 
     if (!event) {
       return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    }
+
+    if (body.type === "solution_guess" && event.type === "solution_pending") {
+      after(async () => {
+        try {
+          await resolvePendingFinalGuessEvent({
+            code,
+            pendingEventId: event.id,
+          });
+        } catch (error) {
+          console.error(
+            `[AI][final-judge-background-error] room=${code} pendingEventId=${event.id} reason=${error instanceof Error ? error.message.slice(0, 220).replace(/\s+/g, " ") : String(error)}`,
+          );
+        }
+      });
     }
 
     return Response.json({ event });

@@ -66,7 +66,7 @@ const DEFAULT_ROOM_CONFIG: RoomConfig = {
   clueSelectionTimeSeconds: 10,
   revealedClueAnalysisTimeSeconds: 30,
   roundAnalysisTimeSeconds: 60,
-  finalGuessTimeSeconds: 30,
+  finalGuessTimeSeconds: 60,
   trueCluesPerPlayer: 3,
   cluesPerPlayer: 6,
 };
@@ -135,8 +135,8 @@ const configFields = [
     description: "Tempo para registrar o palpite quando alguém decide responder.",
     group: "ritmo",
     suffix: "s",
-    min: 20,
-    max: 180,
+    min: 30,
+    max: 120,
     step: 5,
   },
   {

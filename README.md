@@ -258,7 +258,8 @@ Campos relevantes:
 Regras:
 
 - há no máximo um problema por dia;
-- o caso é sorteado aleatoriamente da tabela `cases` na primeira abertura do dia;
+- o caso é sorteado aleatoriamente da tabela `cases` na primeira abertura do dia ou pelo scheduler iniciado junto com o servidor;
+- o scheduler reexecuta a verificação na virada UTC e usa `ON CONFLICT` para evitar duplicatas;
 - dias anteriores permanecem registrados e podem ser abertos pelo calendário;
 - o calendário exibe o mês completo, mas só habilita datas presentes em `daily_problems`.
 
@@ -358,7 +359,7 @@ readingTimeSeconds=120
 clueSelectionTimeSeconds=10
 revealedClueAnalysisTimeSeconds=30
 roundAnalysisTimeSeconds=60
-finalGuessTimeSeconds=30
+finalGuessTimeSeconds=60
 trueCluesPerPlayer=3
 cluesPerPlayer=6
 ```

@@ -101,7 +101,7 @@ async function ensureDailyProblemSchema() {
   `);
 }
 
-async function ensureDailyProblem(date = todayKey()) {
+export async function ensureDailyProblem(date = todayKey()) {
   await ensureDailyProblemSchema();
 
   await dbQuery(

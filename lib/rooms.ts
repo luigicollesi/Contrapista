@@ -99,7 +99,7 @@ export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   clueSelectionTimeSeconds: 10,
   revealedClueAnalysisTimeSeconds: 30,
   roundAnalysisTimeSeconds: 60,
-  finalGuessTimeSeconds: 30,
+  finalGuessTimeSeconds: 60,
   trueCluesPerPlayer: 3,
   cluesPerPlayer: 6,
 };
@@ -109,7 +109,7 @@ const ROOM_CONFIG_LIMITS = {
   clueSelectionTimeSeconds: { min: 5, max: 60 },
   revealedClueAnalysisTimeSeconds: { min: 10, max: 120 },
   roundAnalysisTimeSeconds: { min: 0, max: 180 },
-  finalGuessTimeSeconds: { min: 20, max: 180 },
+  finalGuessTimeSeconds: { min: 30, max: 120 },
   trueCluesPerPlayer: { min: 0, max: 10 },
   cluesPerPlayer: { min: 2, max: 10 },
 } satisfies Record<keyof RoomConfig, { min: number; max: number }>;
@@ -846,7 +846,7 @@ export async function ensureRoomsSchema() {
         clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
-        final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 20 AND 180),
+        final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
         true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
         clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         created_at timestamptz NOT NULL DEFAULT now(),
@@ -892,20 +892,24 @@ export async function ensureRoomsSchema() {
         ADD COLUMN IF NOT EXISTS clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         ADD COLUMN IF NOT EXISTS revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         ADD COLUMN IF NOT EXISTS round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
-        ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 30 CHECK (final_guess_time_seconds BETWEEN 20 AND 180),
+        ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
         ADD COLUMN IF NOT EXISTS true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
         ADD COLUMN IF NOT EXISTS clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
       UPDATE game_rooms_config
-      SET final_guess_time_seconds = 20
-      WHERE final_guess_time_seconds < 20;
+      SET final_guess_time_seconds = 30
+      WHERE final_guess_time_seconds < 30;
+
+      UPDATE game_rooms_config
+      SET final_guess_time_seconds = 120
+      WHERE final_guess_time_seconds > 120;
 
       ALTER TABLE game_rooms_config
         DROP CONSTRAINT IF EXISTS game_rooms_config_final_guess_time_seconds_check,
         ADD CONSTRAINT game_rooms_config_final_guess_time_seconds_check
-          CHECK (final_guess_time_seconds BETWEEN 20 AND 180);
+          CHECK (final_guess_time_seconds BETWEEN 30 AND 120);
 
       DO $$
       BEGIN
@@ -2633,10 +2637,12 @@ function buildFinalGuessResolution({
 
 export async function publishRoomEvent({
   code,
+  deferFinalGuessEvaluation = false,
   userId,
   event,
 }: {
   code: string;
+  deferFinalGuessEvaluation?: boolean;
   userId: string;
   event:
     | { type: "solution" }
@@ -2775,6 +2781,10 @@ export async function publishRoomEvent({
 
       await client.query("COMMIT");
 
+      if (deferFinalGuessEvaluation) {
+        return pendingEvent;
+      }
+
       const finalAnswer = await getCaseFinalAnswer(room.activecase);
       let isCorrect: boolean | null = null;
 
@@ -2854,6 +2864,168 @@ export async function publishRoomEvent({
     throw error;
   } finally {
     client.release();
+  }
+}
+
+export async function resolvePendingFinalGuessEvent({
+  code,
+  pendingEventId,
+}: {
+  code: string;
+  pendingEventId: string;
+}) {
+  await ensureSchema();
+
+  const firstClient = await getDbClient();
+  let activeCaseId: string | null = null;
+  let pendingEvent: RoomEvent | null = null;
+
+  try {
+    await firstClient.query("BEGIN");
+
+    const current = await getLockedRoomWithConfig(firstClient, code);
+    const room = current.rows[0];
+
+    if (!room) {
+      await firstClient.query("ROLLBACK");
+      return null;
+    }
+
+    const currentEvent = room.activeevent as RoomEvent | null;
+
+    if (
+      !currentEvent ||
+      currentEvent.type !== "solution_pending" ||
+      currentEvent.id !== pendingEventId ||
+      !room.activecase
+    ) {
+      await firstClient.query("ROLLBACK");
+      return currentEvent;
+    }
+
+    activeCaseId = room.activecase;
+    pendingEvent = currentEvent;
+    await firstClient.query("COMMIT");
+  } catch (error) {
+    await firstClient.query("ROLLBACK");
+    throw error;
+  } finally {
+    firstClient.release();
+  }
+
+  if (!activeCaseId || !pendingEvent) {
+    return null;
+  }
+
+  const finalAnswer = await getCaseFinalAnswer(activeCaseId);
+  let isCorrect: boolean | null = null;
+
+  try {
+    isCorrect = await evaluateFinalGuess({
+      roomCode: code,
+      guess: pendingEvent.guess ?? "",
+      finalAnswer,
+    });
+  } catch (error) {
+    console.warn(
+      `[AI][final-judge-manual-review] room=${code} action=manual-review reason=${error instanceof Error ? error.message.slice(0, 220).replace(/\s+/g, " ") : String(error)}`,
+    );
+  }
+
+  const secondClient = await getDbClient();
+
+  try {
+    await secondClient.query("BEGIN");
+
+    const latest = await getLockedRoomWithConfig(secondClient, code);
+    const latestRoom = latest.rows[0];
+
+    if (!latestRoom) {
+      await secondClient.query("ROLLBACK");
+      return null;
+    }
+
+    const latestEvent = latestRoom.activeevent as RoomEvent | null;
+
+    if (
+      !latestEvent ||
+      latestEvent.type !== "solution_pending" ||
+      latestEvent.id !== pendingEventId
+    ) {
+      await secondClient.query("ROLLBACK");
+      return latestEvent;
+    }
+
+    const latestState = normalizeGameState(latestRoom.gamestate);
+
+    if (!latestState) {
+      await secondClient.query("ROLLBACK");
+      return latestEvent;
+    }
+
+    const latestUsers = normalizeUsers(latestRoom.users);
+    const actor = latestUsers.find((user) => user.id === latestEvent.actorId);
+
+    if (!actor) {
+      await secondClient.query("ROLLBACK");
+      return latestEvent;
+    }
+
+    const now = Date.now();
+    let activeevent: RoomEvent;
+    let resumedState: GameState | null;
+
+    if (isCorrect === null) {
+      activeevent = {
+        id: crypto.randomUUID(),
+        type: "solution_manual_review",
+        actorId: latestEvent.actorId,
+        actorNickname: latestEvent.actorNickname,
+        guess: latestEvent.guess?.trim() ?? "",
+        createdAt: now,
+      } satisfies RoomEvent;
+      resumedState = latestState.pausedAt
+        ? latestState
+        : {
+            ...latestState,
+            pausedAt: now,
+            pausedRemainingMs: Math.max(0, latestState.phaseEndsAt - now),
+          };
+    } else {
+      const resolution = buildFinalGuessResolution({
+        code,
+        actor,
+        guess: latestEvent.guess ?? "",
+        isCorrect,
+        latestState,
+        latestUsers,
+        now,
+        config: normalizeRoomConfig(latestRoom),
+      });
+
+      activeevent = resolution.activeevent;
+      resumedState = resolution.resumedState;
+    }
+
+    await secondClient.query(
+      `
+        UPDATE game_rooms
+        SET activeevent = $2::jsonb,
+            gamestate = $3::jsonb,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, JSON.stringify(activeevent), JSON.stringify(resumedState)],
+    );
+
+    await secondClient.query("COMMIT");
+
+    return activeevent;
+  } catch (error) {
+    await secondClient.query("ROLLBACK");
+    throw error;
+  } finally {
+    secondClient.release();
   }
 }
 
