@@ -1,8 +1,8 @@
+import { hasAcceptedTerms, validateAuthInput } from "@/lib/auth-users";
 import {
-  createCredentialsUser,
-  hasAcceptedTerms,
-  validateAuthInput,
-} from "@/lib/auth-users";
+  EmailVerificationConflictError,
+  sendPendingEmailVerification,
+} from "@/lib/email-verification";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function getUniqueConstraint(error: unknown) {
@@ -65,10 +65,20 @@ export async function POST(request: Request) {
   }
 
   try {
-    await createCredentialsUser(parsed.data);
+    await sendPendingEmailVerification(parsed.data);
 
-    return Response.json({ ok: true });
+    return Response.json({
+      ok: true,
+      message: "Enviamos um link de verificação para seu email.",
+    });
   } catch (error) {
+    if (error instanceof EmailVerificationConflictError) {
+      return Response.json(
+        { ok: false, errors: { [error.field]: error.message } },
+        { status: 409 },
+      );
+    }
+
     const uniqueConstraint = getUniqueConstraint(error);
 
     if (uniqueConstraint === "users_email_normalized_unique") {

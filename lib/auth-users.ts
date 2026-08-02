@@ -3,6 +3,7 @@ import "server-only";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { dbQuery } from "@/lib/db";
+import { validateDisplayNamePolicy } from "@/lib/name-policy";
 
 const scrypt = promisify(scryptCallback);
 const PASSWORD_KEY_LENGTH = 64;
@@ -19,6 +20,8 @@ export type AuthUser = {
   email: string;
   provider: AuthProvider;
   password_hash: string | null;
+  email_verified: boolean;
+  email_verified_at: string | null;
   privacy_acknowledged: boolean;
   privacy_acknowledged_at: string | null;
   privacy_version: string | null;
@@ -61,6 +64,8 @@ export async function ensureUsersSchema() {
       password_hash text NOT NULL CHECK (btrim(password_hash) <> ''),
       provider text NOT NULL DEFAULT 'credentials',
       username text,
+      email_verified boolean NOT NULL DEFAULT true,
+      email_verified_at timestamptz,
       privacy_acknowledged boolean NOT NULL DEFAULT false,
       privacy_acknowledged_at timestamptz,
       privacy_version text,
@@ -79,6 +84,8 @@ export async function ensureUsersSchema() {
     ALTER TABLE users
       ADD COLUMN IF NOT EXISTS provider text NOT NULL DEFAULT 'credentials',
       ADD COLUMN IF NOT EXISTS username text,
+      ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAULT true,
+      ADD COLUMN IF NOT EXISTS email_verified_at timestamptz,
       ADD COLUMN IF NOT EXISTS privacy_acknowledged boolean NOT NULL DEFAULT false,
       ADD COLUMN IF NOT EXISTS privacy_acknowledged_at timestamptz,
       ADD COLUMN IF NOT EXISTS privacy_version text,
@@ -98,6 +105,12 @@ export async function ensureUsersSchema() {
       privacy_version = COALESCE(privacy_version, '${CURRENT_PRIVACY_VERSION}')
     WHERE privacy_acknowledged = false
       AND terms_accepted = true;
+
+    UPDATE users
+    SET email_verified = true,
+        email_verified_at = COALESCE(email_verified_at, now())
+    WHERE email_verified = false
+      AND provider <> 'credentials';
 
     UPDATE users
     SET username = name
@@ -150,6 +163,12 @@ export function validateAuthInput(input: {
     !/^[\p{L}\p{N} _.-]+$/u.test(username)
   ) {
     errors.username = "Use apenas letras, números, espaço, ponto, hífen ou _.";
+  } else if (usernameSource !== undefined) {
+    const namePolicy = validateDisplayNamePolicy(username);
+
+    if (!namePolicy.ok) {
+      errors.username = namePolicy.message;
+    }
   }
 
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -158,8 +177,10 @@ export function validateAuthInput(input: {
 
   if (password.length < 8) {
     errors.password = "A senha precisa ter pelo menos 8 caracteres.";
-  } else if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    errors.password = "A senha precisa combinar letras e números.";
+  } else if (!/[A-Za-z]/.test(password)) {
+    errors.password = "A senha precisa ter pelo menos uma letra.";
+  } else if (!/[0-9]/.test(password)) {
+    errors.password = "A senha precisa ter pelo menos um número.";
   }
 
   return {
@@ -173,7 +194,7 @@ export function hasAcceptedTerms(value: unknown) {
   return value === true || value === "true" || value === "on" || value === "1";
 }
 
-async function hashPassword(password: string) {
+export async function hashAuthPassword(password: string) {
   const salt = randomBytes(16).toString("hex");
   const derivedKey = (await scrypt(
     password,
@@ -327,6 +348,8 @@ export async function getUserByEmail(email: string) {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,
@@ -357,6 +380,8 @@ export async function getUserById(userId: string) {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,
@@ -388,7 +413,7 @@ export async function authenticateUser(email: string, password: string) {
     return null;
   }
 
-  if (!user.terms_accepted || !user.privacy_acknowledged) {
+  if (!user.terms_accepted || !user.privacy_acknowledged || !user.email_verified) {
     return null;
   }
 
@@ -404,7 +429,7 @@ export async function createCredentialsUser(input: {
 }) {
   await ensureUsersSchema();
 
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = await hashAuthPassword(input.password);
   const result = await dbQuery<AuthUser>(
     `
       INSERT INTO users (
@@ -413,6 +438,8 @@ export async function createCredentialsUser(input: {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,
@@ -420,7 +447,7 @@ export async function createCredentialsUser(input: {
         terms_accepted_at,
         terms_version
       )
-      VALUES ($1, $1, $2, 'credentials', $3, true, now(), $4, true, now(), $5)
+      VALUES ($1, $1, $2, 'credentials', $3, true, now(), true, now(), $4, true, now(), $5)
       RETURNING
         id::text AS id,
         name,
@@ -428,6 +455,8 @@ export async function createCredentialsUser(input: {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,
@@ -446,6 +475,64 @@ export async function createCredentialsUser(input: {
     ],
   );
 
+  const user = result.rows[0];
+
+  await ensureUserAchievements(user.id);
+
+  return toPublicAuthUser(user);
+}
+
+export async function createVerifiedCredentialsUser(input: {
+  email: string;
+  passwordHash: string;
+  username: string;
+}) {
+  await ensureUsersSchema();
+
+  const result = await dbQuery<AuthUser>(
+    `
+      INSERT INTO users (
+        name,
+        username,
+        email,
+        provider,
+        password_hash,
+        email_verified,
+        email_verified_at,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version
+      )
+      VALUES ($1, $1, $2, 'credentials', $3, true, now(), true, now(), $4, true, now(), $5)
+      RETURNING
+        id::text AS id,
+        name,
+        username,
+        email,
+        provider,
+        password_hash,
+        email_verified,
+        email_verified_at,
+        privacy_acknowledged,
+        privacy_acknowledged_at,
+        privacy_version,
+        terms_accepted,
+        terms_accepted_at,
+        terms_version,
+        created_at,
+        updated_at
+    `,
+    [
+      input.username.trim(),
+      normalizeEmail(input.email),
+      input.passwordHash,
+      CURRENT_PRIVACY_VERSION,
+      CURRENT_TERMS_VERSION,
+    ],
+  );
   const user = result.rows[0];
 
   await ensureUserAchievements(user.id);
@@ -472,8 +559,8 @@ export async function getOrCreateOAuthUser(input: {
 
   const result = await dbQuery<AuthUser>(
     `
-      INSERT INTO users (name, username, email, provider, password_hash)
-      VALUES (NULL, NULL, $1, $2, NULL)
+      INSERT INTO users (name, username, email, provider, password_hash, email_verified, email_verified_at)
+      VALUES (NULL, NULL, $1, $2, NULL, true, now())
       RETURNING
         id::text AS id,
         name,
@@ -481,6 +568,8 @@ export async function getOrCreateOAuthUser(input: {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,
@@ -541,6 +630,8 @@ export async function setUserUsername(input: {
         email,
         provider,
         password_hash,
+        email_verified,
+        email_verified_at,
         privacy_acknowledged,
         privacy_acknowledged_at,
         privacy_version,

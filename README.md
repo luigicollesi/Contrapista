@@ -1,6 +1,6 @@
 # Contrapista
 
-Aplicação web em Next.js para criar salas temporárias e jogar Contrapista, um jogo online de investigação dedutiva. A experiência gira em torno de uma sala privada, um dossiê gerado por IA, pistas verdadeiras e falsas distribuídas entre jogadores, rodadas cronometradas e um palpite final avaliado contra a solução oficial.
+Aplicação web em Next.js para criar salas temporárias e jogar Contrapista, um jogo online competitivo de investigação dedutiva. A experiência gira em torno de uma sala privada, um dossiê gerado por IA, pistas verdadeiras e falsas distribuídas entre jogadores, rodadas cronometradas e um palpite final avaliado contra a solução oficial. Vence quem acertar a solução do caso primeiro.
 
 ## Visão Geral
 
@@ -26,7 +26,7 @@ O projeto permite:
 - pular fases coletivas por consenso;
 - abrir um palpite final cronometrado, avaliado por IA;
 - eliminar quem erra o palpite e liberar o arquivo completo para esse jogador;
-- encerrar o caso quando houver resposta correta e retornar todos à ante-sala.
+- encerrar o caso quando houver resposta correta, declarar o primeiro jogador que acertou como vencedor e retornar todos à ante-sala.
 
 ## Stack
 
@@ -63,6 +63,11 @@ AUTH_SECRET=uma-string-segura-com-32-bytes-ou-mais
 BACKEND_TRUSTED_HOSTS=localhost:3000,seudominio.com
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
+GOOGLE_GMAIL_SENDER_EMAIL=conta-remetente@gmail.com
+GOOGLE_GMAIL_SENDER_NAME=Contrapista
+GOOGLE_GMAIL_REDIRECT_URI=http://localhost:3000/api/auth/google-gmail/callback
+GOOGLE_GMAIL_REFRESH_TOKEN=...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 AUTH_GITHUB_ID=...
 AUTH_GITHUB_SECRET=...
 
@@ -72,6 +77,34 @@ LLM_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODELS=openai/gpt-4o-mini,google/gemini-2.0-flash-001,meta-llama/llama-3.1-70b-instruct
 LLM_DEBUG=false
 ```
+
+Para produção, ajuste:
+
+```env
+GOOGLE_GMAIL_REDIRECT_URI=https://seudominio.com/api/auth/google-gmail/callback
+NEXT_PUBLIC_APP_URL=https://seudominio.com
+```
+
+Callbacks para cadastrar no Google Cloud:
+
+```text
+Auth.js Google login:        https://seudominio.com/api/auth/callback/google
+Gmail remetente do sistema:  https://seudominio.com/api/auth/google-gmail/callback
+```
+
+Para gerar `GOOGLE_GMAIL_REFRESH_TOKEN`, use o email remetente em `GOOGLE_GMAIL_SENDER_EMAIL`, configure a callback do Gmail no Google Cloud e rode:
+
+```bash
+node --env-file=.env scripts/generate-google-gmail-refresh-token.mjs
+```
+
+Abra a URL exibida, aceite o escopo `gmail.send`, copie o `code` retornado pela callback e rode:
+
+```bash
+node --env-file=.env scripts/generate-google-gmail-refresh-token.mjs --code=COLE_O_CODE_AQUI
+```
+
+O backend renova o access token do Gmail no início do processo e periodicamente enquanto o servidor estiver ativo. Se o `refresh_token` for revogado, removido pelo Google ou perder consentimento, é necessário gerar um novo token com o fluxo acima.
 
 Variáveis opcionais para roteamento no OpenRouter:
 
@@ -126,10 +159,11 @@ Técnicas de economia e consistência aplicadas:
 19. Em fases coletivas, todos podem votar para pular; a fase só avança quando todos votam.
 20. Um jogador pode abrir a conclusão final, pausando o jogo para registrar um palpite cronometrado.
 21. O backend compara o palpite com a solução oficial usando IA e publica o resultado.
-22. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue e esse jogador passa a ver todas as pistas classificadas.
-23. Se o palpite estiver certo, todos veem a solução oficial e podem voltar à ante-sala.
-24. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
-25. Se todos os participantes saírem ou forem removidos por desconexão na ante-sala, a sala é excluída de `game_rooms`.
+22. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue, esse jogador passa a ver todas as pistas classificadas e recebe uma linha provisória no histórico com o próprio palpite.
+23. Se o palpite estiver certo, o histórico da partida é gravado para todos os participantes com conta, todos veem a solução oficial e podem voltar à ante-sala.
+24. Se todos os jogadores ativos forem eliminados ou desconectados antes de alguém acertar, a partida termina sem vencedor e também gera histórico.
+25. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
+26. Se todos os participantes saírem ou forem removidos por desconexão na ante-sala, a sala é excluída de `game_rooms`.
 
 ## Arquitetura
 
@@ -171,6 +205,7 @@ GET   /api/cases/[caseId]                Lê caso salvo
 ```text
 lib/rooms.ts                 Estado e regras de sala, jogo, eventos e config
 lib/cases.ts                 Prompt, validação, geração e persistência de casos
+lib/match-history.ts         Schema, gravação e leitura do histórico de partidas
 lib/db.ts                    Pool PostgreSQL
 lib/auth-users.ts            Schema, cadastro e autenticação de usuários
 lib/player-colors.ts         Cores permitidas
@@ -316,6 +351,8 @@ Campos relevantes:
 - `email_normalized`
 - `provider`
 - `password_hash`
+- `email_verified`
+- `email_verified_at`
 - `privacy_acknowledged`
 - `privacy_acknowledged_at`
 - `privacy_version`
@@ -333,7 +370,8 @@ Regras:
 - `provider` indica `credentials`, `google` ou `github`;
 - o mesmo email só pode autenticar pelo provider usado no primeiro cadastro;
 - o aceite dos termos é obrigatório ao efetivar o cadastro, seja no cadastro por email/senha ou na escolha do `username` após OAuth;
-- `terms_accepted` e `privacy_acknowledged` bloqueiam login/ações quando falsos;
+- contas por email/senha só são criadas em `users` depois da confirmação do email;
+- `terms_accepted`, `privacy_acknowledged` e `email_verified` bloqueiam login/ações quando falsos;
 - `terms_accepted_at` e `privacy_acknowledged_at` registram quando o aceite/ciência foi feito;
 - `terms_version` e `privacy_version` guardam as versões aceitas;
 - a tela de perfil permite excluir a conta com confirmação em modal por código hexadecimal gerado pelo backend; a UI avisa 30 segundos e o servidor guarda o código por 40 segundos;
@@ -341,6 +379,31 @@ Regras:
 - Auth.js usa sessão JWT;
 - login/cadastro aparecem em modal no cabeçalho público, não em páginas próprias.
 - `/termos` e `/privacidade` são páginas públicas e não exibem o modal obrigatório de escolha de nome, permitindo leitura antes do aceite.
+
+### `email_verification_tokens`
+
+Usada para confirmar contas cadastradas com email e senha.
+
+Campos relevantes:
+
+- `id`
+- `user_id`
+- `token_hash`
+- `email`
+- `username`
+- `password_hash`
+- `expires_at`
+- `used_at`
+- `created_at`
+
+Regras:
+
+- o token salvo é hash SHA-256, não o token bruto enviado por email;
+- antes da confirmação, `email`, `username` e `password_hash` ficam apenas nessa tabela temporária;
+- cada novo envio invalida tokens pendentes do mesmo email ou nome de usuário;
+- o link expira em 1 hora;
+- confirmação cria a linha em `users` já com `email_verified = true`;
+- `user_id` só é usado para compatibilidade com tokens antigos gerados quando a conta ainda era criada antes da confirmação.
 
 ### `user_achievements`
 
@@ -362,7 +425,39 @@ Regras:
 
 - `user_id` referencia `users.id` com remoção em cascata;
 - uma linha é criada automaticamente quando o usuário é cadastrado ou consolidado via OAuth;
-- valores começam em `0`, exceto `ranked_rating`, que começa em `1000`.
+- valores começam em `0`, exceto `ranked_rating`, que começa em `1000`;
+- partidas encerradas atualizam totais jogados e vitórias junto da gravação de `match_history`.
+
+### `match_history`
+
+Usada para listar partidas encerradas no perfil.
+
+Campos relevantes:
+
+- `id`
+- `match_id`
+- `case_id`
+- `user_id`
+- `username`
+- `winner_user_id`
+- `winner_username`
+- `official_final_answer`
+- `winning_final_guess`
+- `user_final_guess`
+- `user_won`
+- `finalized_at`
+- `stats_recorded`
+- `created_at`
+
+Regras:
+
+- um palpite errado cria ou atualiza uma linha provisória para o jogador eliminado, com `winner_user_id`, `winner_username` e `winning_final_guess` ainda nulos;
+- quando a partida termina, o histórico é fechado para todos os participantes com conta ainda registrados na sala;
+- linhas provisórias recebem `winner_user_id`, `winner_username` e `winning_final_guess` se outro jogador vencer depois;
+- `winner_user_id`, `winner_username` e `winning_final_guess` ficam nulos quando a partida termina sem vencedor;
+- `user_final_guess` guarda o palpite enviado pelo próprio usuário naquela partida, quando existir;
+- `case_id` referencia `cases.id` e permite abrir o caso completo no perfil;
+- `stats_recorded` evita somar partidas e vitórias mais de uma vez em `user_achievements`.
 
 Valores padrão:
 
@@ -424,6 +519,8 @@ A tela de jogo monta os fragmentos de forma determinística:
 - registra em `gamestate.sharedClueIds` quais fragmentos já foram revelados.
 
 O backend valida a vez do jogador antes de aceitar uma pista compartilhada.
+
+O estado também guarda `finalGuessesByUserId`, com o último palpite final enviado por cada jogador da sala, e `matchHistoryRecordedAt`, usado para evitar gravação duplicada do histórico quando a partida já foi encerrada.
 
 ## IA
 

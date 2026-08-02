@@ -5,8 +5,8 @@ const manualHighlights = [
     title: "Mesa de investigação",
     items: [
       "O caso começa incompleto, com detalhes que parecem não combinar.",
-      "A mesa discute versões, cruza pistas e corta distrações.",
-      "Ganha quem explica o caso, não quem fala mais bonito.",
+      "A mesa discute versões, cruza pistas e corta distrações em uma disputa direta.",
+      "Ganha quem acertar a solução do caso primeiro.",
     ],
   },
   {
@@ -76,7 +76,7 @@ const heroStats = [
 
 const valueProps = [
   "Casos com pistas úteis e pistas que desviam.",
-  "Discussão de mesa com risco real ao responder.",
+  "Discussão de mesa competitiva, com risco real ao responder.",
   "Salas privadas, modos públicos e perfil salvo.",
 ];
 
@@ -130,9 +130,9 @@ function HomeHero() {
           Contrapista
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-200 sm:text-xl">
-          Entre em uma sala, leia o caso e tente separar pista boa de
-          distração. A resposta certa quase sempre nasce da conversa, não de uma
-          pista isolada.
+          Entre em uma sala, leia o caso e dispute para ser a primeira pessoa a
+          acertar a solução. A resposta certa quase sempre nasce da conversa,
+          mas só um jogador vence.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -301,8 +301,8 @@ function FieldManual() {
               Objetivo
             </h3>
             <p className="mt-3 text-sm leading-7 text-stone-300">
-              Monte uma resposta antes que pistas falsas, pressa e confiança
-              demais levem a mesa para o lado errado.
+              Monte uma resposta antes dos outros jogadores. Quem acertar a
+              solução primeiro vence; quem errar sai da disputa.
             </p>
           </div>
         </div>

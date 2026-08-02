@@ -5,13 +5,24 @@ import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 import Link from "next/link";
 
 export type AuthMode = "login" | "register";
+export type AuthFormValues = {
+  email: string;
+  password: string;
+  termsAccepted: boolean;
+  username: string;
+};
 
 type AuthModalProps = {
   fieldErrors: Record<string, string>;
+  formValues: AuthFormValues;
   isPending: boolean;
   message: string;
   mode: AuthMode;
   onClose: () => void;
+  onFieldChange: (
+    field: keyof AuthFormValues,
+    value: string | boolean,
+  ) => void;
   onModeChange: (mode: AuthMode) => void;
   onProviderSignIn: (provider: "google" | "github") => void;
   onSubmit: (formData: FormData) => void;
@@ -56,13 +67,17 @@ function TextField({
   error,
   label,
   name,
+  onChange,
   type,
+  value,
 }: {
   autoComplete: string;
   error?: string;
   label: string;
   name: string;
+  onChange: (value: string) => void;
   type: "email" | "password" | "text";
+  value: string;
 }) {
   return (
     <label className="block text-sm font-bold text-stone-200">
@@ -71,20 +86,32 @@ function TextField({
         autoComplete={autoComplete}
         className="mt-2 h-12 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] px-3 text-base text-stone-50 outline-none transition placeholder:text-stone-600 focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 sm:h-11 sm:text-sm"
         name={name}
+        onChange={(event) => onChange(event.target.value)}
         required
         type={type}
+        value={value}
       />
       <FieldError>{error}</FieldError>
     </label>
   );
 }
 
-export function TermsAcceptance({ error }: { error?: string }) {
+export function TermsAcceptance({
+  checked,
+  error,
+  onChange,
+}: {
+  checked?: boolean;
+  error?: string;
+  onChange?: (checked: boolean) => void;
+}) {
   return (
     <label className="flex gap-3 rounded-sm border border-[#d0a85c]/25 bg-[#0e1111]/70 p-3 text-sm leading-6 text-stone-300">
       <input
+        checked={checked}
         className="mt-1 h-4 w-4 shrink-0 accent-[#d0a85c]"
         name="termsAccepted"
+        onChange={(event) => onChange?.(event.target.checked)}
         required
         type="checkbox"
         value="true"
@@ -108,6 +135,57 @@ export function TermsAcceptance({ error }: { error?: string }) {
         <FieldError>{error}</FieldError>
       </span>
     </label>
+  );
+}
+
+function PasswordRequirement({
+  isMet,
+  text,
+}: {
+  isMet: boolean;
+  text: string;
+}) {
+  return (
+    <li
+      className={`flex items-center gap-2 ${
+        isMet ? "text-emerald-200" : "text-stone-400"
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-black ${
+          isMet ? "bg-emerald-700 text-white" : "bg-stone-700 text-stone-300"
+        }`}
+      >
+        {isMet ? "✓" : "·"}
+      </span>
+      {text}
+    </li>
+  );
+}
+
+function PasswordRequirements({ password }: { password: string }) {
+  const requirements = [
+    { isMet: password.length >= 8, text: "Pelo menos 8 caracteres" },
+    { isMet: /[A-Za-z]/.test(password), text: "Ao menos uma letra" },
+    { isMet: /[0-9]/.test(password), text: "Ao menos um número" },
+  ];
+
+  return (
+    <div className="rounded-sm border border-[#d0a85c]/20 bg-[#0e1111]/60 px-3 py-2">
+      <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#d0a85c]">
+        Requisitos da senha
+      </p>
+      <ul className="mt-2 grid gap-1 text-xs font-semibold">
+        {requirements.map((requirement) => (
+          <PasswordRequirement
+            isMet={requirement.isMet}
+            key={requirement.text}
+            text={requirement.text}
+          />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -141,10 +219,12 @@ function ProviderButton({
 
 export function AuthModal({
   fieldErrors,
+  formValues,
   isPending,
   message,
   mode,
   onClose,
+  onFieldChange,
   onModeChange,
   onProviderSignIn,
   onSubmit,
@@ -258,7 +338,9 @@ export function AuthModal({
                 error={fieldErrors.username ?? fieldErrors.name}
                 label="Nome de usuário"
                 name="username"
+                onChange={(value) => onFieldChange("username", value)}
                 type="text"
+                value={formValues.username}
               />
             ) : null}
 
@@ -267,7 +349,9 @@ export function AuthModal({
               error={fieldErrors.email}
               label="Email"
               name="email"
+              onChange={(value) => onFieldChange("email", value)}
               type="email"
+              value={formValues.email}
             />
             <TextField
               autoComplete={
@@ -276,11 +360,21 @@ export function AuthModal({
               error={fieldErrors.password}
               label="Senha"
               name="password"
+              onChange={(value) => onFieldChange("password", value)}
               type="password"
+              value={formValues.password}
             />
 
             {mode === "register" ? (
-              <TermsAcceptance error={fieldErrors.terms} />
+              <PasswordRequirements password={formValues.password} />
+            ) : null}
+
+            {mode === "register" ? (
+              <TermsAcceptance
+                checked={formValues.termsAccepted}
+                error={fieldErrors.terms}
+                onChange={(checked) => onFieldChange("termsAccepted", checked)}
+              />
             ) : null}
 
             {message ? (

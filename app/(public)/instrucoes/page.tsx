@@ -17,7 +17,7 @@ const flow = [
   },
   {
     title: "5. Palpite final",
-    body: "Qualquer jogador ativo pode tentar resolver. Se errar, sai da disputa e libera suas pistas.",
+    body: "Qualquer jogador ativo pode tentar resolver. Quem acertar primeiro vence; quem errar sai da disputa e libera suas pistas.",
   },
   {
     title: "6. Encerramento",
@@ -26,6 +26,7 @@ const flow = [
 ];
 
 const rules = [
+  "Contrapista é competitivo: vence quem acertar a solução do caso primeiro.",
   "Jogadores sem nome e cor não podem ficar prontos.",
   "Jogadores inativos por muito tempo saem da participação ativa.",
   "Pistas de eliminados ficam visíveis, mas não podem ser compartilhadas em novas rodadas.",
@@ -44,7 +45,8 @@ export default function InstructionsPage() {
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
           Cada pessoa recebe uma parte do caso. A mesa conversa, cruza pistas e
-          tenta descobrir quais detalhes levam à resposta certa.
+          tenta descobrir quais detalhes levam à resposta certa, mas a vitória
+          é individual: ganha quem resolver primeiro.
         </p>
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">

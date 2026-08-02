@@ -3,10 +3,15 @@ import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { PublicError } from "@/lib/api-response";
 import { dbQuery, getDbClient, type DatabaseClient } from "@/lib/db";
 import {
+  recordEliminatedPlayerHistory,
+  recordMatchHistory,
+} from "@/lib/match-history";
+import {
   isPlayerColor,
   normalizePlayerColor,
   type PlayerColor,
 } from "@/lib/player-colors";
+import { validateDisplayNamePolicy } from "@/lib/name-policy";
 
 export type RoomUser = {
   id: string;
@@ -51,7 +56,8 @@ export type RoomEvent = {
     | "solution_pending"
     | "solution_manual_review"
     | "solution_correct"
-    | "solution_wrong";
+    | "solution_wrong"
+    | "solution_no_winner";
   actorId: string;
   actorNickname: string;
   createdAt: number;
@@ -59,6 +65,7 @@ export type RoomEvent = {
 };
 
 export type GameState = {
+  matchId?: string;
   phase: "ready" | "reading" | "roulette" | "turn" | "shared_clue" | "pause";
   round: number;
   order: string[];
@@ -71,6 +78,8 @@ export type GameState = {
   pausedRemainingMs?: number;
   readyUserIds?: string[];
   eliminatedUserIds?: string[];
+  finalGuessesByUserId?: Record<string, string>;
+  matchHistoryRecordedAt?: number;
   returnedToLobbyUserIds?: string[];
   skipVotes?: {
     phaseKey: string;
@@ -158,6 +167,14 @@ function normalizeUsers(users: unknown): RoomUser[] {
 
 export function toRoomNickname(nickname: string) {
   return nickname.trim().slice(0, ROOM_NICKNAME_MAX_LENGTH);
+}
+
+function assertRoomNicknameAllowed(nickname: string) {
+  const result = validateDisplayNamePolicy(nickname);
+
+  if (!result.ok) {
+    throw new PublicError(result.message);
+  }
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -311,6 +328,7 @@ function normalizeGameState(value: unknown): GameState | null {
   }
 
   return {
+    matchId: typeof state.matchId === "string" ? state.matchId : undefined,
     phase: state.phase,
     round: typeof state.round === "number" ? state.round : 1,
     order: Array.isArray(state.order) ? state.order.map(String) : [],
@@ -338,6 +356,18 @@ function normalizeGameState(value: unknown): GameState | null {
     eliminatedUserIds: Array.isArray(state.eliminatedUserIds)
       ? state.eliminatedUserIds.map(String)
       : [],
+    finalGuessesByUserId:
+      state.finalGuessesByUserId && typeof state.finalGuessesByUserId === "object"
+        ? Object.fromEntries(
+            Object.entries(state.finalGuessesByUserId)
+              .filter(([, guess]) => typeof guess === "string")
+              .map(([id, guess]) => [id, String(guess)]),
+          )
+        : {},
+    matchHistoryRecordedAt:
+      typeof state.matchHistoryRecordedAt === "number"
+        ? state.matchHistoryRecordedAt
+        : undefined,
     returnedToLobbyUserIds: Array.isArray(state.returnedToLobbyUserIds)
       ? state.returnedToLobbyUserIds.map(String)
       : [],
@@ -377,6 +407,7 @@ function initialGameState(room: Room, now: number): GameState | null {
   }
 
   return {
+    matchId: crypto.randomUUID(),
     phase: "ready",
     round: 1,
     order: [],
@@ -417,6 +448,16 @@ function getActiveUsers(state: GameState, users: RoomUser[]) {
 
 function addEliminatedUser(state: GameState, userId: string) {
   return Array.from(new Set([...(state.eliminatedUserIds ?? []), userId]));
+}
+
+function recordFinalGuessForUser(state: GameState, userId: string, guess: string) {
+  return {
+    ...state,
+    finalGuessesByUserId: {
+      ...(state.finalGuessesByUserId ?? {}),
+      [userId]: guess.trim(),
+    },
+  } satisfies GameState;
 }
 
 function startRouletteSpin(
@@ -1019,6 +1060,30 @@ function eliminateUsersFromGame({
     pausedRemainingMs: state.pausedRemainingMs,
   } satisfies GameState;
   const activeUsers = getActiveUsers(nextStateBase, users);
+  const eliminatedUser = usersToEliminate[0];
+
+  if (!activeUsers.length) {
+    return {
+      state: {
+        ...nextStateBase,
+        order: [],
+        currentTurnIndex: 0,
+        pausedAt: undefined,
+        pausedRemainingMs: undefined,
+        phaseStartedAt: now,
+        phaseEndsAt: now,
+      } satisfies GameState,
+      activeevent: {
+        id: crypto.randomUUID(),
+        type: "solution_no_winner",
+        actorId: eliminatedUser.id,
+        actorNickname: displayUserName(eliminatedUser),
+        guess: eventGuess,
+        createdAt: now,
+      } satisfies RoomEvent,
+    };
+  }
+
   const nextOrder = reconcileOrder(
     nextStateBase.order,
     activeUsers,
@@ -1030,7 +1095,6 @@ function eliminateUsersFromGame({
     preservedTurnIndex >= 0
       ? preservedTurnIndex
       : Math.min(nextStateBase.currentTurnIndex, Math.max(0, nextOrder.length - 1));
-  const eliminatedUser = usersToEliminate[0];
   const remainingMs = state.pausedAt
     ? state.pausedRemainingMs ?? 0
     : Math.max(0, state.phaseEndsAt - now);
@@ -1183,6 +1247,27 @@ async function sweepDisconnectedUsers(code: string, client?: DatabaseClient) {
     }
 
     if (usersChanged || stateChanged || eventChanged) {
+      if (
+        updatedState &&
+        updatedEvent &&
+        (updatedEvent.type === "solution_correct" ||
+          updatedEvent.type === "solution_no_winner")
+      ) {
+        updatedState = await recordEndedMatch({
+          activecase: room.activecase,
+          state: updatedState,
+          users: updatedUsers,
+          winnerRoomUserId:
+            updatedEvent.type === "solution_correct" ? updatedEvent.actorId : null,
+          winningFinalGuess:
+            updatedEvent.type === "solution_correct"
+              ? updatedEvent.guess ?? null
+              : null,
+          mode: room.mode ?? "custom",
+          client: executor,
+        });
+      }
+
       if (!updatedUsers.length) {
         await executor.query(`DELETE FROM game_rooms WHERE room_code = $1`, [
           code,
@@ -1238,6 +1323,8 @@ export async function createRoom({
   if (!trimmedNickname) {
     throw new PublicError("Faça login com um nome de usuário antes de criar sala.");
   }
+
+  assertRoomNicknameAllowed(trimmedNickname);
 
   for (let attempt = 0; attempt < 100; attempt += 1) {
     const code = Math.floor(1000 + Math.random() * 9000).toString();
@@ -1455,6 +1542,8 @@ export async function joinRoom({
     throw new PublicError("Faça login com um nome de usuário antes de entrar na sala.");
   }
 
+  assertRoomNicknameAllowed(trimmedNickname);
+
   const client = await getDbClient();
 
   try {
@@ -1654,6 +1743,25 @@ export async function leaveRoom({
       await client.query(`DELETE FROM game_rooms WHERE room_code = $1`, [code]);
       await client.query("COMMIT");
       return null;
+    }
+
+    if (
+      updatedState &&
+      updatedEvent &&
+      (updatedEvent.type === "solution_correct" ||
+        updatedEvent.type === "solution_no_winner")
+    ) {
+      updatedState = await recordEndedMatch({
+        activecase: room.activecase,
+        state: updatedState,
+        users: updatedUsers,
+        winnerRoomUserId:
+          updatedEvent.type === "solution_correct" ? updatedEvent.actorId : null,
+        winningFinalGuess:
+          updatedEvent.type === "solution_correct" ? updatedEvent.guess ?? null : null,
+        mode: room.mode ?? "custom",
+        client,
+      });
     }
 
     await client.query(
@@ -2404,6 +2512,41 @@ async function getCaseFinalAnswer(caseId: string, client?: DatabaseClient) {
   return result.rows[0]?.final_answer ?? "";
 }
 
+async function recordEndedMatch({
+  activecase,
+  state,
+  users,
+  winnerRoomUserId,
+  winningFinalGuess,
+  mode,
+  client,
+}: {
+  activecase: string | null;
+  state: GameState;
+  users: RoomUser[];
+  winnerRoomUserId: string | null;
+  winningFinalGuess: string | null;
+  mode: RoomMode;
+  client: DatabaseClient;
+}) {
+  if (!activecase || state.matchHistoryRecordedAt) {
+    return state;
+  }
+
+  const finalAnswer = await getCaseFinalAnswer(activecase, client);
+
+  return recordMatchHistory({
+    caseId: activecase,
+    finalAnswer,
+    state,
+    users,
+    winnerRoomUserId,
+    winningFinalGuess,
+    mode,
+    client,
+  });
+}
+
 const MIN_FINAL_GUESS_JUDGE_ATTEMPTS = 3;
 
 function parseAiBoolean(text: string): boolean | null {
@@ -2633,6 +2776,29 @@ function buildFinalGuessResolution({
     eliminatedUserIds: addEliminatedUser(latestState, actor.id),
   };
   const activeUsers = getActiveUsers(eliminatedState, latestUsers);
+
+  if (!activeUsers.length) {
+    return {
+      activeevent: {
+        id: crypto.randomUUID(),
+        type: "solution_no_winner",
+        actorId: actor.id,
+        actorNickname: displayUserName(actor),
+        guess: guess.trim(),
+        createdAt: now,
+      } satisfies RoomEvent,
+      resumedState: {
+        ...eliminatedState,
+        order: [],
+        currentTurnIndex: 0,
+        pausedAt: undefined,
+        pausedRemainingMs: undefined,
+        phaseStartedAt: now,
+        phaseEndsAt: now,
+      } satisfies GameState,
+    };
+  }
+
   const nextOrder = reconcileOrder(
     eliminatedState.order,
     activeUsers,
@@ -2687,6 +2853,7 @@ export async function publishRoomEvent({
       `
         SELECT
           gr.room_code AS code,
+          gr.mode,
           gr.users,
           gr.activecase::text AS activecase,
           gr.activeevent,
@@ -2794,6 +2961,11 @@ export async function publishRoomEvent({
         guess: event.guess.trim(),
         createdAt: now,
       } satisfies RoomEvent;
+      const stateWithGuess = recordFinalGuessForUser(
+        currentState,
+        actor.id,
+        event.guess,
+      );
 
       await client.query(
         `
@@ -2803,7 +2975,7 @@ export async function publishRoomEvent({
               updated_at = now()
           WHERE room_code = $1
         `,
-        [code, JSON.stringify(pendingEvent), JSON.stringify(currentState)],
+        [code, JSON.stringify(pendingEvent), JSON.stringify(stateWithGuess)],
       );
 
       await client.query("COMMIT");
@@ -2870,6 +3042,39 @@ export async function publishRoomEvent({
         activeevent = resolution.activeevent;
         resumedState = resolution.resumedState;
       }
+    }
+
+    if (
+      resumedState &&
+      activeevent.type === "solution_wrong" &&
+      room.activecase
+    ) {
+      resumedState = await recordEliminatedPlayerHistory({
+        caseId: room.activecase,
+        finalAnswer: await getCaseFinalAnswer(room.activecase, client),
+        state: resumedState,
+        users: normalizeUsers(room.users),
+        eliminatedRoomUserId: activeevent.actorId,
+        client,
+      });
+    }
+
+    if (
+      resumedState &&
+      (activeevent.type === "solution_correct" ||
+        activeevent.type === "solution_no_winner")
+    ) {
+      resumedState = await recordEndedMatch({
+        activecase: room.activecase,
+        state: resumedState,
+        users: normalizeUsers(room.users),
+        winnerRoomUserId:
+          activeevent.type === "solution_correct" ? activeevent.actorId : null,
+        winningFinalGuess:
+          activeevent.type === "solution_correct" ? activeevent.guess ?? null : null,
+        mode: room.mode ?? "custom",
+        client,
+      });
     }
 
     await client.query(
@@ -3034,6 +3239,39 @@ export async function resolvePendingFinalGuessEvent({
       resumedState = resolution.resumedState;
     }
 
+    if (
+      resumedState &&
+      activeevent.type === "solution_wrong" &&
+      latestRoom.activecase
+    ) {
+      resumedState = await recordEliminatedPlayerHistory({
+        caseId: latestRoom.activecase,
+        finalAnswer: await getCaseFinalAnswer(latestRoom.activecase, secondClient),
+        state: resumedState,
+        users: latestUsers,
+        eliminatedRoomUserId: activeevent.actorId,
+        client: secondClient,
+      });
+    }
+
+    if (
+      resumedState &&
+      (activeevent.type === "solution_correct" ||
+        activeevent.type === "solution_no_winner")
+    ) {
+      resumedState = await recordEndedMatch({
+        activecase: latestRoom.activecase,
+        state: resumedState,
+        users: latestUsers,
+        winnerRoomUserId:
+          activeevent.type === "solution_correct" ? activeevent.actorId : null,
+        winningFinalGuess:
+          activeevent.type === "solution_correct" ? activeevent.guess ?? null : null,
+        mode: latestRoom.mode ?? "custom",
+        client: secondClient,
+      });
+    }
+
     await secondClient.query(
       `
         UPDATE game_rooms
@@ -3061,6 +3299,7 @@ async function getLockedRoomWithConfig(client: DatabaseClient, code: string) {
     `
       SELECT
         gr.room_code AS code,
+        gr.mode,
         gr.users,
         gr.activecase::text AS activecase,
         gr.activeevent,

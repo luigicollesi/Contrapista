@@ -28,6 +28,7 @@ import {
   CorrectSolutionModal,
   FinalGuessModal,
   ManualReviewModal,
+  NoWinnerSolutionModal,
   PendingSolutionModal,
   WrongSolutionModal,
 } from "@/components/game/solution-modals";
@@ -717,6 +718,15 @@ export default function GamePage() {
         <WrongSolutionModal
           event={modalEvent}
           onClose={() => setDismissedWrongEventId(modalEvent.id)}
+        />
+      );
+    }
+
+    if (modalEvent.type === "solution_no_winner") {
+      return (
+        <NoWinnerSolutionModal
+          finalAnswer={gameCase.final_answer}
+          onBackToLobby={backToLobby}
         />
       );
     }

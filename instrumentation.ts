@@ -6,6 +6,8 @@ export async function register() {
   const { startDailyProblemScheduler } = await import(
     "@/lib/daily-problem-scheduler"
   );
+  const { startGmailTokenRefreshScheduler } = await import("@/lib/gmail");
 
   startDailyProblemScheduler();
+  startGmailTokenRefreshScheduler();
 }

@@ -273,3 +273,40 @@ export function CorrectSolutionModal({
     </RoomModal>
   );
 }
+
+type NoWinnerSolutionModalProps = {
+  finalAnswer: GameCase["final_answer"];
+  onBackToLobby: () => void;
+};
+
+export function NoWinnerSolutionModal({
+  finalAnswer,
+  onBackToLobby,
+}: NoWinnerSolutionModalProps) {
+  return (
+    <RoomModal>
+      <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
+        Caso encerrado
+      </p>
+      <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
+        A partida terminou sem vencedor
+      </h2>
+      <p className="mt-3 text-stone-400">
+        Todos os jogadores ativos foram eliminados ou perderam conexão antes de
+        acertar a solução.
+      </p>
+      <p className="mt-4 whitespace-pre-line text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
+        {finalAnswer}
+      </p>
+      <div className="mt-5 flex justify-stretch sm:mt-6 sm:justify-end">
+        <button
+          className="h-12 w-full rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] sm:h-11 sm:w-auto"
+          onClick={onBackToLobby}
+          type="button"
+        >
+          Voltar à ante-sala
+        </button>
+      </div>
+    </RoomModal>
+  );
+}

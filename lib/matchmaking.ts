@@ -9,6 +9,7 @@ import {
   type RoomMode,
   type RoomUser,
 } from "@/lib/rooms";
+import { validateDisplayNamePolicy } from "@/lib/name-policy";
 
 export type MatchmakingMode = Extract<RoomMode, "casual" | "ranked">;
 
@@ -248,6 +249,12 @@ export async function joinMatchmakingQueue({
 
   if (!normalizedDisplayName) {
     throw new Error("Faça login com um nome de usuário antes de entrar na fila.");
+  }
+
+  const namePolicy = validateDisplayNamePolicy(normalizedDisplayName);
+
+  if (!namePolicy.ok) {
+    throw new Error(namePolicy.message);
   }
 
   const client = await getDbClient();

@@ -7,7 +7,7 @@ const sections = [
   },
   {
     title: "2. Conta e identidade",
-    body: "Você é responsável pelo email, senha, login social e nome público da sua conta. Escolha um nome adequado e não tente se passar por outra pessoa, marca ou equipe do Contrapista.",
+    body: "Você é responsável pelo email, senha, login social e nome público da sua conta. Escolha um nome adequado, sem palavrões, conteúdo sexual, ataques ou tentativa de se passar por outra pessoa, marca ou equipe do Contrapista.",
   },
   {
     title: "3. Conteúdo e conduta",

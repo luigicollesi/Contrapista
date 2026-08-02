@@ -12,8 +12,8 @@ export default function PlayPage() {
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
           Jogue com outras pessoas, monte uma sala para o seu grupo ou resolva
-          o caso do dia sozinho. Cada modo começa de um jeito, mas todos cobram
-          a mesma coisa: atenção aos detalhes.
+          o caso do dia sozinho. Nas partidas em grupo, a disputa é individual:
+          vence quem acertar a solução primeiro.
         </p>
 
         <PlayOptions />

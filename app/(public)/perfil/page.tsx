@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { DeleteAccountPanel } from "@/components/public/delete-account-panel";
+import { MatchHistoryPanel } from "@/components/public/match-history-panel";
 import { ensureUserAchievements } from "@/lib/auth-users";
+import { listUserMatchHistory } from "@/lib/match-history";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +12,9 @@ export default async function ProfilePage() {
   const achievements = session?.user?.id
     ? await ensureUserAchievements(session.user.id)
     : null;
+  const matchHistory = session?.user?.id
+    ? await listUserMatchHistory(session.user.id)
+    : [];
 
   return (
     <main className="sy-theme min-h-screen bg-[#0e1111] px-4 py-10 text-stone-50 sm:px-6 lg:px-8">
@@ -52,6 +57,7 @@ export default async function ProfilePage() {
               ))}
             </div>
 
+            <MatchHistoryPanel history={matchHistory} />
             <DeleteAccountPanel />
           </>
         ) : null}

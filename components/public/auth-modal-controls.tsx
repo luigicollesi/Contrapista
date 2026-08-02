@@ -3,6 +3,7 @@
 import {
   AuthModal,
   TermsAcceptance,
+  type AuthFormValues,
   type AuthMode,
 } from "@/components/public/auth-modal";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
@@ -37,12 +38,24 @@ function signInWithProvider(provider: "google" | "github") {
   void signIn(provider, { callbackUrl: "/", redirect: true });
 }
 
+function initialAuthFormValues(): AuthFormValues {
+  return {
+    email: "",
+    password: "",
+    termsAccepted: false,
+    username: "",
+  };
+}
+
 export function AuthModalControls() {
   const { data: session, status, update } = useSession();
   const pathname = usePathname();
   const accountPreviewRef = useRef<HTMLDivElement | null>(null);
   const closeAccountTimer = useRef<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
+  const [authFormValues, setAuthFormValues] = useState<AuthFormValues>(
+    initialAuthFormValues,
+  );
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isAccountOpen, setIsAccountOpen] = useState(false);
@@ -94,6 +107,7 @@ export function AuthModalControls() {
     setMode(nextMode);
     setMessage("");
     setFieldErrors({});
+    setAuthFormValues(initialAuthFormValues());
   }
 
   function closeModal() {
@@ -101,7 +115,30 @@ export function AuthModalControls() {
       setMode(null);
       setMessage("");
       setFieldErrors({});
+      setAuthFormValues(initialAuthFormValues());
     }
+  }
+
+  function updateAuthField(
+    field: keyof AuthFormValues,
+    value: string | boolean,
+  ) {
+    setAuthFormValues((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => {
+      if (!current[field] && !(field === "username" && current.name)) {
+        return current;
+      }
+
+      const next = { ...current };
+
+      delete next[field];
+
+      if (field === "username") {
+        delete next.name;
+      }
+
+      return next;
+    });
   }
 
   function handleSubmit(formData: FormData) {
@@ -130,6 +167,17 @@ export function AuthModalControls() {
           setMessage(payload.message ?? "Não deu para criar a conta.");
           return;
         }
+
+        setMessage(
+          payload.message ??
+            "Enviamos um link de verificação para seu email.",
+        );
+        setAuthFormValues((current) => ({
+          ...current,
+          password: "",
+          termsAccepted: false,
+        }));
+        return;
       }
 
       const result = await signIn("credentials", {
@@ -145,6 +193,7 @@ export function AuthModalControls() {
 
       await update();
       setMode(null);
+      setAuthFormValues(initialAuthFormValues());
     });
   }
 
@@ -407,10 +456,12 @@ export function AuthModalControls() {
       {mode ? (
         <AuthModal
           fieldErrors={fieldErrors}
+          formValues={authFormValues}
           isPending={isPending}
           message={message}
           mode={mode}
           onClose={closeModal}
+          onFieldChange={updateAuthField}
           onModeChange={openModal}
           onProviderSignIn={signInWithProvider}
           onSubmit={handleSubmit}
