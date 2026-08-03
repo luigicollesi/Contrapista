@@ -208,10 +208,12 @@ export function FriendNetworkPanel({
 
   const loadDashboard = useCallback(async () => {
     const shouldReadNotifications = view === "notifications";
-    const response = await fetch(
-      `/api/users/me/friends${shouldReadNotifications ? "?readNotifications=1" : ""}`,
-      { cache: "no-store" },
-    );
+    const response = shouldReadNotifications
+      ? await fetch(
+          "/api/users/me/friends/notifications/read",
+          withCsrfHeader({ method: "POST" }),
+        )
+      : await fetch("/api/users/me/friends", { cache: "no-store" });
     const payload = await readFriendsResponse(response);
     const nextDashboard = payload.dashboard ?? emptyDashboard();
 

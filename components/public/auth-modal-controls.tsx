@@ -326,6 +326,27 @@ export function AuthModalControls() {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    async function touchPresence() {
+      try {
+        await fetch("/api/users/me/presence", withCsrfHeader({ method: "POST" }));
+      } catch {
+        // A presença social é complementar; falhas aqui não bloqueiam a navegação.
+      }
+    }
+
+    void touchPresence();
+    const interval = window.setInterval(touchPresence, 60_000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
     const timeout = window.setTimeout(() => {
       setBrowserNotificationPermission(
         "Notification" in window ? Notification.permission : "unsupported",

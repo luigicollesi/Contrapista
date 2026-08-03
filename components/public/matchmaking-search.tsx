@@ -13,8 +13,10 @@ type MatchmakingSearchProps = {
 };
 
 type MatchmakingResponse = {
+  matchSize?: number;
   matched?: boolean;
   waiting?: boolean;
+  waitingCount?: number;
   room?: {
     code: string;
   };
@@ -51,12 +53,20 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const hasJoinedQueueRef = useRef(false);
+  const [queueProgress, setQueueProgress] = useState({
+    matchSize: 4,
+    waitingCount: 0,
+  });
+  const hasMatchedQueueRef = useRef(false);
   const copy = modeCopy[mode];
   const pulseText = useMemo(() => {
     const dots = ".".repeat((elapsedSeconds % 3) + 1);
     return `Procurando mesa${dots}`;
   }, [elapsedSeconds]);
+  const queueSlots = useMemo(
+    () => Array.from({ length: queueProgress.matchSize }, (_, index) => index),
+    [queueProgress.matchSize],
+  );
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -69,6 +79,7 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
   useEffect(() => {
     let isActive = true;
     const browserId = getBrowserId();
+    hasMatchedQueueRef.current = false;
 
     async function handleResponse(response: Response) {
       const data = await readJsonResponse<MatchmakingResponse>(response);
@@ -81,7 +92,13 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
         throw new Error(data.error ?? "Não deu para consultar a fila.");
       }
 
+      setQueueProgress({
+        matchSize: Math.max(1, data.matchSize ?? 4),
+        waitingCount: Math.max(0, data.waitingCount ?? 0),
+      });
+
       if (data.matched && data.room?.code && data.user) {
+        hasMatchedQueueRef.current = true;
         saveSession({
           roomCode: data.room.code,
           user: data.user,
@@ -101,26 +118,24 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
     }
 
     async function pollQueue() {
-      const response = await fetch(
-        `/api/matchmaking?mode=${mode}&heartbeat=1&browserId=${encodeURIComponent(browserId)}`,
-        { cache: "no-store" },
-      );
+      const response = await fetch("/api/matchmaking", withCsrfHeader({
+        body: JSON.stringify({ action: "heartbeat", browserId, mode }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      }));
 
       await handleResponse(response);
     }
 
-    if (!hasJoinedQueueRef.current) {
-      hasJoinedQueueRef.current = true;
-      joinQueue().catch((caughtError) => {
-        if (isActive) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError.message
-              : "Não deu para entrar na fila.",
-          );
-        }
-      });
-    }
+    joinQueue().catch((caughtError) => {
+      if (isActive) {
+        setError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Não deu para entrar na fila.",
+        );
+      }
+    });
 
     const interval = window.setInterval(() => {
       pollQueue().catch((caughtError) => {
@@ -137,6 +152,15 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
     return () => {
       isActive = false;
       window.clearInterval(interval);
+
+      if (!hasMatchedQueueRef.current) {
+        void fetch("/api/matchmaking", withCsrfHeader({
+          body: JSON.stringify({ browserId, mode }),
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          method: "DELETE",
+        })).catch(() => undefined);
+      }
     };
   }, [mode, router]);
 
@@ -165,7 +189,27 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
               </p>
             </div>
             <div className="max-w-sm text-sm leading-7 text-stone-300">
-              A mesa abre assim que estiver completa.
+              <p className="font-bold uppercase tracking-[0.18em] text-[#f2e6c8]">
+                {queueProgress.waitingCount}/{queueProgress.matchSize} jogadores
+              </p>
+              <div className="mt-4 grid grid-cols-4 gap-2">
+                {queueSlots.map((slot) => {
+                  const isFilled = slot < queueProgress.waitingCount;
+
+                  return (
+                    <span
+                      aria-hidden="true"
+                      className={
+                        isFilled
+                          ? "h-2 rounded-full bg-[#d0a85c] shadow-[0_0_16px_rgba(208,168,92,0.45)]"
+                          : "h-2 rounded-full border border-[#d0a85c]/25 bg-stone-950/70"
+                      }
+                      key={slot}
+                    />
+                  );
+                })}
+              </div>
+              <p className="mt-4">A sala abre quando a mesa estiver completa.</p>
             </div>
           </div>
         </div>

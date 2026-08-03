@@ -4,7 +4,7 @@ import { dbQuery, getDbClient, type DatabaseConnection } from "@/lib/db";
 import {
   DEFAULT_ROOM_CONFIG,
   ensureRoomsSchema,
-  getRoom,
+  getRoomSnapshot,
   toRoomNickname,
   type RoomMode,
   type RoomUser,
@@ -29,18 +29,26 @@ type QueueRow = {
 const MATCH_SIZE = 4;
 const RANKED_RATING_RANGE = 300;
 const QUEUE_HEARTBEAT_TIMEOUT_SECONDS = 20;
+const BROWSER_ID_MIN_LENGTH = 8;
+const BROWSER_ID_MAX_LENGTH = 80;
+
+let matchmakingSchemaReady: Promise<void> | null = null;
 
 function normalizeBrowserId(browserId?: string) {
-  return browserId && browserId.trim().length >= 8
-    ? browserId.trim().slice(0, 80)
-    : crypto.randomUUID();
+  const normalized = browserId?.trim().slice(0, BROWSER_ID_MAX_LENGTH) ?? "";
+
+  if (normalized.length < BROWSER_ID_MIN_LENGTH) {
+    throw new Error("Identificação do navegador inválida.");
+  }
+
+  return normalized;
 }
 
 export function isMatchmakingMode(value: unknown): value is MatchmakingMode {
   return value === "casual" || value === "ranked";
 }
 
-async function ensureMatchmakingSchema() {
+async function createMatchmakingSchema() {
   await ensureRoomsSchema();
   await dbQuery(`
     CREATE TABLE IF NOT EXISTS matchmaking_queue (
@@ -61,12 +69,27 @@ async function ensureMatchmakingSchema() {
 
     CREATE INDEX IF NOT EXISTS matchmaking_queue_browser_mode_idx
       ON matchmaking_queue (browser_id, mode, updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS matchmaking_queue_user_mode_idx
+      ON matchmaking_queue (user_id, mode, updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS matchmaking_queue_active_waiting_idx
+      ON matchmaking_queue (mode, matched_room_code, updated_at, created_at);
   `);
 
   await dbQuery(`
     ALTER TABLE matchmaking_queue
       ADD COLUMN IF NOT EXISTS display_name text NOT NULL DEFAULT 'Investigador';
   `);
+}
+
+async function ensureMatchmakingSchema() {
+  matchmakingSchemaReady ??= createMatchmakingSchema().catch((error: unknown) => {
+    matchmakingSchemaReady = null;
+    throw error;
+  });
+
+  return matchmakingSchemaReady;
 }
 
 async function createMatchRoom({
@@ -158,12 +181,46 @@ async function createMatchRoom({
   throw new Error("Não deu para formar uma mesa agora.");
 }
 
+async function countActiveWaitingPlayers({
+  mode,
+  rating,
+}: {
+  mode: MatchmakingMode;
+  rating: number;
+}) {
+  const result = await dbQuery<{ count: number }>(
+    mode === "ranked"
+      ? `
+        SELECT COUNT(DISTINCT user_id)::int AS count
+        FROM matchmaking_queue
+        WHERE mode = $1
+          AND matched_room_code IS NULL
+          AND updated_at >= now() - ($4::int * interval '1 second')
+          AND abs(rating - $2) <= $3
+      `
+      : `
+        SELECT COUNT(DISTINCT user_id)::int AS count
+        FROM matchmaking_queue
+        WHERE mode = $1
+          AND matched_room_code IS NULL
+          AND updated_at >= now() - ($2::int * interval '1 second')
+      `,
+    mode === "ranked"
+      ? [mode, rating, RANKED_RATING_RANGE, QUEUE_HEARTBEAT_TIMEOUT_SECONDS]
+      : [mode, QUEUE_HEARTBEAT_TIMEOUT_SECONDS],
+  );
+
+  return Math.min(result.rows[0]?.count ?? 0, MATCH_SIZE);
+}
+
 async function getQueueStatus({
   browserId,
   mode,
+  userId,
 }: {
   browserId: string;
   mode: MatchmakingMode;
+  userId: string;
 }) {
   const result = await dbQuery<QueueRow>(
     `
@@ -181,51 +238,61 @@ async function getQueueStatus({
       FROM matchmaking_queue
       WHERE browser_id = $1
         AND mode = $2
+        AND user_id = $3::uuid
       ORDER BY updated_at DESC
       LIMIT 1
     `,
-    [browserId, mode],
+    [browserId, mode, userId],
   );
   const row = result.rows[0];
 
   if (!row?.matched_room_code || !row.room_user_id) {
-    if (row) {
-      await dbQuery(
-        `
-          UPDATE matchmaking_queue
-          SET updated_at = now()
-          WHERE id = $1::uuid
-            AND matched_room_code IS NULL
-        `,
-        [row.id],
-      );
-    }
+    const waitingCount = row
+      ? await countActiveWaitingPlayers({ mode, rating: row.rating })
+      : 0;
 
     return {
+      matchSize: MATCH_SIZE,
       matched: false,
       mode,
       waiting: Boolean(row),
+      waitingCount,
     };
   }
 
-  const room = await getRoom(row.matched_room_code);
+  const room = await getRoomSnapshot(row.matched_room_code);
   const user = room?.users.find((item) => item.id === row.room_user_id) ?? null;
 
   return room && user
-    ? { matched: true, mode, room, user }
-    : { matched: false, mode, waiting: false };
+    ? {
+        matchSize: MATCH_SIZE,
+        matched: true,
+        mode,
+        room,
+        user,
+        waitingCount: MATCH_SIZE,
+      }
+    : {
+        matchSize: MATCH_SIZE,
+        matched: false,
+        mode,
+        waiting: false,
+        waitingCount: 0,
+      };
 }
 
 export async function readMatchmakingStatus({
   browserId,
   mode,
+  userId,
 }: {
   browserId?: string;
   mode: MatchmakingMode;
+  userId: string;
 }) {
   await ensureMatchmakingSchema();
 
-  return getQueueStatus({ browserId: normalizeBrowserId(browserId), mode });
+  return getQueueStatus({ browserId: normalizeBrowserId(browserId), mode, userId });
 }
 
 export async function joinMatchmakingQueue({
@@ -239,7 +306,7 @@ export async function joinMatchmakingQueue({
   displayName: string;
   mode: MatchmakingMode;
   rating?: number;
-  userId?: string | null;
+  userId: string;
 }) {
   await ensureMatchmakingSchema();
 
@@ -270,42 +337,16 @@ export async function joinMatchmakingQueue({
       [QUEUE_HEARTBEAT_TIMEOUT_SECONDS],
     );
 
-    const existingMatched = await client.query<QueueRow>(
-      `
-        SELECT
-          id::text AS id,
-          browser_id,
-          user_id::text AS user_id,
-          display_name,
-          mode,
-          rating,
-          matched_room_code,
-          room_user_id,
-          created_at,
-          updated_at
-        FROM matchmaking_queue
-        WHERE browser_id = $1
-          AND mode = $2
-          AND matched_room_code IS NOT NULL
-        ORDER BY updated_at DESC
-        LIMIT 1
-      `,
-      [normalizedBrowserId, mode],
-    );
-
-    if (existingMatched.rows[0]) {
-      await client.query("COMMIT");
-      return getQueueStatus({ browserId: normalizedBrowserId, mode });
-    }
-
     await client.query(
       `
         DELETE FROM matchmaking_queue
-        WHERE browser_id = $1
-          AND mode = $2
-          AND matched_room_code IS NULL
+        WHERE mode = $2
+          AND (
+            browser_id = $1
+            OR user_id = $3::uuid
+          )
       `,
-      [normalizedBrowserId, mode],
+      [normalizedBrowserId, mode, userId],
     );
 
     await client.query(
@@ -313,7 +354,7 @@ export async function joinMatchmakingQueue({
         INSERT INTO matchmaking_queue (browser_id, user_id, display_name, mode, rating)
         VALUES ($1, $2::uuid, $3, $4, $5)
       `,
-      [normalizedBrowserId, userId ?? null, normalizedDisplayName, mode, normalizedRating],
+      [normalizedBrowserId, userId, normalizedDisplayName, mode, normalizedRating],
     );
 
     const candidates = await client.query<QueueRow>(
@@ -337,7 +378,7 @@ export async function joinMatchmakingQueue({
             AND abs(rating - $2) <= $3
           ORDER BY abs(rating - $2), created_at
           LIMIT ${MATCH_SIZE}
-          FOR UPDATE
+          FOR UPDATE SKIP LOCKED
         `
         : `
           SELECT
@@ -357,7 +398,7 @@ export async function joinMatchmakingQueue({
             AND updated_at >= now() - ($2::int * interval '1 second')
           ORDER BY created_at
           LIMIT ${MATCH_SIZE}
-          FOR UPDATE
+          FOR UPDATE SKIP LOCKED
         `,
       mode === "ranked"
         ? [mode, normalizedRating, RANKED_RATING_RANGE, QUEUE_HEARTBEAT_TIMEOUT_SECONDS]
@@ -374,7 +415,7 @@ export async function joinMatchmakingQueue({
 
     await client.query("COMMIT");
 
-    return getQueueStatus({ browserId: normalizedBrowserId, mode });
+    return getQueueStatus({ browserId: normalizedBrowserId, mode, userId });
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -386,9 +427,11 @@ export async function joinMatchmakingQueue({
 export async function heartbeatMatchmakingQueue({
   browserId,
   mode,
+  userId,
 }: {
   browserId?: string;
   mode: MatchmakingMode;
+  userId: string;
 }) {
   await ensureMatchmakingSchema();
 
@@ -400,10 +443,38 @@ export async function heartbeatMatchmakingQueue({
       SET updated_at = now()
       WHERE browser_id = $1
         AND mode = $2
+        AND user_id = $3::uuid
         AND matched_room_code IS NULL
     `,
-    [normalizedBrowserId, mode],
+    [normalizedBrowserId, mode, userId],
   );
 
-  return getQueueStatus({ browserId: normalizedBrowserId, mode });
+  return getQueueStatus({ browserId: normalizedBrowserId, mode, userId });
+}
+
+export async function leaveMatchmakingQueue({
+  browserId,
+  mode,
+  userId,
+}: {
+  browserId?: string;
+  mode: MatchmakingMode;
+  userId: string;
+}) {
+  await ensureMatchmakingSchema();
+
+  const normalizedBrowserId = normalizeBrowserId(browserId);
+
+  await dbQuery(
+    `
+      DELETE FROM matchmaking_queue
+      WHERE browser_id = $1
+        AND mode = $2
+        AND user_id = $3::uuid
+        AND matched_room_code IS NULL
+    `,
+    [normalizedBrowserId, mode, userId],
+  );
+
+  return { matchSize: MATCH_SIZE, matched: false, mode, waiting: false, waitingCount: 0 };
 }

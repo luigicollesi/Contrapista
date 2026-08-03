@@ -469,7 +469,7 @@ Contrato:
 - Chaves exatas e nesta ordem: title, case_text, true_clues, false_clues, final_answer.
 - title: começa com "O CASO DO" ou "O CASO DA" e termina com elemento concreto.
 - case_text: 2 ou 3 parágrafos; incidente claro; 3 ou 4 suspeitos; álibis, horários (pode ser vagos (ex: "de tarde") ou expecificos (ex: "às 10h")), objetos físicos e despiste.
-- O último parágrafo de case_text termina com a seção exata "Perguntas centrais do caso:" e 2 a 4 perguntas numeradas "1.", "2.", "3.", "4.".
+- O último parágrafo de case_text termina com a seção exata "Perguntas centrais do caso:" e 2 a 3 perguntas numeradas "1.", "2.", "3.".
 - final_answer deve ter este formato exato: começa com "Resposta:", depois linhas numeradas "1. ...", "2. ..." respondendo as perguntas na mesma ordem, depois uma linha "Contexto:" explicando dedução e pistas falsas.
 - true_clues e false_clues são arrays de strings curtas, concretas e independentes, no máximo 120 caracteres.
 - O conjunto de true_clues precisa conter informação suficiente para responder todas as perguntas centrais sem depender de sorte, conhecimento externo ou suposição não indicada.

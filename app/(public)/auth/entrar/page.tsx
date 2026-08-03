@@ -12,9 +12,17 @@ type SignInPageProps = {
   }>;
 };
 
+function normalizeCallbackUrl(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/jogar";
+  }
+
+  return value;
+}
+
 export default async function SignInPage({ searchParams }: SignInPageProps) {
   const params = await searchParams;
-  const callbackUrl = params?.callbackUrl ?? "/jogar";
+  const callbackUrl = normalizeCallbackUrl(params?.callbackUrl);
 
   return (
     <main className="sy-theme min-h-screen bg-[#0e1111] px-4 py-16 text-stone-50 sm:px-6 lg:px-8">

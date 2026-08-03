@@ -5,6 +5,7 @@ import {
   heartbeatMatchmakingQueue,
   isMatchmakingMode,
   joinMatchmakingQueue,
+  leaveMatchmakingQueue,
   readMatchmakingStatus,
 } from "@/lib/matchmaking";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
@@ -27,6 +28,7 @@ async function getQueueIdentity() {
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
+    action?: string;
     browserId?: string;
     mode?: string;
   };
@@ -45,16 +47,27 @@ export async function POST(request: Request) {
       );
     }
 
+    const isHeartbeat = body.action === "heartbeat";
     const limited = rateLimitResponse({
       identity: identity.userId,
-      limit: 12,
-      namespace: "matchmaking-join",
+      limit: isHeartbeat ? 90 : 12,
+      namespace: isHeartbeat ? "matchmaking-heartbeat" : "matchmaking-join",
       request,
-      windowMs: 5 * 60_000,
+      windowMs: isHeartbeat ? 60_000 : 5 * 60_000,
     });
 
     if (limited) {
       return limited;
+    }
+
+    if (isHeartbeat) {
+      return Response.json(
+        await heartbeatMatchmakingQueue({
+          browserId: body.browserId,
+          mode: body.mode,
+          userId: identity.userId,
+        }),
+      );
     }
 
     return Response.json(
@@ -75,7 +88,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const mode = url.searchParams.get("mode");
   const browserId = url.searchParams.get("browserId") ?? undefined;
-  const heartbeat = url.searchParams.get("heartbeat") === "1";
 
   if (!isMatchmakingMode(mode)) {
     return Response.json({ error: "Modo de jogo inválido." }, { status: 400 });
@@ -92,8 +104,8 @@ export async function GET(request: Request) {
 
   const limited = rateLimitResponse({
     identity: session.user.id,
-    limit: heartbeat ? 90 : 30,
-    namespace: heartbeat ? "matchmaking-heartbeat" : "matchmaking-status",
+    limit: 30,
+    namespace: "matchmaking-status",
     request,
     windowMs: 60_000,
   });
@@ -104,11 +116,53 @@ export async function GET(request: Request) {
 
   try {
     return Response.json(
-      heartbeat
-        ? await heartbeatMatchmakingQueue({ browserId, mode })
-        : await readMatchmakingStatus({ browserId, mode }),
+      await readMatchmakingStatus({ browserId, mode, userId: session.user.id }),
     );
   } catch (error) {
     return errorResponse(error, "Erro ao consultar fila.");
+  }
+}
+
+export async function DELETE(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    browserId?: string;
+    mode?: string;
+  };
+
+  if (!isMatchmakingMode(body.mode)) {
+    return Response.json({ error: "Modo de jogo inválido." }, { status: 400 });
+  }
+
+  const session = await auth();
+
+  if (!session?.user?.id || !session.user.name) {
+    return Response.json(
+      { error: "Faça login para sair da fila." },
+      { status: 401 },
+    );
+  }
+
+  const limited = rateLimitResponse({
+    identity: session.user.id,
+    limit: 20,
+    namespace: "matchmaking-leave",
+    request,
+    windowMs: 60_000,
+  });
+
+  if (limited) {
+    return limited;
+  }
+
+  try {
+    return Response.json(
+      await leaveMatchmakingQueue({
+        browserId: body.browserId,
+        mode: body.mode,
+        userId: session.user.id,
+      }),
+    );
+  } catch (error) {
+    return errorResponse(error, "Erro ao sair da fila.");
   }
 }

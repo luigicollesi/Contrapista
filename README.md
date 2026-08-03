@@ -154,24 +154,25 @@ Técnicas de economia e consistência aplicadas:
 6. Alterar identificação ou configuração coloca jogadores como não prontos.
 7. Clientes na ante-sala, na criação de caso e no jogo enviam heartbeat; se um participante fica 2 minutos sem contato, ele é considerado desconectado.
 8. Na ante-sala, desconectados saem da sala. No jogo, desconectados são eliminados como se tivessem errado um palpite final: saem da ordem, não votam e suas pistas ficam expostas aos demais.
-9. Quando todos ficam prontos, os clientes redirecionam para `/sala/[code]/criando-caso`.
-10. A tela de criação chama `POST /api/rooms/[code]/case/start`.
-11. O backend valida a sala, gera um caso com IA, salva em `cases` e grava o id em `game_rooms.activecase`.
-12. Todos são enviados para `/sala/[code]/jogo`.
-13. No jogo, todos confirmam prontidão novamente para iniciar a leitura.
-14. A fase de leitura mostra o dossiê principal e os fragmentos privados de cada jogador.
-15. A roleta define a ordem da rodada.
-16. Em cada turno, o jogador da vez compartilha um fragmento. Se o tempo acaba, uma pista verdadeira desse jogador é compartilhada automaticamente.
-17. Após cada pista, todos têm uma janela de análise coletiva.
-18. Ao final da ordem, há uma pausa entre rodadas e o ciclo continua.
-19. Em fases coletivas, todos podem votar para pular; a fase só avança quando todos votam.
-20. Um jogador pode abrir a conclusão final, pausando o jogo para registrar um palpite cronometrado.
-21. O backend compara o palpite com a solução oficial usando IA e publica o resultado.
-22. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue, esse jogador passa a ver todas as pistas classificadas e recebe uma linha provisória no histórico com o próprio palpite.
-23. Se o palpite estiver certo, o histórico da partida é gravado para todos os participantes com conta, todos veem a solução oficial e podem voltar à ante-sala.
-24. Se todos os jogadores ativos forem eliminados ou desconectados antes de alguém acertar, a partida termina sem vencedor e também gera histórico.
-25. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
-26. Se todos os participantes saírem ou forem removidos por desconexão na ante-sala, a sala é excluída de `game_rooms`.
+9. Leituras de sala usam snapshot sem efeitos colaterais; avanço automático de fase e limpeza de desconectados rodam em chamadas mutáveis autenticadas.
+10. Quando todos ficam prontos, os clientes redirecionam para `/sala/[code]/criando-caso`.
+11. A tela de criação chama `POST /api/rooms/[code]/case/start`.
+12. O backend valida a sala, gera um caso com IA, salva em `cases` e grava o id em `game_rooms.activecase`.
+13. Todos são enviados para `/sala/[code]/jogo`.
+14. No jogo, todos confirmam prontidão novamente para iniciar a leitura.
+15. A fase de leitura mostra o dossiê principal e os fragmentos privados de cada jogador.
+16. A roleta define a ordem da rodada.
+17. Em cada turno, o jogador da vez compartilha um fragmento. Se o tempo acaba, uma pista aleatória desse jogador é compartilhada automaticamente.
+18. Após cada pista, todos têm uma janela de análise coletiva.
+19. Ao final da ordem, há uma pausa entre rodadas e o ciclo continua.
+20. Em fases coletivas, todos podem votar para pular; a fase só avança quando todos votam.
+21. Um jogador pode abrir a conclusão final, pausando o jogo para registrar um palpite cronometrado.
+22. O backend compara o palpite com a solução oficial usando IA e publica o resultado.
+23. Se o palpite estiver errado, o jogador é eliminado da disputa, o jogo segue, esse jogador passa a ver todas as pistas classificadas e recebe uma linha provisória no histórico com o próprio palpite.
+24. Se o palpite estiver certo, o histórico da partida é gravado para todos os participantes com conta, todos veem a solução oficial e podem voltar à ante-sala.
+25. Se todos os jogadores ativos forem eliminados ou desconectados antes de alguém acertar, a partida termina sem vencedor e também gera histórico.
+26. O caso ativo só é limpo quando todos retornam à ante-sala; os jogadores ficam como não prontos para uma nova sessão.
+27. Se todos os participantes saírem ou forem removidos por desconexão na ante-sala, a sala é excluída de `game_rooms`.
 
 ## Arquitetura
 
@@ -283,9 +284,11 @@ Regras:
 
 - `casual` pareia os primeiros 4 jogadores disponíveis;
 - `ranked` exige usuário logado e pareia 4 jogadores com rating próximo;
-- quando a mesa fecha, uma sala `game_rooms` é criada com `mode` correspondente e 4 usuários ainda sem identificação;
+- a fila é vinculada ao usuário logado e ao navegador usado na busca;
 - entradas em fila usam heartbeat; jogadores sem comunicação recente deixam de ser candidatos ao pareamento;
+- a tela de busca mostra quantos jogadores compatíveis já estão na fila até fechar 4;
 - quando a mesa fecha, uma sala `game_rooms` é criada com `mode` correspondente, nomes vindos das contas e cores ainda vazias;
+- sair da tela de busca cancela a entrada ainda não pareada;
 - a ante-sala pareada não mostra painel de configuração nem líder da sala.
 
 ### `daily_problems`

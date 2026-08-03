@@ -471,6 +471,10 @@ export async function getUnreadNotifications(userId: string) {
   return dashboard.notifications.filter((notification) => notification.isUnread);
 }
 
+export async function markVisibleFriendNotificationsRead(userId: string) {
+  return getFriendsDashboard(userId, { markNotificationsRead: true });
+}
+
 export async function searchFriendCandidates({
   query,
   userId,

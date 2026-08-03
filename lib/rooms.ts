@@ -1547,6 +1547,49 @@ export async function getRoom(code: string) {
   await ensureSchema();
   await sweepDisconnectedUsers(code);
 
+  const baseRoom = await readRoomSnapshot(code);
+
+  if (!baseRoom) {
+    return null;
+  }
+
+  const now = Date.now();
+  const nextState = baseRoom.gamestate
+    ? await advanceGameStateWithAutoShare({
+        state: baseRoom.gamestate,
+        users: baseRoom.users,
+        now,
+        seed: `${code}:${baseRoom.activecase ?? "case"}`,
+        config: baseRoom.config,
+        caseId: baseRoom.activecase,
+      })
+    : initialGameState(baseRoom, now);
+
+  if (JSON.stringify(nextState) !== JSON.stringify(baseRoom.gamestate)) {
+    await dbQuery(
+      `
+        UPDATE game_rooms
+        SET gamestate = $2::jsonb,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, nextState ? JSON.stringify(nextState) : null],
+    );
+  }
+
+  return publicRoom({
+    ...baseRoom,
+    gamestate: nextState,
+  });
+}
+
+export async function getRoomSnapshot(code: string) {
+  await ensureSchema();
+
+  return readRoomSnapshot(code);
+}
+
+async function readRoomSnapshot(code: string) {
   const result = await dbQuery<Room>(
     `
       SELECT
@@ -1580,7 +1623,7 @@ export async function getRoom(code: string) {
 
   const users = normalizeUsers(room.users);
   const config = normalizeRoomConfig(room);
-  const baseRoom = {
+  return publicRoom({
     code: room.code,
     mode: room.mode,
     users,
@@ -1590,34 +1633,6 @@ export async function getRoom(code: string) {
     activeevent: room.activeevent,
     gamestate: normalizeGameState(room.gamestate),
     config,
-  };
-  const now = Date.now();
-  const nextState = baseRoom.gamestate
-    ? await advanceGameStateWithAutoShare({
-        state: baseRoom.gamestate,
-        users,
-        now,
-        seed: `${code}:${baseRoom.activecase ?? "case"}`,
-        config,
-        caseId: baseRoom.activecase,
-      })
-    : initialGameState(baseRoom, now);
-
-  if (JSON.stringify(nextState) !== JSON.stringify(baseRoom.gamestate)) {
-    await dbQuery(
-      `
-        UPDATE game_rooms
-        SET gamestate = $2::jsonb,
-            updated_at = now()
-        WHERE room_code = $1
-      `,
-      [code, nextState ? JSON.stringify(nextState) : null],
-    );
-  }
-
-  return publicRoom({
-    ...baseRoom,
-    gamestate: nextState,
   });
 }
 

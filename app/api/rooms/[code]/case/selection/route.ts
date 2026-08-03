@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { listCaseSummaries } from "@/lib/cases";
-import { getRoom, getRoomUserByAccountId, selectRoomCase } from "@/lib/rooms";
+import { getRoomSnapshot, getRoomUserByAccountId, selectRoomCase } from "@/lib/rooms";
 import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 function unauthorized() {
@@ -24,7 +24,7 @@ export async function GET(
   const { code } = await params;
 
   try {
-    const room = await getRoom(code);
+    const room = await getRoomSnapshot(code);
 
     if (!room) {
       return Response.json({ error: "Sala não encontrada." }, { status: 404 });

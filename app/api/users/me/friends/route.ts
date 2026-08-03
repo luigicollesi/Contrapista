@@ -29,11 +29,8 @@ export async function GET(request: Request) {
   const isSummary = url.searchParams.get("summary") === "1";
   const shouldIncludeNotifications =
     url.searchParams.get("includeNotifications") === "1";
-  const shouldReadNotifications = url.searchParams.get("readNotifications") === "1";
 
   try {
-    await touchUserPresence(session.user.id);
-
     if (isSummary) {
       if (shouldIncludeNotifications) {
         const notifications = await getUnreadNotifications(session.user.id);
@@ -79,9 +76,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
-      dashboard: await getFriendsDashboard(session.user.id, {
-        markNotificationsRead: shouldReadNotifications,
-      }),
+      dashboard: await getFriendsDashboard(session.user.id),
     });
   } catch (error) {
     return errorResponse(error, "Não deu para abrir sua rede.");

@@ -158,12 +158,23 @@ export default function GamePage() {
         return;
       }
 
+      const currentUserId = userId;
+
+      if (!currentUserId) {
+        setError("Mesa em andamento. Aguarde o fim da partida.");
+        return;
+      }
+
       isLoadingRoomRef.current = true;
 
       try {
-        const roomResponse = await fetch(`/api/rooms/${code}`, {
-          cache: "no-store",
-        });
+        const roomResponse = await fetch(`/api/rooms/${code}/sync`, withCsrfHeader({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ userId: currentUserId }),
+        }));
         const roomData = await readJsonResponse<{
           room?: Room;
           error?: string;
@@ -179,10 +190,7 @@ export default function GamePage() {
 
         setRoom(roomData.room);
 
-        const currentUserId = userId;
-
         if (
-          !currentUserId ||
           !roomData.room.users.some((user) => user.id === currentUserId)
         ) {
           throw new Error(
