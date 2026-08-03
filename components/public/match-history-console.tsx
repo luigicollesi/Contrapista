@@ -296,7 +296,7 @@ export function MatchHistoryConsole({
   }
 
   return (
-    <main className="sy-theme match-history-page min-h-screen overflow-hidden bg-[#0e1111] px-4 py-5 text-stone-50 sm:px-6 lg:px-8">
+    <main className="sy-theme public-red-details match-history-page min-h-screen overflow-hidden bg-[#0e1111] px-4 py-5 text-stone-50 sm:px-6 lg:px-8">
       <section className="relative z-10 mx-auto max-w-7xl">
         <div className="relative overflow-hidden border-b border-[#d0a85c]/20 pb-5">
           <div className="absolute right-0 top-0 hidden h-28 w-28 overflow-hidden sm:block">

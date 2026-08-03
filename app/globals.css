@@ -97,6 +97,80 @@ body {
   margin-top: 0 !important;
 }
 
+.public-red-details {
+  background:
+    radial-gradient(circle at 86% 10%, rgba(202, 33, 42, 0.18), transparent 26rem),
+    radial-gradient(circle at 8% 82%, rgba(124, 31, 42, 0.14), transparent 24rem),
+    linear-gradient(180deg, #101313 0%, #0e1111 48%, #0b0d0d 100%) !important;
+  overflow-x: hidden;
+}
+
+.public-red-details::before {
+  background:
+    linear-gradient(112deg, transparent 0%, rgba(124, 31, 42, 0.16) 44%, rgba(208, 168, 92, 0.07) 50%, transparent 64%),
+    radial-gradient(circle at 78% 28%, rgba(255, 31, 55, 0.13), transparent 18rem);
+  content: "";
+  filter: blur(10px);
+  height: 36rem;
+  inset: -12rem -10rem auto auto;
+  mask-image: radial-gradient(ellipse at center, black 0%, black 48%, transparent 78%);
+  opacity: 0.58;
+  pointer-events: none;
+  position: fixed;
+  transform: rotate(-8deg);
+  width: min(58rem, 88vw);
+  z-index: 0;
+}
+
+.public-red-details > :not([class*="absolute"]):not([class*="fixed"]) {
+  position: relative;
+  z-index: 1;
+}
+
+.profile-red-details {
+  background:
+    radial-gradient(ellipse at 18% 18%, rgba(124, 31, 42, 0.2), transparent 24rem),
+    radial-gradient(ellipse at 96% 34%, rgba(214, 38, 54, 0.24), transparent 30rem),
+    linear-gradient(160deg, #111313 0%, #0e1111 44%, #160b0d 100%) !important;
+  overflow-x: hidden;
+}
+
+.profile-red-details::before {
+  background:
+    linear-gradient(112deg, transparent 0%, rgba(124, 31, 42, 0.2) 48%, transparent 72%);
+  content: "";
+  filter: blur(10px);
+  height: 46rem;
+  inset: -18rem -14rem auto auto;
+  mask-image: radial-gradient(ellipse at center, black 0%, black 48%, transparent 78%);
+  opacity: 0.62;
+  pointer-events: none;
+  position: fixed;
+  transform: rotate(-6deg);
+  width: min(70rem, 96vw);
+  z-index: 0;
+}
+
+.profile-red-details::after {
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(11, 13, 13, 0.1) 45%, rgba(124, 31, 42, 0.22) 100%),
+    url("/contrapista-icon.png") center / contain no-repeat;
+  bottom: clamp(1.5rem, 4vw, 3.5rem);
+  content: "";
+  height: clamp(10rem, 25vw, 24rem);
+  opacity: 0.075;
+  pointer-events: none;
+  position: fixed;
+  right: clamp(1rem, 4vw, 4rem);
+  width: clamp(10rem, 25vw, 24rem);
+  z-index: 0;
+}
+
+.profile-red-details > :not([class*="absolute"]):not([class*="fixed"]) {
+  position: relative;
+  z-index: 1;
+}
+
 .match-history-page {
   background:
     radial-gradient(circle at 88% 8%, rgba(202, 33, 42, 0.18), transparent 28rem),
@@ -202,8 +276,39 @@ select:disabled,
     color: #201812 !important;
   }
 
+  .public-red-details {
+    background:
+      radial-gradient(circle at 84% 8%, rgba(161, 39, 45, 0.16), transparent 24rem),
+      radial-gradient(circle at 8% 84%, rgba(124, 31, 42, 0.09), transparent 22rem),
+      linear-gradient(180deg, #f4ecd8 0%, #fff8e8 48%, #efe2c8 100%) !important;
+  }
+
+  .public-red-details::before {
+    background:
+      linear-gradient(112deg, transparent 0%, rgba(124, 31, 42, 0.1) 44%, rgba(208, 168, 92, 0.11) 50%, transparent 64%),
+      radial-gradient(circle at 78% 28%, rgba(189, 38, 51, 0.11), transparent 18rem);
+    opacity: 0.46;
+  }
+
+  .profile-red-details {
+    background:
+      radial-gradient(ellipse at 18% 18%, rgba(161, 39, 45, 0.13), transparent 24rem),
+      radial-gradient(ellipse at 96% 34%, rgba(214, 38, 54, 0.16), transparent 30rem),
+      linear-gradient(160deg, #f4ecd8 0%, #fff8e8 46%, #f1dfc2 100%) !important;
+  }
+
+  .profile-red-details::before {
+    background:
+      linear-gradient(112deg, transparent 0%, rgba(161, 39, 45, 0.12) 48%, transparent 72%);
+    opacity: 0.5;
+  }
+
   .sy-theme::after {
     opacity: 0.075;
+  }
+
+  .profile-red-details::after {
+    opacity: 0.09;
   }
 
   .sy-theme .brand-mark {

@@ -23,7 +23,7 @@ export default async function ProfilePage() {
     : [];
 
   return (
-    <main className="sy-theme min-h-screen bg-[#0e1111] px-4 py-10 text-stone-50 sm:px-6 lg:px-8">
+    <main className="sy-theme profile-red-details min-h-screen bg-[#0e1111] px-4 py-10 text-stone-50 sm:px-6 lg:px-8">
       <section className="mx-auto max-w-5xl">
         <p className="text-sm font-bold uppercase tracking-[0.32em] text-[#d0a85c]">
           Perfil
