@@ -68,7 +68,7 @@ export function FinalGuessModal({
             {event.actorNickname} está registrando uma tese
           </h2>
           <p className="mt-4 text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
-            O jogo está pausado até o envio ou fim do cronômetro.
+            A mesa aguarda o palpite.
           </p>
         </>
       )}
@@ -98,7 +98,7 @@ export function PendingSolutionModal({ event }: { event: SolutionEvent }) {
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#d7b861] opacity-75" />
           <span className="relative inline-flex h-4 w-4 rounded-full bg-[#d7b861]" />
         </span>
-        <span className="font-bold">Comparando com a solução oficial...</span>
+        <span className="font-bold">Conferindo a tese...</span>
       </div>
     </RoomModal>
   );
@@ -128,9 +128,8 @@ export function ManualReviewModal({
             Precisamos da sua honestidade
           </h2>
           <p className="mt-4 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
-            Desculpe pelo inconveniente. Os modelos de IA estão indisponíveis
-            para avaliar sua tese agora. Compare sua resposta com a solução
-            oficial e indique honestamente se você acertou.
+            Não conseguimos conferir agora. Compare sua tese com a solução
+            oficial e responda com honestidade.
           </p>
           <div className="mt-5 rounded-lg border border-stone-700 bg-[#0f120e] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
@@ -174,9 +173,8 @@ export function ManualReviewModal({
             {event.actorNickname} está revisando a própria tese
           </h2>
           <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2a2112] px-4 py-3 text-sm font-semibold leading-6 text-[#fff3cf]">
-            Os modelos de IA estão indisponíveis no momento. A resposta será
-            avaliada pelo jogador que enviou a tese, comparando com a solução
-            oficial.
+            A conferência automática falhou. O autor vai comparar a tese com a
+            solução oficial.
           </p>
           <div className="mt-5 rounded-lg border border-stone-700 bg-[#0f120e] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d7b861]">
@@ -227,9 +225,7 @@ export function WrongSolutionModal({ event, onClose }: WrongSolutionModalProps) 
         </p>
       </div>
       <p className="mt-5 text-sm leading-6 text-stone-400">
-        O jogo continua com os investigadores restantes. As pistas desse jogador
-        agora ficam abertas para consulta, mas não entram nas rodadas de
-        compartilhamento.
+        A disputa continua. As pistas desse jogador ficam abertas para consulta.
       </p>
     </RoomModal>
   );
@@ -255,8 +251,7 @@ export function CorrectSolutionModal({
         {event.actorNickname} acertou e venceu o caso
       </h2>
       <p className="mt-3 text-stone-400">
-        A tese enviada bate com a solução oficial. A investigação está
-        encerrada.
+        A tese bate com a solução oficial.
       </p>
       <p className="mt-4 whitespace-pre-line text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
         {finalAnswer}
@@ -292,8 +287,7 @@ export function NoWinnerSolutionModal({
         A partida terminou sem vencedor
       </h2>
       <p className="mt-3 text-stone-400">
-        Todos os jogadores ativos foram eliminados ou perderam conexão antes de
-        acertar a solução.
+        Ninguém sustentou a solução.
       </p>
       <p className="mt-4 whitespace-pre-line text-base leading-7 text-stone-300 sm:mt-5 sm:text-lg sm:leading-8">
         {finalAnswer}

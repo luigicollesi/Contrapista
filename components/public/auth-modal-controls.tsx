@@ -164,13 +164,13 @@ export function AuthModalControls() {
 
         if (!response.ok || !payload.ok) {
           setFieldErrors(payload.errors ?? {});
-          setMessage(payload.message ?? "Não deu para criar a conta.");
+          setMessage(payload.message ?? "Revise os campos destacados e tente novamente.");
           return;
         }
 
         setMessage(
           payload.message ??
-            "Enviamos um link de verificação para seu email.",
+            "Confira seu email para concluir o cadastro.",
         );
         setAuthFormValues((current) => ({
           ...current,
@@ -187,7 +187,7 @@ export function AuthModalControls() {
       });
 
       if (result?.error) {
-        setMessage("Email ou senha inválidos.");
+        setMessage("Confira o email e a senha informados.");
         return;
       }
 
@@ -214,7 +214,7 @@ export function AuthModalControls() {
 
       if (!response.ok || !payload.ok) {
         setFieldErrors(payload.errors ?? {});
-        setMessage(payload.message ?? "Não deu para salvar o nome.");
+        setMessage(payload.message ?? "Revise o nome escolhido e tente novamente.");
         return;
       }
 
@@ -365,7 +365,7 @@ export function AuthModalControls() {
                 className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-sm bg-[#d0a85c] px-4 text-sm font-black uppercase tracking-[0.16em] text-[#17130d] transition hover:bg-[#f3dfaa]"
                 href="/perfil"
               >
-                Ir para perfil
+                Ver meu perfil
               </Link>
             </div>
           ) : null}
@@ -391,13 +391,14 @@ export function AuthModalControls() {
                 Nome público
               </p>
               <h2 className="mt-2 font-serif text-3xl font-bold text-[#f2e6c8] sm:text-4xl">
-                Escolha seu nome
+                Escolha como aparecer
               </h2>
               <p className="mt-3 text-sm leading-7 text-stone-300">
-                Escolha o nome que os outros jogadores verão nas partidas.
+                Esse será o nome exibido para outros jogadores durante as
+                partidas.
               </p>
               <label className="mt-6 block text-sm font-bold text-stone-200">
-                Nome de usuário
+                Nome público
                 <input
                   className="mt-2 h-12 w-full rounded-sm border border-[#d0a85c]/30 bg-[#0e1111] px-3 text-base text-stone-50 outline-none transition focus:border-[#d0a85c] focus:ring-2 focus:ring-[#d0a85c]/20 sm:h-11 sm:text-sm"
                   name="username"
@@ -425,7 +426,7 @@ export function AuthModalControls() {
                 disabled={isPending}
                 type="submit"
               >
-                {isPending ? "Salvando" : "Salvar nome"}
+                {isPending ? "Salvando" : "Confirmar nome"}
               </button>
             </form>
           </ResponsiveSheet>
@@ -442,14 +443,14 @@ export function AuthModalControls() {
           onClick={() => openModal("login")}
           type="button"
         >
-          Login
+          Entrar
         </button>
         <button
           className="inline-flex h-10 items-center justify-center rounded-sm bg-[#d0a85c] px-3 text-xs font-black text-[#17130d] transition hover:bg-[#f3dfaa] sm:px-4 sm:text-sm"
           onClick={() => openModal("register")}
           type="button"
         >
-          Cadastro
+          Criar conta
         </button>
       </div>
 

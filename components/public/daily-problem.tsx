@@ -301,8 +301,7 @@ export function DailyProblem() {
           </button>
         </div>
         <p className="mt-4 max-w-3xl text-sm leading-6 text-stone-300 sm:mt-6 sm:text-lg sm:leading-8">
-          Um caso por dia, com todas as pistas juntas. Algumas ajudam, outras
-          desviam. Se errar, espere o intervalo antes de tentar de novo.
+          Um caso por dia. Todas as pistas à vista. Uma tese por vez.
         </p>
 
         {isLoadingProblem && !problem && !error ? (
@@ -364,7 +363,7 @@ export function DailyProblem() {
                 />
                 {problem.solved ? (
                   <p className="mt-3 text-sm font-semibold text-emerald-100">
-                    Você já resolveu este problema.
+                    Desafio resolvido.
                   </p>
                 ) : null}
                 {cooldownMessage ? (

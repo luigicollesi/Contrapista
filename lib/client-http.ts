@@ -40,8 +40,8 @@ export async function readJsonResponse<T>(
       /^\s*<!doctype html/i.test(text) ||
       /^\s*<html/i.test(text);
     const message = looksLikeHtml
-      ? "O servidor retornou uma página HTML em vez de JSON. Verifique se você está logado, se a rota de API existe no servidor atual e tente recarregar a aplicação."
-      : `O servidor retornou uma resposta inesperada: ${text.slice(0, unexpectedTextLimit)}`;
+      ? "Sua sessão pode ter expirado. Entre novamente e recarregue a página."
+      : `Não conseguimos ler a resposta recebida: ${text.slice(0, unexpectedTextLimit)}`;
 
     return {
       error: message,

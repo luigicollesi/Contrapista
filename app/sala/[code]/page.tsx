@@ -173,7 +173,7 @@ const configFields = [
 const configGroups = [
   {
     id: "ritmo",
-    title: "Ritmo da sessão",
+    title: "Ritmo da mesa",
     description: "Tempos de leitura, escolha, discussão e resposta.",
   },
   {
@@ -286,7 +286,7 @@ export default function RoomPage() {
         }
 
         if (!response.ok || !data.room) {
-          throw new Error(data.error ?? "Não foi possível atualizar a ante-sala.");
+          throw new Error(data.error ?? "Não deu para atualizar a ante-sala.");
         }
 
         setRoom(data.room);
@@ -308,7 +308,7 @@ export default function RoomPage() {
         );
 
         if (!isCurrentUserInRoom && (data.room.activecase || data.room.allReady)) {
-          setError("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
+          setError("Mesa em andamento. Aguarde o fim da partida.");
           return;
         }
 
@@ -325,7 +325,7 @@ export default function RoomPage() {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível atualizar a ante-sala.",
+              : "Não deu para atualizar a ante-sala.",
           );
         }
       } finally {
@@ -438,7 +438,7 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ browserId: getBrowserId() }),
         },
-        "Não foi possível entrar na sala.",
+        "Não deu para entrar na sala.",
       );
 
       saveSession({
@@ -456,7 +456,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível entrar na sala.",
+          : "Não deu para entrar na sala.",
       );
     } finally {
       setIsSaving(false);
@@ -484,7 +484,7 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ color }),
         },
-        "Não foi possível atualizar usuário.",
+        "Não deu para salvar sua cor.",
       );
 
       saveSession({
@@ -501,7 +501,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível atualizar usuário.",
+          : "Não deu para salvar sua cor.",
       );
     } finally {
       setIsSaving(false);
@@ -577,7 +577,7 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ userId: currentUser.id, config: configDraft }),
         },
-        "Não foi possível salvar a configuração.",
+        "Não deu para salvar a mesa.",
       );
 
       setRoom(data.room);
@@ -588,7 +588,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível salvar a configuração.",
+          : "Não deu para salvar a mesa.",
       );
     } finally {
       setIsSaving(false);
@@ -606,7 +606,7 @@ export default function RoomPage() {
       }>(
         `/api/rooms/${code}/case/selection`,
         { method: "GET" },
-        "Não foi possível carregar casos.",
+        "Não deu para abrir o arquivo.",
       );
 
       setCaseOptions(data.cases);
@@ -615,7 +615,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível carregar casos.",
+          : "Não deu para abrir o arquivo.",
       );
     } finally {
       setIsLoadingCases(false);
@@ -654,7 +654,7 @@ export default function RoomPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ caseId, mode, userId: currentUser.id }),
         },
-        "Não foi possível escolher caso.",
+        "Não deu para escolher o caso.",
       );
 
       setRoom(data.room);
@@ -663,7 +663,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível escolher caso.",
+          : "Não deu para escolher o caso.",
       );
     } finally {
       setIsSaving(false);
@@ -693,7 +693,7 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ userId: currentUser.id, ready }),
         },
-        "Não foi possível alterar pronto.",
+        "Não deu para mudar prontidão.",
       );
 
       setRoom(data.room);
@@ -709,7 +709,7 @@ export default function RoomPage() {
 
       if (ready && room?.selectedcase && !data.room.selectedcase && !data.room.allReady) {
         setNotice(
-          "Modo manual cancelado: o caso escolhido não tem pistas suficientes para a quantidade atual de jogadores.",
+          "O caso escolhido não comporta a mesa atual.",
         );
       }
 
@@ -721,7 +721,7 @@ export default function RoomPage() {
         !data.room.allReady
       ) {
         setNotice(
-          "Modo automático não encontrou caso compatível no banco. Escolha um caso manualmente, gere um caso novo ou reduza a quantidade de jogadores.",
+          "Nenhum caso pronto comporta a mesa atual.",
         );
       }
 
@@ -732,7 +732,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível alterar pronto.",
+          : "Não deu para mudar prontidão.",
       );
     } finally {
       setIsSaving(false);
@@ -756,7 +756,7 @@ export default function RoomPage() {
           },
           body: JSON.stringify({ userId: currentUser.id }),
         },
-        "Não foi possível sair da sala.",
+        "Não deu para sair da sala.",
       );
 
       clearSession(code);
@@ -772,7 +772,7 @@ export default function RoomPage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível sair da sala.",
+          : "Não deu para sair da sala.",
       );
     }
   }
@@ -846,8 +846,7 @@ export default function RoomPage() {
               Ante-sala do caso
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300 sm:mt-3 sm:text-base">
-              Sua identificação vem da conta logada. Escolha uma cor exclusiva
-              antes de confirmar prontidão para abrir o dossiê.
+              Escolha uma cor e confirme presença.
             </p>
           </div>
           <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-4 py-3 shadow-2xl shadow-black/25 sm:block sm:px-6 sm:py-4">
@@ -873,7 +872,7 @@ export default function RoomPage() {
                 Identificação
               </p>
               <p className="mt-2 rounded-lg border border-stone-700 bg-[#0f120e] px-4 py-3 text-lg font-semibold text-[#fff3cf]">
-                {currentUser ? getUserName(currentUser) : "Entrar com seu nome de usuário"}
+                {currentUser ? getUserName(currentUser) : "Entrar com seu nome"}
               </p>
 
               {currentUser ? (
@@ -917,8 +916,7 @@ export default function RoomPage() {
               </div>
               ) : (
                 <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300">
-                  Entre na sala para reservar sua presença. Depois, escolha uma
-                  cor antes de marcar pronto.
+                  Entre, escolha uma cor e aguarde a mesa.
                 </p>
               )}
             </div>
@@ -941,7 +939,7 @@ export default function RoomPage() {
                 disabled={isSaving || !canSubmitProfile}
                 type="submit"
               >
-                {currentUser ? "Salvar cor" : "Entrar na sessão"}
+                {currentUser ? "Salvar cor" : "Entrar na mesa"}
               </button>
             </div>
           </form>
@@ -1067,7 +1065,7 @@ export default function RoomPage() {
 
             {room && room.users.length === 0 ? (
               <p className="rounded-lg border border-dashed border-stone-600 bg-[#171b16] p-6 text-stone-400">
-                Ainda não há participantes na sessão.
+                Ainda não há participantes na mesa.
               </p>
             ) : null}
           </div>
@@ -1079,12 +1077,11 @@ export default function RoomPage() {
               Partida pareada
             </p>
             <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
-              Configuração clássica fixa
+              Mesa clássica
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-              Esta sala foi formada automaticamente para uma partida{" "}
-              {room?.mode === "ranked" ? "rankeada" : "casual"} de 4 jogadores,
-              cada um por si. Não há líder da sala nem painel de configuração.
+              Partida {room?.mode === "ranked" ? "rankeada" : "casual"} para 4
+              jogadores, cada um por si.
             </p>
           </section>
         ) : (
@@ -1106,8 +1103,8 @@ export default function RoomPage() {
                   {room?.caseSelectionMode === "manual"
                     ? `A sala irá direto para o jogo quando todos ficarem prontos${selectedCase ? `: ${selectedCase.title}` : "."}`
                     : room?.caseSelectionMode === "automatic"
-                      ? "Quando todos ficarem prontos, a sala sorteará um caso do banco com pistas suficientes para os jogadores."
-                      : "Quando todos ficarem prontos, a sala criará um caso novo com IA."}
+                      ? "Quando todos ficarem prontos, a mesa sorteia um caso compatível."
+                      : "Quando todos ficarem prontos, a mesa cria um caso novo."}
                 </p>
               </div>
               <div
@@ -1138,7 +1135,7 @@ export default function RoomPage() {
                     />
                   </span>
                   <span className="mt-2 block text-xs leading-5 opacity-85">
-                    Cria um caso novo com IA.
+                    Cria um caso novo.
                   </span>
                 </button>
                 <button
@@ -1208,8 +1205,7 @@ export default function RoomPage() {
                   Parâmetros do dossiê
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-                  Ajuste o ritmo da mesa com controles rápidos e valores exatos.
-                  As mudanças só entram em vigor depois de salvar.
+                  Ajuste o ritmo e salve antes da largada.
                 </p>
               </div>
               <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
@@ -1222,8 +1218,8 @@ export default function RoomPage() {
                 {canEditConfig
                   ? isConfigDirty
                     ? "Alterações pendentes"
-                    : "Liderança sob seu controle"
-                  : "Edição restrita ao primeiro participante"}
+                    : "Mesa pronta"
+                  : "Apenas o líder altera"}
               </div>
             </div>
 
@@ -1390,7 +1386,7 @@ export default function RoomPage() {
               <div className="sticky bottom-4 z-10 mt-6 flex flex-col gap-3 rounded-lg border border-[#d7b861]/30 bg-[#10130f]/95 p-3 shadow-2xl shadow-black/30 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-semibold text-stone-300">
                   {isConfigDirty
-                    ? "Revise e salve para atualizar a ante-sala."
+                    ? "Revise e salve."
                     : "Sem alterações pendentes."}
                 </p>
                 <div className="flex flex-wrap justify-end gap-3">
@@ -1410,7 +1406,7 @@ export default function RoomPage() {
                     onClick={saveRoomConfig}
                     type="button"
                   >
-                    {isSaving ? "Salvando" : "Salvar configuração"}
+                    {isSaving ? "Salvando" : "Salvar mesa"}
                   </button>
                 </div>
               </div>
@@ -1435,8 +1431,7 @@ export default function RoomPage() {
                     Escolha um caso pronto
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-                    A lista mostra apenas casos com mais pistas do que jogadores
-                    na sala. Ao escolher, todos voltam para aguardando.
+                    Só aparecem casos compatíveis com a mesa atual.
                   </p>
                 </div>
                 <button

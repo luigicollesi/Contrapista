@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const limited = rateLimitResponse({
     body: {
       ok: false,
-      message: "Muitas tentativas de cadastro. Aguarde alguns minutos e tente novamente.",
+      message: "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
     },
     limit: 5,
     namespace: "auth-register",
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           ok: false,
-          errors: { username: "Este nome de usuário já está em uso." },
+          errors: { username: "Este nome já está em uso." },
         },
         { status: 409 },
       );
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     console.error("[auth][register]", error);
 
     return Response.json(
-      { ok: false, message: "Não foi possível criar a conta agora." },
+      { ok: false, message: "Não deu para criar a conta agora." },
       { status: 500 },
     );
   }

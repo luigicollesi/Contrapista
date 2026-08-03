@@ -71,7 +71,7 @@ function buildVerificationEmail({
   const text = [
     `Olá, ${username}.`,
     "",
-    "Falta só confirmar seu email para ativar sua conta no Contrapista.",
+    "Confirme seu email para começar a jogar Contrapista.",
     "",
     "Clique no link abaixo:",
     url,
@@ -113,7 +113,7 @@ function buildVerificationEmail({
   </head>
   <body class="email-body" style="margin:0;padding:0;background:#f3ead6;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
-      Confirme seu email para ativar sua conta no Contrapista.
+      Confirme seu email para começar a jogar Contrapista.
     </div>
 
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3ead6;" class="email-body">
@@ -149,7 +149,7 @@ function buildVerificationEmail({
                   Confirme seu email para entrar na mesa.
                 </h1>
                 <p class="email-text" style="margin:22px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;color:#3d3428;">
-                  Olá, <strong>${escapedUsername}</strong>. Use o botão abaixo para ativar sua conta e liberar o acesso aos modos de jogo do Contrapista.
+                  Olá, <strong>${escapedUsername}</strong>. Use o botão abaixo para confirmar seu email e começar a disputar partidas no Contrapista.
                 </p>
 
                 <table role="presentation" cellspacing="0" cellpadding="0" style="margin:30px 0 0;border-collapse:collapse;">
@@ -176,7 +176,7 @@ function buildVerificationEmail({
                 </table>
 
                 <p class="email-muted" style="margin:24px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.7;color:#7b7062;">
-                  Se você não criou essa conta, ignore este email. Nenhuma conta será ativada sem a confirmação do link.
+                  Se você não pediu esse cadastro, ignore este email.
                 </p>
               </td>
             </tr>

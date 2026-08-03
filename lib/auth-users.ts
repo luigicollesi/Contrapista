@@ -155,7 +155,7 @@ export function validateAuthInput(input: {
   const errors: Record<string, string> = {};
 
   if (usernameSource !== undefined && username.length < 2) {
-    errors.username = "Informe um nome de usuário com pelo menos 2 caracteres.";
+    errors.username = "Informe um nome com pelo menos 2 caracteres.";
   } else if (usernameSource !== undefined && username.length > 32) {
     errors.username = "Use no máximo 32 caracteres.";
   } else if (

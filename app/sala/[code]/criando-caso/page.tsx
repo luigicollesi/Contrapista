@@ -121,7 +121,7 @@ async function readCaseCreationRoomState(code: string) {
   }>(response, 160);
 
   if (!response.ok || !data.room) {
-    throw new Error(data.error ?? "Não foi possível ler a sala.");
+    throw new Error(data.error ?? "Não deu para abrir a sala.");
   }
 
   return data.room;
@@ -223,7 +223,7 @@ export default function CreatingCasePage() {
           !isCancelingCreationRef.current
         ) {
           const message =
-            "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
+            "A criação foi interrompida. A mesa voltou para a ante-sala.";
           sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
           router.replace(`/sala/${code}`);
         }
@@ -273,7 +273,7 @@ export default function CreatingCasePage() {
 
         if (room.allReady === false && !isCancelingCreationRef.current) {
           const message =
-            "A criação do caso foi interrompida porque um jogador saiu ou perdeu conexão. Os jogadores restantes voltaram para a ante-sala sem prontidão.";
+            "A criação foi interrompida. A mesa voltou para a ante-sala.";
           sessionStorage.setItem(CASE_CREATION_NOTICE_KEY, message);
           router.replace(`/sala/${code}`);
         }
@@ -305,7 +305,7 @@ export default function CreatingCasePage() {
         const userId = readUserId(code);
 
         if (!userId) {
-          throw new Error("Sessão local não encontrada. Volte para a ante-sala.");
+          throw new Error("Volte para a ante-sala e tente novamente.");
         }
 
         const room = await readCaseCreationRoomState(code);
@@ -317,7 +317,7 @@ export default function CreatingCasePage() {
         const leaderUserId = room.users?.[0]?.id;
 
         if (leaderUserId && leaderUserId !== userId) {
-          setRetryNotice("Aguardando o responsável da sala iniciar a criação do caso...");
+          setRetryNotice("Aguardando o líder iniciar o caso...");
           return;
         }
 
@@ -346,20 +346,18 @@ export default function CreatingCasePage() {
               !(caughtError instanceof TypeError) ||
               attempt === CASE_CREATION_FETCH_ATTEMPTS
             ) {
-              throw new Error(
-                "A conexão com o servidor caiu durante a criação do caso. Verifique se o servidor ainda está rodando e tente novamente.",
-              );
+              throw new Error("A conexão caiu durante a criação. Tente novamente.");
             }
 
             setRetryNotice(
-              `A conexão oscilou. Tentando novamente (${attempt + 1}/${CASE_CREATION_FETCH_ATTEMPTS})...`,
+              `Conexão instável. Nova tentativa (${attempt + 1}/${CASE_CREATION_FETCH_ATTEMPTS})...`,
             );
             await wait(CASE_CREATION_RETRY_DELAY_MS);
           }
         }
 
         if (!response) {
-          throw new Error("Não foi possível conectar ao servidor.");
+          throw new Error("Não deu para continuar a criação.");
         }
 
         if (!isActive) {
@@ -371,7 +369,7 @@ export default function CreatingCasePage() {
         const data = await readJsonResponse<{ error?: string }>(response, 160);
 
         if (!response.ok) {
-          throw new Error(data.error ?? "Não foi possível criar o caso.");
+          throw new Error(data.error ?? "Não deu para criar o caso.");
         }
 
         router.replace(`/sala/${code}/jogo`);
@@ -387,11 +385,11 @@ export default function CreatingCasePage() {
         const message =
           caughtError instanceof Error
             ? caughtError.message
-            : "Os modelos de IA estão indisponíveis. Tente novamente mais tarde.";
+            : "A criação está indisponível agora. Tente mais tarde.";
 
         sessionStorage.setItem(
           CASE_CREATION_NOTICE_KEY,
-          message || "Os modelos de IA estão indisponíveis. Tente novamente mais tarde.",
+          message || "A criação está indisponível agora. Tente mais tarde.",
         );
 
         setError(message);
@@ -440,7 +438,7 @@ export default function CreatingCasePage() {
     const userId = readUserId(code);
 
     if (!userId) {
-      setError("Sessão local não encontrada. Volte para a ante-sala.");
+      setError("Volte para a ante-sala e tente novamente.");
       return;
     }
 
@@ -459,12 +457,12 @@ export default function CreatingCasePage() {
       const data = await readJsonResponse<{ error?: string }>(response, 160);
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Não foi possível cancelar a criação.");
+        throw new Error(data.error ?? "Não deu para cancelar a criação.");
       }
 
       sessionStorage.setItem(
         CASE_CREATION_NOTICE_KEY,
-        "A criação do caso foi cancelada. Todos voltaram para a ante-sala sem prontidão.",
+        "A criação foi cancelada. A mesa voltou para a ante-sala.",
       );
       router.replace(`/sala/${code}`);
     } catch (caughtError) {
@@ -472,7 +470,7 @@ export default function CreatingCasePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível cancelar a criação.",
+          : "Não deu para cancelar a criação.",
       );
       setIsCancelingCreation(false);
     }
@@ -515,8 +513,8 @@ export default function CreatingCasePage() {
             A mesa está consolidando um dossiê inédito.
           </h1>
           <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300 sm:mt-6 sm:text-lg sm:leading-8">
-            A IA está estruturando narrativa, evidências conflitantes e resposta
-            final. Esta etapa pode levar alguns instantes.
+            A mesa está montando narrativa, pistas e solução. Isso pode levar
+            alguns instantes.
           </p>
 
           <CaseCreationStatus

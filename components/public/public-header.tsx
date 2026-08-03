@@ -28,7 +28,7 @@ export function PublicHeader() {
               Contrapista
             </span>
             <span className="block truncate text-[9px] font-semibold uppercase tracking-[0.16em] text-[#b98d47] sm:text-[10px] sm:tracking-[0.2em]">
-              Investigação online
+              Dedução competitiva
             </span>
           </span>
         </Link>

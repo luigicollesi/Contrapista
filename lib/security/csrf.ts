@@ -84,17 +84,17 @@ export function validateCsrfRequest(request: NextRequest) {
   const referer = request.headers.get("referer");
 
   if (origin && !isAllowedOrigin(origin, allowedOrigins)) {
-    return "Origem da requisição inválida.";
+    return "Origem não confirmada.";
   }
 
   if (!origin && referer && !isAllowedOrigin(referer, allowedOrigins)) {
-    return "Referência da requisição inválida.";
+    return "Página não confirmada.";
   }
 
   const csrfHeader = request.headers.get(CSRF_HEADER);
 
   if (csrfHeader !== CSRF_HEADER_VALUE) {
-    return "Cabeçalho CSRF ausente.";
+    return "Recarregue a página e tente novamente.";
   }
 
   return null;

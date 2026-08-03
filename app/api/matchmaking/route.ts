@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
     if (!identity) {
       return Response.json(
-        { error: "Faça login e escolha um nome de usuário para entrar na fila." },
+        { error: "Entre e escolha seu nome para entrar na fila." },
         { status: 401 },
       );
     }
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       }),
     );
   } catch (error) {
-    return errorResponse(error, "Erro ao entrar na fila.");
+    return errorResponse(error, "Não deu para entrar na fila.");
   }
 }
 

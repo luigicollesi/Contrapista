@@ -47,10 +47,10 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
   return (
     <RoomModal>
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
-        Roleta de ordem
+        Ordem da mesa
       </p>
       <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
-        Sorteando o próximo jogador
+        Definindo a vez
       </h2>
       <div className="mt-5 flex flex-col items-center gap-5 sm:mt-6 sm:gap-6">
         <div

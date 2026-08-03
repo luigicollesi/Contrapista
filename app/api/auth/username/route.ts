@@ -24,7 +24,7 @@ export async function POST(request: Request) {
 
   if (!session?.user?.id) {
     return Response.json(
-      { ok: false, message: "Faça login para escolher um nome de usuário." },
+      { ok: false, message: "Entre para escolher seu nome." },
       { status: 401 },
     );
   }
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   const limited = rateLimitResponse({
     body: {
       ok: false,
-      message: "Muitas tentativas de nome de usuário. Aguarde um instante e tente novamente.",
+      message: "Muitas tentativas. Aguarde um instante e tente novamente.",
     },
     identity: session.user.id,
     limit: 8,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
 
     if (!user) {
       return Response.json(
-        { ok: false, message: "Usuário não encontrado." },
+        { ok: false, message: "Conta não encontrada." },
         { status: 404 },
       );
     }
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       return Response.json(
         {
           ok: false,
-          errors: { username: "Este nome de usuário já está em uso." },
+          errors: { username: "Este nome já está em uso." },
         },
         { status: 409 },
       );
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     console.error("[auth][username]", error);
 
     return Response.json(
-      { ok: false, message: "Não foi possível salvar o nome de usuário." },
+      { ok: false, message: "Não deu para salvar o nome." },
       { status: 500 },
     );
   }

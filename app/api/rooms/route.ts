@@ -8,7 +8,7 @@ export async function POST(request: Request) {
 
   if (!session?.user?.id || !session.user.name) {
     return Response.json(
-      { error: "Faça login e escolha um nome de usuário para criar sala." },
+      { error: "Entre e escolha seu nome para criar sala." },
       { status: 401 },
     );
   }
@@ -38,6 +38,6 @@ export async function POST(request: Request) {
       }),
     );
   } catch (error) {
-    return errorResponse(error, "Erro ao criar sala.", 500);
+    return errorResponse(error, "Não deu para criar sala.", 500);
   }
 }

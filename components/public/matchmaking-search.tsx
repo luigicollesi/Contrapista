@@ -31,12 +31,12 @@ const modeCopy = {
   casual: {
     title: "Buscando jogo casual",
     eyebrow: "4 jogadores · cada um por si",
-    body: "Procurando mais 3 jogadores para uma partida sem impacto no rating.",
+    body: "Procurando uma mesa casual.",
   },
   ranked: {
     title: "Buscando jogo rankeado",
     eyebrow: "4 jogadores · rating similar",
-    body: "Procurando jogadores com rating próximo para uma partida competitiva.",
+    body: "Procurando uma mesa compatível.",
   },
 } satisfies Record<
   MatchmakingMode,
@@ -165,8 +165,7 @@ export function MatchmakingSearch({ mode }: MatchmakingSearchProps) {
               </p>
             </div>
             <div className="max-w-sm text-sm leading-7 text-stone-300">
-              A sala abre automaticamente quando houver 4 jogadores prontos
-              para o mesmo modo.
+              A mesa abre assim que estiver completa.
             </div>
           </div>
         </div>

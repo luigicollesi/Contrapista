@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Contrapista | Arquivo sob suspeita",
+  title: "Contrapista | Dedução em disputa",
   description:
-    "Toda versão deixa uma falha. Toda falha abre um caso.",
+    "Leia o caso, confronte pistas e vença antes da mesa.",
   icons: {
     icon: "/contrapista-icon.png",
     apple: "/contrapista-icon.png",

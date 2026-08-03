@@ -16,8 +16,7 @@ export default function NotFound() {
           Página não encontrada
         </h1>
         <p className="mx-auto mt-4 max-w-md text-base leading-7 text-stone-300">
-          Este rastro não consta em nenhum arquivo ativo. Volte ao início para
-          criar ou acessar uma sessão.
+          Este rastro não consta no arquivo.
         </p>
         <Link
           className="mt-7 inline-flex h-12 items-center justify-center rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"

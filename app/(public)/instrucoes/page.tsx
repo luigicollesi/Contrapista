@@ -1,11 +1,11 @@
 const flow = [
   {
     title: "1. Ante-sala",
-    body: "Entre na sala, escolha uma cor e marque pronto quando todo mundo estiver na mesa.",
+    body: "Entre, escolha uma cor e aguarde a mesa.",
   },
   {
     title: "2. Criação do caso",
-    body: "A sala usa um caso salvo, sorteia um caso compatível ou cria um novo para a partida.",
+    body: "Escolha um caso pronto, sorteado ou novo.",
   },
   {
     title: "3. Leitura inicial",
@@ -17,7 +17,7 @@ const flow = [
   },
   {
     title: "5. Palpite final",
-    body: "Qualquer jogador ativo pode tentar resolver. Quem acertar primeiro vence; quem errar sai da disputa e libera suas pistas.",
+    body: "Arrisque sua tese. Acertou, vence. Errou, sai.",
   },
   {
     title: "6. Encerramento",
@@ -26,11 +26,11 @@ const flow = [
 ];
 
 const rules = [
-  "Contrapista é competitivo: vence quem acertar a solução do caso primeiro.",
-  "Jogadores sem nome e cor não podem ficar prontos.",
-  "Jogadores inativos por muito tempo saem da participação ativa.",
-  "Pistas de eliminados ficam visíveis, mas não podem ser compartilhadas em novas rodadas.",
-  "Se a IA não conseguir avaliar um palpite, o autor compara com a resposta oficial.",
+  "Vence quem acertar primeiro.",
+  "Nome e cor são obrigatórios.",
+  "Inativos saem da disputa.",
+  "Pistas de eliminados viram consulta.",
+  "Na dúvida, compare com a solução oficial.",
 ];
 
 export default function InstructionsPage() {
@@ -44,9 +44,8 @@ export default function InstructionsPage() {
           Como jogar Contrapista
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-          Cada pessoa recebe uma parte do caso. A mesa conversa, cruza pistas e
-          tenta descobrir quais detalhes levam à resposta certa, mas a vitória
-          é individual: ganha quem resolver primeiro.
+          Cada pessoa guarda uma parte do caso. A mesa discute, mas a vitória é
+          de quem resolve primeiro.
         </p>
 
         <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">

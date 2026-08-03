@@ -162,13 +162,13 @@ export function HomeRoomActions() {
           type="button"
         >
           <span className="block text-sm font-bold uppercase tracking-[0.2em] text-[#7c1f2a]">
-            Nova sessão
+            Nova mesa
           </span>
           <span className="mt-5 block font-serif text-3xl font-bold">
             Criar sala
           </span>
           <span className="mt-5 block text-base leading-7 text-[#3a3021]">
-            Cria um código para seu grupo entrar na mesma sala.
+            Abra uma mesa para seu grupo.
           </span>
           <span className="mt-6 inline-flex h-10 items-center rounded-full bg-[#17130d] px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#7c1f2a]">
             Criar sala
@@ -186,13 +186,13 @@ export function HomeRoomActions() {
           type="button"
         >
           <span className="block text-sm font-bold uppercase tracking-[0.2em] text-[#d0a85c]">
-            Código reservado
+            Código da mesa
           </span>
           <span className="mt-5 block font-serif text-3xl font-bold text-[#f2e6c8]">
             Entrar
           </span>
           <span className="mt-5 block text-base leading-7 text-stone-300">
-            Use o código que alguém da mesa enviou para você.
+            Entre com o código recebido.
           </span>
           <span className="mt-6 inline-flex h-10 items-center rounded-full border border-[#d0a85c]/60 px-5 text-sm font-bold text-[#f3dfaa] transition group-hover:bg-[#d0a85c] group-hover:text-[#17130d]">
             Informar código
@@ -218,10 +218,10 @@ export function HomeRoomActions() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d0a85c]">
-                  Entrar na sala
+                  Entrar na mesa
                 </p>
                 <h2 className="mt-2 font-serif text-3xl font-bold text-[#f2e6c8]">
-                  Código da sala
+                  Código da mesa
                 </h2>
               </div>
               <button
@@ -238,7 +238,7 @@ export function HomeRoomActions() {
             </div>
 
             <input
-              aria-label="Código reservado"
+              aria-label="Código da mesa"
               autoFocus
               className="mt-6 h-16 w-full rounded-lg border border-[#d0a85c]/50 bg-[#0b0d0d] px-5 text-center font-mono text-3xl font-bold tracking-[0.32em] text-[#f2e6c8] outline-none transition placeholder:text-stone-600 focus:border-[#f3dfaa] focus:ring-4 focus:ring-[#d7b861]/20 sm:tracking-[0.42em]"
               inputMode="numeric"
@@ -261,7 +261,7 @@ export function HomeRoomActions() {
               disabled={isLoading}
               type="submit"
             >
-              Entrar na sala
+              Entrar na mesa
             </button>
           </form>
         </ResponsiveSheet>

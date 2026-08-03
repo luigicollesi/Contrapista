@@ -171,7 +171,7 @@ export function validateDisplayNamePolicy(value: string) {
   if (tokens.some((token) => RESERVED_NAMES.has(token)) || RESERVED_NAMES.has(compact)) {
     return {
       ok: false,
-      message: "Esse nome é reservado. Escolha outro nome de usuário.",
+      message: "Esse nome é reservado. Escolha outro nome.",
     };
   }
 

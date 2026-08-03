@@ -23,12 +23,12 @@ export default async function ProfilePage() {
           Perfil
         </p>
         <h1 className="mt-4 font-serif text-5xl font-bold text-[#f2e6c8] sm:text-7xl">
-          {session?.user?.name ?? "Conta Contrapista"}
+          {session?.user?.name ?? "Seu perfil"}
         </h1>
 
         {!session ? (
           <div className="mt-10 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-6 text-stone-300">
-            Entre pelo cabeçalho para ver seu perfil.
+            Entre pelo cabeçalho para acompanhar suas partidas e resultados.
           </div>
         ) : null}
 
@@ -36,12 +36,12 @@ export default async function ProfilePage() {
           <>
             <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {[
-                ["Partidas totais", achievements.total_matches_played],
-                ["Partidas rankeadas", achievements.ranked_matches_played],
-                ["Vitórias totais", achievements.total_matches_won],
-                ["Vitórias rankeadas", achievements.ranked_matches_won],
-                ["Rating rankeado", achievements.ranked_rating],
-                ["Problemas diários", achievements.daily_problems_solved],
+                ["Partidas jogadas", achievements.total_matches_played],
+                ["Ranqueadas jogadas", achievements.ranked_matches_played],
+                ["Vitórias", achievements.total_matches_won],
+                ["Vitórias ranqueadas", achievements.ranked_matches_won],
+                ["Rating", achievements.ranked_rating],
+                ["Desafios diários", achievements.daily_problems_solved],
               ].map(([label, value]) => (
                 <article
                   className="rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-5 shadow-2xl shadow-black/20"

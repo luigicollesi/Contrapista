@@ -75,13 +75,13 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
           </h2>
         </div>
         <p className="text-sm text-stone-400">
-          Clique em uma linha para abrir o caso.
+          Abra uma partida para rever o caso, seu palpite e a solução.
         </p>
       </div>
 
       {history.length === 0 ? (
         <div className="mt-5 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-5 text-sm text-stone-300">
-          Você ainda não tem partidas no histórico.
+          Suas partidas aparecerão aqui depois do primeiro encerramento.
         </div>
       ) : (
         <div className="mt-5 overflow-hidden rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]">
@@ -125,7 +125,7 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d0a85c]">
-                Histórico da partida
+                Revisão da partida
               </p>
               <h3 className="mt-2 font-serif text-3xl font-bold text-[#f2e6c8]">
                 {selected.case_title}
@@ -144,7 +144,7 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <section className="rounded-sm border border-[#d0a85c]/20 bg-[#0e1111] p-4">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#d0a85c]">
-                Sua resposta
+                Seu palpite
               </p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-300">
                 {selected.user_final_guess?.trim() || "Você não enviou palpite nesta partida."}
@@ -152,7 +152,7 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
             </section>
             <section className="rounded-sm border border-[#d0a85c]/20 bg-[#0e1111] p-4">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#d0a85c]">
-                Resposta vencedora
+                Palpite vencedor
               </p>
               <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-300">
                 {getWinningGuessText(selected)}
@@ -162,7 +162,7 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
 
           <section className="mt-4 rounded-sm border border-[#d0a85c]/20 bg-[#0e1111] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#d0a85c]">
-              Caso completo
+              Caso da partida
             </p>
             <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-300">
               {selected.case_text}
@@ -171,7 +171,7 @@ export function MatchHistoryPanel({ history }: MatchHistoryPanelProps) {
 
           <section className="mt-4 rounded-sm border border-[#d0a85c]/20 bg-[#0e1111] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#d0a85c]">
-              Resposta oficial
+              Solução oficial
             </p>
             <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-300">
               {selected.official_final_answer}

@@ -95,7 +95,7 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
     return {
       status: 429,
       error:
-        "O limite diário dos modelos gratuitos do OpenRouter foi atingido. Voltem para a ante-sala e tentem novamente após o reset diário ou usem uma chave com créditos.",
+        "A criação de casos atingiu o limite de hoje. Voltem para a ante-sala e tentem mais tarde.",
     };
   }
 
@@ -103,7 +103,7 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
     return {
       status: status && status >= 400 ? status : 503,
       error:
-        "Os modelos de IA estão indisponíveis no momento. Voltem para a ante-sala e tentem novamente mais tarde.",
+        "A criação de casos está indisponível no momento. Voltem para a ante-sala e tentem mais tarde.",
     };
   }
 
@@ -111,7 +111,7 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
     return {
       status: 502,
       error:
-        "A IA respondeu fora do formato necessário para montar o caso. Voltem para a ante-sala e tentem novamente.",
+        "Não deu para montar o caso agora. Voltem para a ante-sala e tentem novamente.",
     };
   }
 
@@ -127,20 +127,20 @@ function classifyCaseCreationError(error: unknown, errorId: string) {
   if (isDatabaseError(message)) {
     return {
       status: 500,
-      error: `Não foi possível salvar o caso no banco de dados. Código do erro: ${errorId}.`,
+      error: `Não deu para salvar o caso. Código ${errorId}.`,
     };
   }
 
   if (message.includes("variável de ambiente") || message.includes("LLM_")) {
     return {
       status: 500,
-      error: `A configuração de IA do servidor está incompleta. Código do erro: ${errorId}.`,
+      error: `A criação de casos não está pronta. Código ${errorId}.`,
     };
   }
 
   return {
     status: 500,
-    error: `Erro interno ao criar o caso. Código do erro: ${errorId}.`,
+    error: `Não deu para criar o caso. Código ${errorId}.`,
   };
 }
 
@@ -155,7 +155,7 @@ export async function POST(
 
     if (!session?.user?.id || !session.user.name) {
       return Response.json(
-        { error: "Faça login para criar o caso da partida." },
+        { error: "Entre para criar o caso da partida." },
         { status: 401 },
       );
     }
@@ -179,7 +179,7 @@ export async function POST(
 
     if (!userId) {
       return Response.json(
-        { error: "Sessão local não encontrada. Volte para a ante-sala." },
+        { error: "Volte para a ante-sala e tente novamente." },
         { status: 400 },
       );
     }
@@ -202,7 +202,7 @@ export async function POST(
 
     if (room.users[0]?.id !== userId) {
       return Response.json(
-        { error: "Apenas o responsável da sala pode iniciar a criação do caso." },
+        { error: "Apenas o líder pode iniciar o caso." },
         { status: 403 },
       );
     }

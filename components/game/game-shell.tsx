@@ -18,8 +18,7 @@ export function MissingGameScreen({ code }: { code: string }) {
           Dossiê não encontrado
         </h1>
         <p className="mx-auto mt-4 max-w-md text-base leading-7 text-stone-300">
-          A sala ou o caso ativo não está mais disponível. Volte ao início para
-          criar uma nova sala ou entrar com outro código.
+          O dossiê saiu da mesa.
         </p>
         <Link
           className="mt-7 inline-flex h-12 items-center justify-center rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
@@ -68,7 +67,7 @@ export function GameHeader({ code, isLeaving, onLeave }: GameHeaderProps) {
 export function LoadingDossierMessage() {
   return (
     <p className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-6 text-stone-300 shadow-2xl shadow-black/20">
-      Carregando dossiê...
+      Abrindo dossiê...
     </p>
   );
 }

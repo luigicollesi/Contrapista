@@ -16,7 +16,7 @@ export function LeaveRoomButton({
       onClick={onClick}
       type="button"
     >
-      {isLeaving ? "Saindo..." : "Sair da sala"}
+      {isLeaving ? "Saindo..." : "Sair da mesa"}
     </button>
   );
 }

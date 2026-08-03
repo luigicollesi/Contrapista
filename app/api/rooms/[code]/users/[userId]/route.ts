@@ -11,7 +11,7 @@ export async function PATCH(
 
   if (!session?.user?.id || !session.user.name) {
     return Response.json(
-      { error: "Faça login para atualizar sua cor." },
+      { error: "Entre para atualizar sua cor." },
       { status: 401 },
     );
   }
@@ -44,6 +44,6 @@ export async function PATCH(
 
     return Response.json(result);
   } catch (error) {
-    return errorResponse(error, "Erro ao atualizar usuário.");
+    return errorResponse(error, "Não deu para salvar sua cor.");
   }
 }

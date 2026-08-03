@@ -11,7 +11,7 @@ export async function POST(
 
   if (!session?.user?.id || !session.user.name) {
     return Response.json(
-      { error: "Faça login e escolha um nome de usuário para entrar na sala." },
+      { error: "Entre e escolha seu nome para entrar na sala." },
       { status: 401 },
     );
   }
@@ -47,6 +47,6 @@ export async function POST(
 
     return Response.json(result);
   } catch (error) {
-    return errorResponse(error, "Erro ao entrar na sala.");
+    return errorResponse(error, "Não deu para entrar na sala.");
   }
 }

@@ -155,7 +155,7 @@ async function createMatchRoom({
     return { code, users };
   }
 
-  throw new Error("Não foi possível criar uma sala pareada agora.");
+  throw new Error("Não deu para formar uma mesa agora.");
 }
 
 async function getQueueStatus({
@@ -248,7 +248,7 @@ export async function joinMatchmakingQueue({
   const normalizedRating = Math.max(0, Math.round(rating ?? 1000));
 
   if (!normalizedDisplayName) {
-    throw new Error("Faça login com um nome de usuário antes de entrar na fila.");
+    throw new Error("Entre e escolha seu nome antes de entrar na fila.");
   }
 
   const namePolicy = validateDisplayNamePolicy(normalizedDisplayName);

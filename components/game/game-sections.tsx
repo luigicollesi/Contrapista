@@ -37,7 +37,7 @@ export function ReadyInvestigationSection({
         Confirme presença para abrir o dossiê
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300 sm:mt-3 sm:text-base">
-        A leitura inicial começa somente quando todos estiverem prontos.
+        A leitura começa quando a mesa estiver pronta.
       </p>
       <div className="mt-5 grid gap-2 sm:mt-6 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3">
         {users.map((user) => {
@@ -120,12 +120,11 @@ export function PlayerCluesSection({
             Fragmentos reservados
           </p>
           <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
-            Fragmentos sob sua custódia
+          Suas pistas
           </h2>
         </div>
         <p className="text-xs leading-5 text-stone-400 sm:text-sm">
-          A proporção entre fragmentos corretos e falsos segue a configuração da
-          sala.
+          Escolha com cuidado o que vai abrir.
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
@@ -177,9 +176,7 @@ export function EliminatedCluesArchive({
         Pistas fora da disputa
       </h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-stone-400">
-        Estes fragmentos pertenciam a jogadores eliminados. Eles ficam
-        disponíveis para consulta da mesa, mas não podem ser escolhidos nas
-        rodadas de compartilhamento.
+        Pistas abertas para consulta. Elas não voltam para a rodada.
       </p>
       <div className="mt-5 space-y-5">
         {groups.map(({ player, clues }) => (
@@ -220,8 +217,7 @@ export function EliminatedPlayerArchive({ gameCase }: { gameCase: GameCase }) {
         Arquivo completo liberado
       </h2>
       <p className="mt-2 text-stone-400">
-        Seu palpite falhou. Você pode consultar todas as pistas e suas
-        classificações.
+        Seu palpite falhou. O arquivo completo foi aberto para você.
       </p>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <div className="rounded-lg border border-emerald-500/35 bg-[#0f120e] p-4">
@@ -257,7 +253,7 @@ export function FinalSolutionSection({ onOpen }: { onOpen: () => void }) {
             Conclusão final
           </h2>
           <p className="mt-2 text-stone-400">
-            Abra somente quando estiver disposto a sustentar uma tese.
+            Abra quando estiver pronto para sustentar uma tese.
           </p>
         </div>
         <button

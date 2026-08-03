@@ -4,25 +4,25 @@ const manualHighlights = [
   {
     title: "Mesa de investigação",
     items: [
-      "O caso começa incompleto, com detalhes que parecem não combinar.",
-      "A mesa discute versões, cruza pistas e corta distrações em uma disputa direta.",
-      "Ganha quem acertar a solução do caso primeiro.",
+      "Um caso. Várias versões.",
+      "A mesa cruza pistas e corta distrações.",
+      "Vence quem chegar primeiro.",
     ],
   },
   {
     title: "Pistas em disputa",
     items: [
-      "Cada jogador recebe pistas que podem ajudar ou confundir.",
-      "Nada vem marcado como certo. A mesa decide no debate.",
-      "Quem erra sai da disputa, mas passa a enxergar mais do arquivo.",
+      "Algumas ajudam. Outras desviam.",
+      "Nada vem marcado.",
+      "Errou, sai da disputa.",
     ],
   },
   {
     title: "Pressão de rodada",
     items: [
-      "A partida alterna leitura, revelação e tempo para pensar.",
-      "A sala escolhe se quer um ritmo calmo ou mais apertado.",
-      "Quando o relógio aperta, palpite e dedução se misturam.",
+      "Leia, revele, deduza.",
+      "O ritmo fica com a mesa.",
+      "O tempo cobra precisão.",
     ],
   },
 ];
@@ -31,53 +31,52 @@ const manualFlow = [
   {
     step: "01",
     title: "Reúna a mesa",
-    body: "Entre na sala, escolha uma cor e espere todo mundo ficar pronto.",
+    body: "Entre, escolha sua cor e aguarde a mesa.",
   },
   {
     step: "02",
-    title: "Defina o tom da investigação",
-    body: "Antes de começar, a sala ajusta os tempos e escolhe como o caso será usado.",
+    title: "Escolha o caso",
+    body: "Use um caso pronto, gere um novo ou deixe a mesa sortear.",
   },
   {
     step: "03",
-    title: "Leia sem revelar demais",
-    body: "Leia o caso e suas pistas em silêncio. Nem tudo precisa ir para a mesa logo de cara.",
+    title: "Leia em silêncio",
+    body: "Observe o caso e guarde o que pode virar vantagem.",
   },
   {
     step: "04",
-    title: "Deixe a ordem decidir",
-    body: "A roleta define a ordem. Cada jogador tem seu momento de abrir uma pista.",
+    title: "Espere sua vez",
+    body: "A ordem define quem abre cada fragmento.",
   },
   {
     step: "05",
-    title: "Abra um fragmento",
-    body: "Na sua vez, revele uma pista. Ela pode resolver uma dúvida ou criar outra.",
+    title: "Revele uma pista",
+    body: "Uma boa pista muda a mesa. Uma falsa também.",
   },
   {
     step: "06",
-    title: "Sustente uma tese",
-    body: "Quando achar que entendeu, tente responder. Acertou, acaba. Errou, continua sem você na disputa.",
+    title: "Feche sua tese",
+    body: "Acertou, vence. Errou, observa de fora.",
   },
 ];
 
 const manualDetails = [
-  "A mesa pode pular uma fase quando todos já leram o suficiente.",
-  "Quem erra a solução sai da disputa e libera suas pistas para consulta.",
-  "Durante um palpite final, a partida pausa até a resposta ser enviada.",
-  "Depois do fim, cada jogador vê a solução antes de voltar para a ante-sala.",
-  "A conta guarda perfil e modos públicos; a sala usa o navegador para reconhecer você.",
+  "A mesa pode acelerar quando estiver pronta.",
+  "Um erro revela novas peças aos demais.",
+  "Palpite final pausa a disputa.",
+  "No fim, a solução fica aberta.",
 ];
 
 const heroStats = [
-  { label: "Modos preparados", value: "4" },
-  { label: "Competição padrão", value: "4P" },
-  { label: "Pistas em disputa", value: "V/F" },
+  { label: "Modos", value: "4" },
+  { label: "Mesa padrão", value: "4P" },
+  { label: "Pistas", value: "V/F" },
 ];
 
 const valueProps = [
-  "Casos com pistas úteis e pistas que desviam.",
-  "Discussão de mesa competitiva, com risco real ao responder.",
-  "Salas privadas, modos públicos e perfil salvo.",
+  "Pistas úteis. Pistas falsas.",
+  "Debate curto, tensão alta.",
+  "Salas, filas e desafio diário.",
 ];
 
 function EvidencePreview() {
@@ -130,9 +129,7 @@ function HomeHero() {
           Contrapista
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-200 sm:text-xl">
-          Entre em uma sala, leia o caso e dispute para ser a primeira pessoa a
-          acertar a solução. A resposta certa quase sempre nasce da conversa,
-          mas só um jogador vence.
+          Leia o caso, confronte pistas e feche a tese antes da mesa.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -176,7 +173,7 @@ function ValueProposition() {
             Por que jogar
           </p>
           <h2 className="mt-4 font-serif text-4xl font-bold text-[#f2e6c8] sm:text-5xl">
-            Um jogo de dedução para discutir versões
+            Dedução em disputa
           </h2>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
@@ -199,7 +196,7 @@ function ManualHighlights() {
     <div>
       <div className="flex items-end justify-between gap-4 border-b border-[#d0a85c]/20 pb-3">
         <h3 className="font-serif text-3xl font-bold text-[#f2e6c8]">
-          Características principais
+          Na mesa
         </h3>
         <span className="font-mono text-sm font-bold text-[#b98d47]">
           Visão geral
@@ -233,7 +230,7 @@ function ManualFlow() {
     <div>
       <div className="flex items-end justify-between gap-4 border-b border-[#d0a85c]/20 pb-3">
         <h3 className="font-serif text-3xl font-bold text-[#f2e6c8]">
-          Fluxo de partida
+          Como joga
         </h3>
         <span className="font-mono text-sm font-bold text-[#b98d47]">
           Passo a passo
@@ -267,7 +264,7 @@ function ManualDetails() {
   return (
     <div className="rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]/85 p-5 shadow-xl shadow-black/20">
       <h3 className="font-serif text-3xl font-bold text-[#f2e6c8]">
-        Detalhes importantes
+        Regras rápidas
       </h3>
       <ul className="mt-4 grid gap-3 text-sm leading-6 text-stone-300 md:grid-cols-2">
         {manualDetails.map((detail) => (
@@ -289,20 +286,18 @@ function FieldManual() {
             Manual de campo
           </p>
           <h2 className="mt-4 font-serif text-4xl font-bold text-[#f2e6c8] sm:text-5xl">
-            Como conduzir uma sessão
+            Entre no caso
           </h2>
           <p className="mt-4 text-lg leading-8 text-stone-300">
-            Contrapista coloca a mesa diante de um caso incompleto. Cada pessoa
-            tem uma parte do arquivo, mas ninguém sabe de início o que é pista
-            boa e o que é desvio.
+            Um arquivo incompleto, pistas em conflito e uma mesa tentando
+            chegar primeiro.
           </p>
           <div className="mt-6 rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]/85 p-5 shadow-xl shadow-black/20">
             <h3 className="font-serif text-2xl font-bold text-[#f2e6c8]">
               Objetivo
             </h3>
             <p className="mt-3 text-sm leading-7 text-stone-300">
-              Monte uma resposta antes dos outros jogadores. Quem acertar a
-              solução primeiro vence; quem errar sai da disputa.
+              Descubra a solução antes dos outros jogadores.
             </p>
           </div>
         </div>

@@ -31,17 +31,17 @@ type AuthModalProps = {
 const modalCopy = {
   login: {
     eyebrow: "Acesso",
-    title: "Entrar na conta",
-    body: "Entre para jogar, salvar seu perfil e acessar os modos públicos.",
+    title: "Entre para jogar",
+    body: "Acesse suas partidas, entre nas filas e acompanhe seu desempenho no Contrapista.",
     submit: "Entrar",
-    switchMode: "Ainda não tenho conta",
+    switchMode: "Criar uma nova conta",
   },
   register: {
     eyebrow: "Cadastro",
-    title: "Criar conta",
-    body: "Crie uma conta para jogar, entrar em filas e manter seu nome no perfil.",
+    title: "Comece sua investigação",
+    body: "Escolha um nome, confirme seu email e participe das partidas com seu próprio histórico.",
     submit: "Criar conta",
-    switchMode: "Já tenho uma conta",
+    switchMode: "Entrar com minha conta",
   },
 } satisfies Record<
   AuthMode,
@@ -265,18 +265,18 @@ export function AuthModal({
               Contrapista
             </p>
             <h2 className="mt-5 font-serif text-4xl font-bold leading-tight text-[#f2e6c8]">
-              Seu nome fica salvo para a próxima mesa.
+              Jogue com um nome reconhecível em cada mesa.
             </h2>
             <p className="mt-5 text-sm leading-7 text-stone-300">
-              Use email e senha, Google ou GitHub. Depois escolha um nome único
-              para aparecer nas partidas.
+              Entre com email e senha, Google ou GitHub. Seu nome público será
+              usado nas salas, filas e resultados.
             </p>
           </div>
           <div className="mt-10 space-y-3 border-t border-[#d0a85c]/20 pt-6 text-sm text-stone-300">
-            <p className="font-bold text-[#f5e7bd]">Antes de jogar</p>
+            <p className="font-bold text-[#f5e7bd]">Pronto para disputar</p>
             <p className="leading-7">
-              Algumas ações pedem conta para manter sala, fila e perfil ligados
-              ao mesmo usuário.
+              Use sua conta para entrar em filas, participar de salas e revisar
+              partidas anteriores.
             </p>
           </div>
         </aside>
@@ -336,7 +336,7 @@ export function AuthModal({
               <TextField
                 autoComplete="name"
                 error={fieldErrors.username ?? fieldErrors.name}
-                label="Nome de usuário"
+                label="Nome público"
                 name="username"
                 onChange={(value) => onFieldChange("username", value)}
                 type="text"

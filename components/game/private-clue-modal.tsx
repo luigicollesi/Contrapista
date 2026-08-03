@@ -24,7 +24,7 @@ export function PrivateClueModal({
             Fragmento {String(clue.number).padStart(2, "0")}
           </p>
           <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
-            Leitura privada
+            Fragmento reservado
           </h2>
         </div>
         <button
@@ -47,8 +47,8 @@ export function PrivateClueModal({
           type="button"
         >
           {isAlreadySharedBlocked
-            ? "Fragmento já compartilhado"
-            : "Compartilhar na rodada"}
+            ? "Já aberto"
+            : "Abrir na rodada"}
         </button>
       </div>
     </RoomModal>

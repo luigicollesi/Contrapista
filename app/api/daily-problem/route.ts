@@ -9,7 +9,7 @@ import { rateLimitResponse } from "@/lib/security/rate-limit";
 
 function unauthorized() {
   return Response.json(
-    { error: "Faça login para acessar o problema diário." },
+    { error: "Entre para acessar o desafio diário." },
     { status: 401 },
   );
 }
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       }),
     });
   } catch (error) {
-    return errorResponse(error, "Erro ao carregar problema diário.");
+    return errorResponse(error, "Não deu para carregar o desafio.");
   }
 }
 
@@ -93,6 +93,6 @@ export async function POST(request: Request) {
 
     return Response.json(result, { status });
   } catch (error) {
-    return errorResponse(error, "Erro ao avaliar resposta.");
+    return errorResponse(error, "Não deu para avaliar sua resposta.");
   }
 }

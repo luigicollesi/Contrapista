@@ -25,7 +25,7 @@ export function CaseCreationStatus({
         </div>
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-            Tempo de criação
+            Tempo
           </p>
           <p className="mt-1 font-mono text-3xl font-black text-[#fff3cf]">
             {formatElapsedTime(elapsedSeconds)}
@@ -45,7 +45,7 @@ export function CaseCreationStatus({
 
       <div className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black/25">
         <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
-          Andamento do dossiê
+          Dossiê em montagem
         </p>
         <div className="mt-4 flex items-center gap-4">
           <span className="relative flex h-4 w-4">

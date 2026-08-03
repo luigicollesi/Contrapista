@@ -53,8 +53,7 @@ export default async function CasesPage() {
           Casos disponíveis
         </h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-stone-300">
-          Veja quais casos já existem sem abrir narrativa, pistas ou solução.
-          A lista mostra só o que dá para consultar sem estragar a partida.
+          Consulte o arquivo sem abrir pistas, narrativa ou solução.
         </p>
 
         {loadError ? (

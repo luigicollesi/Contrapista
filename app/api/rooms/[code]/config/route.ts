@@ -13,7 +13,7 @@ export async function PATCH(
   };
 
   if (!body.userId || !body.config) {
-    return Response.json({ error: "Configuração inválida." }, { status: 400 });
+    return Response.json({ error: "Revise os ajustes da mesa." }, { status: 400 });
   }
 
   const authorizationFailure = await requireAuthorizedRoomUser({
@@ -39,6 +39,6 @@ export async function PATCH(
 
     return Response.json({ room });
   } catch (error) {
-    return errorResponse(error, "Erro ao atualizar configuração.");
+    return errorResponse(error, "Não deu para salvar a mesa.");
   }
 }

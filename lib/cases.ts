@@ -468,6 +468,7 @@ Contrato:
 - O último parágrafo de case_text termina com a seção exata "Perguntas centrais do caso:" e 2 a 4 perguntas numeradas "1.", "2.", "3.", "4.".
 - final_answer deve ter este formato exato: começa com "Resposta:", depois linhas numeradas "1. ...", "2. ..." respondendo as perguntas na mesma ordem, depois uma linha "Contexto:" explicando dedução e pistas falsas.
 - true_clues e false_clues são arrays de strings curtas, concretas e independentes, no máximo 120 caracteres.
+- O conjunto de true_clues precisa conter informação suficiente para responder todas as perguntas centrais sem depender de sorte, conhecimento externo ou suposição não indicada.
 - Use aspas duplas JSON. Escape quebras de linha dentro das strings como "\\n"; não escreva quebras literais dentro de strings.
 - Não use placeholders, reticências, blocos de código, aspas simples JSON, chaves extras nem comentários.
 - Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro das pistas.
@@ -477,6 +478,7 @@ Modelo de final_answer:
 
 	Qualidade:
 	- A solução depende de cruzar várias pistas, não de uma pista óbvia.
+	- Cada resposta numerada precisa ser sustentada por pelo menos uma pista confiável; algumas respostas podem exigir cruzar duas ou mais pistas.
 	- Inclua pistas físicas, testemunhais, temporais e alguns jogos de linguagem simples.
 	- Pistas falsas devem ser plausíveis e úteis para discussão, mas desviam sem o conjunto completo.
 	- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
@@ -532,6 +534,8 @@ Regras específicas:
 	- ${falseClueNarrativeRules}
 	- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
 	- Distribua as pistas para que nenhuma sozinha resolva tudo; pelo menos uma pista deve parecer secundária até ser combinada com outra.
+	- Garanta cobertura completa: para cada pergunta central, deve existir no conjunto de true_clues uma base dedutiva suficiente para chegar à resposta correspondente.
+	- No Contexto, explique de forma breve como as true_clues permitem responder cada pergunta central.
 	- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
 ${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
 `.trim();

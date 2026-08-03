@@ -15,7 +15,7 @@ type GamePhasePanelProps = {
 
 function phaseDescription(phase: GamePhase, currentPlayerName?: string) {
   if (phase === "ready") {
-    return "Todos precisam confirmar prontidão para abrir o dossiê.";
+    return "Confirme presença para abrir o dossiê.";
   }
 
   if (phase === "turn") {
@@ -23,7 +23,7 @@ function phaseDescription(phase: GamePhase, currentPlayerName?: string) {
   }
 
   if (phase === "roulette") {
-    return "A ordem da rodada está sendo definida.";
+    return "A ordem está sendo definida.";
   }
 
   if (phase === "shared_clue") {
@@ -31,10 +31,10 @@ function phaseDescription(phase: GamePhase, currentPlayerName?: string) {
   }
 
   if (phase === "pause") {
-    return "Organizem hipóteses antes da próxima rodada.";
+    return "Reorganize a tese.";
   }
 
-  return "Leiam o dossiê e seus fragmentos sem revelar conclusões.";
+  return "Leia sem revelar demais.";
 }
 
 export function GamePhasePanel({

@@ -186,7 +186,7 @@ export default function GamePage() {
           !roomData.room.users.some((user) => user.id === currentUserId)
         ) {
           throw new Error(
-            "A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.",
+            "Mesa em andamento. Aguarde o fim da partida.",
           );
         }
 
@@ -222,7 +222,7 @@ export default function GamePage() {
           setError(
             caughtError instanceof Error
               ? caughtError.message
-              : "Não foi possível carregar o dossiê.",
+              : "Não deu para carregar o dossiê.",
           );
         }
       } finally {
@@ -402,7 +402,7 @@ export default function GamePage() {
 
   async function postGameAction(path: "ready" | "skip") {
     if (!userId) {
-      setError("Entre na sala novamente para continuar.");
+      setError("Volte para a mesa para continuar.");
       return;
     }
 
@@ -418,7 +418,7 @@ export default function GamePage() {
           },
           body: JSON.stringify({ userId }),
         },
-        "Não foi possível atualizar o jogo.",
+        "Não deu para atualizar a partida.",
       );
 
       setRoom((current) =>
@@ -428,7 +428,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível atualizar o jogo.",
+          : "Não deu para atualizar a partida.",
       );
     }
   }
@@ -449,7 +449,7 @@ export default function GamePage() {
 
   async function publishEvent(body: Record<string, unknown>) {
     if (!userId) {
-      setError("Entre na sala novamente para interagir com o dossiê.");
+      setError("Volte para a mesa para interagir.");
       return null;
     }
 
@@ -462,7 +462,7 @@ export default function GamePage() {
         },
         body: JSON.stringify({ userId, ...body }),
       },
-      "Não foi possível publicar evento.",
+      "Não deu para registrar a ação.",
     );
 
     return data.event;
@@ -470,7 +470,7 @@ export default function GamePage() {
 
   async function openSolution() {
     if (isEliminated) {
-      setError("Jogadores eliminados não podem registrar palpite final.");
+      setError("Eliminados não podem dar palpite final.");
       return;
     }
 
@@ -488,19 +488,19 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível abrir a solução.",
+          : "Não deu para abrir o palpite.",
       );
     }
   }
 
   async function shareClue(clue: PlayerClue) {
     if (!userId) {
-      setError("Entre na sala novamente para compartilhar pistas.");
+      setError("Volte para a mesa para abrir pistas.");
       return;
     }
 
     if (isEliminated) {
-      setError("Jogadores eliminados não podem compartilhar pistas.");
+      setError("Eliminados não podem abrir pistas.");
       return;
     }
 
@@ -521,7 +521,7 @@ export default function GamePage() {
             clueId: clue.id,
           }),
         },
-        "Não foi possível compartilhar a pista.",
+        "Não deu para compartilhar a pista.",
       );
 
       setSelectedClue(null);
@@ -532,7 +532,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível compartilhar a pista.",
+          : "Não deu para compartilhar a pista.",
       );
     }
   }
@@ -574,7 +574,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível enviar o palpite.",
+          : "Não deu para enviar o palpite.",
       );
       setIsSubmittingGuess(false);
     }
@@ -595,7 +595,7 @@ export default function GamePage() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Não foi possível registrar a avaliação manual.",
+          : "Não deu para registrar sua avaliação.",
       );
     }
   }

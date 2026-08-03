@@ -40,7 +40,7 @@ export async function requireAuthorizedRoomUser({
     });
 
     return Response.json(
-      { error: "Ação não permitida para este usuário." },
+      { error: "Esta ação não está disponível para você." },
       { status: 403 },
     );
   }

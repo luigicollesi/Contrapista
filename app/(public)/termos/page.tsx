@@ -3,31 +3,31 @@ import Link from "next/link";
 const sections = [
   {
     title: "1. Uso da plataforma",
-    body: "Contrapista é um jogo de investigação online. Ao usar o site, jogue com respeito, não tente explorar falhas e não atrapalhe a partida de outras pessoas.",
+    body: "Jogue com respeito. Não atrapalhe partidas nem tente explorar falhas.",
   },
   {
     title: "2. Conta e identidade",
-    body: "Você é responsável pelo email, senha, login social e nome público da sua conta. Escolha um nome adequado, sem palavrões, conteúdo sexual, ataques ou tentativa de se passar por outra pessoa, marca ou equipe do Contrapista.",
+    body: "Cuide da sua conta e escolha um nome público adequado.",
   },
   {
     title: "3. Conteúdo e conduta",
-    body: "Não envie conteúdo ilegal, abusivo, discriminatório, sexual explícito, ameaçador, fraudulento ou com dados pessoais de terceiros. Em caso de abuso, o acesso pode ser limitado ou encerrado.",
+    body: "Não envie conteúdo abusivo, ilegal, sexual explícito ou dados de terceiros.",
   },
   {
-    title: "4. Casos, IA e funcionamento",
-    body: "Algumas partes do jogo usam IA, então tempo de resposta e qualidade podem variar. Casos, respostas, palpites, salas, ranking e problemas diários podem ser salvos para o jogo funcionar.",
+    title: "4. Casos e avaliações",
+    body: "Casos e avaliações podem variar. Partidas e resultados podem ser registrados.",
   },
   {
     title: "5. Segurança",
-    body: "Não use automação abusiva, não burle proteções, não teste invasões sem autorização e não tente acessar dados que não são da sua conta.",
+    body: "Não use automação abusiva nem tente acessar o que não é seu.",
   },
   {
     title: "6. Privacidade",
-    body: "A Política de Privacidade explica quais dados são usados e por quê. Ao criar conta, você aceita estes termos e declara que leu essa política.",
+    body: "Ao criar conta, você aceita estes termos e a Política de Privacidade.",
   },
   {
     title: "7. Alterações",
-    body: "Estes termos podem mudar quando o jogo, as regras ou as necessidades de segurança mudarem. Mudanças importantes podem pedir novo aceite.",
+    body: "Os termos podem mudar. Mudanças importantes podem pedir novo aceite.",
   },
 ];
 
@@ -45,9 +45,7 @@ export default function TermsPage() {
           Versão 2026-08-02
         </p>
         <p className="mt-6 text-base leading-8 text-stone-300">
-          Estes termos explicam as regras básicas para criar conta e usar o
-          Contrapista. A Política de Privacidade complementa este texto e mostra
-          quais dados são usados para manter contas, salas e partidas.
+          Regras básicas para entrar, jogar e manter a mesa justa.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link

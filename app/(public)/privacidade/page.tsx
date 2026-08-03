@@ -3,31 +3,31 @@ import Link from "next/link";
 const sections = [
   {
     title: "1. Dados de conta",
-    body: "Ao criar conta, podemos guardar email, nome de usuário, tipo de login, hash da senha quando houver senha, datas da conta e registros de aceite dos termos.",
+    body: "Guardamos o necessário para sua conta, nome público e aceite dos termos.",
   },
   {
     title: "2. Login social",
-    body: "Ao entrar com Google ou GitHub, usamos os dados necessários para reconhecer sua conta, como email e identificador do provedor. O nome desses serviços não vira seu nome público automaticamente.",
+    body: "Google e GitHub servem para entrada. Seu nome público continua sendo escolhido por você.",
   },
   {
     title: "3. Dados de jogo",
-    body: "Para manter partidas funcionando, podemos guardar código de sala, participantes, cor escolhida, estado do jogo, pistas, palpites, respostas, eventos, problemas diários, perfil e ranking.",
+    body: "Partidas, pistas, palpites, desafios e ranking podem ser mantidos no seu histórico.",
   },
   {
-    title: "4. Uso de IA",
-    body: "Algumas ações usam provedores de IA para criar casos ou avaliar respostas. O envio pode incluir prompt, resposta oficial, palpite do jogador e o contexto necessário para a tarefa. Chaves de API não são expostas.",
+    title: "4. Avaliações automáticas",
+    body: "Algumas criações e avaliações usam IA. Enviamos apenas o necessário para a jogada.",
   },
   {
     title: "5. Segurança e prevenção de abuso",
-    body: "Usamos registros técnicos, limites de requisição, validação de sessão, proteção CSRF, verificação de origem e outros controles para reduzir abuso e acesso indevido.",
+    body: "Usamos controles de segurança para proteger contas e mesas.",
   },
   {
     title: "6. Compartilhamento",
-    body: "Os dados não são vendidos. Eles podem passar por serviços necessários para login, banco de dados, hospedagem, OAuth, IA e ferramentas técnicas do Contrapista.",
+    body: "Seus dados não são vendidos. Serviços parceiros ajudam o jogo a funcionar.",
   },
   {
     title: "7. Retenção e remoção",
-    body: "Dados de conta, partidas, ranking e problemas diários podem ser mantidos enquanto forem úteis para o serviço. Quando possível, contas e registros podem ser removidos ao deixarem de ser necessários ou em caso de abuso.",
+    body: "Mantemos registros enquanto forem úteis para conta, partidas e segurança.",
   },
   {
     title: "8. Atualizações",
@@ -49,8 +49,7 @@ export default function PrivacyPage() {
           Versão 2026-08-02
         </p>
         <p className="mt-6 text-base leading-8 text-stone-300">
-          Esta política explica quais dados o Contrapista usa para manter
-          cadastro, login, salas, partidas, problema diário, ranking e IA.
+          Como o Contrapista cuida da sua conta, partidas e histórico.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link

@@ -39,7 +39,7 @@ export function FixedPhaseActions({
           className="flex h-11 items-center gap-1.5 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-3 text-sm font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70 sm:h-12 sm:gap-2 sm:px-4 sm:text-base"
           disabled={hasVotedToSkip}
           onClick={onSkip}
-          title="Pular fase por consenso"
+          title="Pular fase"
           type="button"
         >
           <span aria-hidden="true" className="text-lg">

@@ -39,8 +39,8 @@ export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
           }`}
         >
           {sharedClue.autoSharedFalse
-            ? "O tempo de escolha foi excedido. Uma pista falsa foi compartilhada automaticamente."
-            : "O tempo de escolha foi excedido. Uma pista verdadeira foi compartilhada automaticamente."}
+            ? "Tempo esgotado. Uma pista falsa foi aberta."
+            : "Tempo esgotado. Uma pista verdadeira foi aberta."}
         </p>
       ) : null}
 
@@ -48,7 +48,7 @@ export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
         {sharedClue.clueText}
       </p>
       <p className="mt-5 text-sm font-semibold text-stone-400">
-        O fragmento fecha quando o cronômetro chegar a zero.
+        Fecha ao fim do tempo.
       </p>
     </RoomModal>
   );

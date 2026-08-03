@@ -12,7 +12,7 @@ export async function GET(
 
   if (!session?.user?.id || !session.user.name) {
     return Response.json(
-      { error: "Faça login para acessar o caso da partida." },
+      { error: "Entre para acessar o caso." },
       { status: 401 },
     );
   }
@@ -24,7 +24,7 @@ export async function GET(
 
   if (!roomCode || !userId) {
     return Response.json(
-      { error: "Sala e usuário são obrigatórios para acessar o caso." },
+      { error: "Volte para a sala e tente novamente." },
       { status: 400 },
     );
   }
@@ -61,6 +61,6 @@ export async function GET(
 
     return Response.json({ case: gameCase });
   } catch (error) {
-    return errorResponse(error, "Erro ao carregar caso.", 500);
+    return errorResponse(error, "Não deu para carregar o caso.", 500);
   }
 }

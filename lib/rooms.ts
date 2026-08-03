@@ -1321,7 +1321,7 @@ export async function createRoom({
   const trimmedNickname = toRoomNickname(nickname);
 
   if (!trimmedNickname) {
-    throw new PublicError("Faça login com um nome de usuário antes de criar sala.");
+    throw new PublicError("Entre e escolha seu nome antes de criar sala.");
   }
 
   assertRoomNicknameAllowed(trimmedNickname);
@@ -1405,7 +1405,7 @@ export async function createRoom({
     }
   }
 
-  throw new Error("Não foi possível criar uma sala agora.");
+  throw new Error("Não deu para criar uma sala agora.");
 }
 
 export async function getRoom(code: string) {
@@ -1539,7 +1539,7 @@ export async function joinRoom({
   const normalizedBrowserId = normalizeBrowserId(browserId);
 
   if (!trimmedNickname) {
-    throw new PublicError("Faça login com um nome de usuário antes de entrar na sala.");
+    throw new PublicError("Entre e escolha seu nome antes de entrar na sala.");
   }
 
   assertRoomNicknameAllowed(trimmedNickname);
@@ -2043,12 +2043,12 @@ export async function updateRoomConfig({
 
     if (room.activecase) {
       await client.query("ROLLBACK");
-      throw new PublicError("A configuração não pode ser alterada com dossiê ativo.");
+      throw new PublicError("A mesa já está em jogo.");
     }
 
     if ((room.mode ?? "custom") !== "custom") {
       await client.query("ROLLBACK");
-      throw new PublicError("Partidas pareadas usam configuração clássica fixa.");
+      throw new PublicError("Esta mesa usa regras clássicas.");
     }
 
     const users = normalizeUsers(room.users);
@@ -2056,7 +2056,7 @@ export async function updateRoomConfig({
 
     if (!firstUser || firstUser.id !== userId) {
       await client.query("ROLLBACK");
-      throw new PublicError("Apenas o primeiro participante pode alterar a configuração.");
+      throw new PublicError("Apenas o líder pode alterar a mesa.");
     }
 
     let configId = room.config_id;
