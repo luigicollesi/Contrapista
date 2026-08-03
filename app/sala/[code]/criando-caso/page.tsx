@@ -62,6 +62,7 @@ const CASE_CREATION_RETRY_DELAY_MS = 2500;
 const CASE_CREATION_NOTICE_KEY = "contrapista-case-creation-notice";
 
 type RoomConfig = {
+  timersEnabled: boolean;
   readingTimeSeconds: number;
   clueSelectionTimeSeconds: number;
   revealedClueAnalysisTimeSeconds: number;

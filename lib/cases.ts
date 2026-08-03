@@ -283,7 +283,7 @@ function isCaseCreationStateError(error: unknown) {
 }
 
 function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
-  function numberOrDefault(key: keyof RoomConfig) {
+  function numberOrDefault(key: Exclude<keyof RoomConfig, "timersEnabled">) {
     const value = config?.[key];
     const numericValue = typeof value === "number" ? value : Number(value);
 
@@ -291,6 +291,10 @@ function normalizeCaseConfig(config: Partial<RoomConfig> | null | undefined) {
   }
 
   return {
+    timersEnabled:
+      typeof config?.timersEnabled === "boolean"
+        ? config.timersEnabled
+        : DEFAULT_ROOM_CONFIG.timersEnabled,
     readingTimeSeconds: numberOrDefault("readingTimeSeconds"),
     clueSelectionTimeSeconds: numberOrDefault("clueSelectionTimeSeconds"),
     revealedClueAnalysisTimeSeconds: numberOrDefault(
@@ -809,7 +813,8 @@ export async function createCaseForRoom(roomCode: string) {
           cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
           cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
           cfg.true_clues_per_player AS "trueCluesPerPlayer",
-          cfg.clues_per_player AS "cluesPerPlayer"
+          cfg.clues_per_player AS "cluesPerPlayer",
+          cfg.timers_enabled AS "timersEnabled"
         FROM game_rooms gr
         LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
         WHERE gr.room_code = $1

@@ -26,6 +26,7 @@ export type RoomUser = {
 };
 
 export type RoomConfig = {
+  timersEnabled: boolean;
   readingTimeSeconds: number;
   clueSelectionTimeSeconds: number;
   revealedClueAnalysisTimeSeconds: number;
@@ -106,6 +107,7 @@ const ROOM_NICKNAME_MAX_LENGTH = 18;
 const CUSTOM_ROOM_MAX_USERS = 10;
 
 export const DEFAULT_ROOM_CONFIG: RoomConfig = {
+  timersEnabled: true,
   readingTimeSeconds: 120,
   clueSelectionTimeSeconds: 10,
   revealedClueAnalysisTimeSeconds: 30,
@@ -123,7 +125,7 @@ const ROOM_CONFIG_LIMITS = {
   finalGuessTimeSeconds: { min: 30, max: 120 },
   trueCluesPerPlayer: { min: 0, max: 100 },
   cluesPerPlayer: { min: 2, max: 10 },
-} satisfies Record<keyof RoomConfig, { min: number; max: number }>;
+} satisfies Record<Exclude<keyof RoomConfig, "timersEnabled">, { min: number; max: number }>;
 
 let schemaReady: Promise<void> | null = null;
 
@@ -185,7 +187,7 @@ function clampNumber(value: number, min: number, max: number) {
 
 function normalizeConfigNumber(
   value: unknown,
-  key: keyof RoomConfig,
+  key: Exclude<keyof RoomConfig, "timersEnabled">,
 ): number {
   const limits = ROOM_CONFIG_LIMITS[key];
   const numericValue = typeof value === "number" ? value : Number(value);
@@ -202,6 +204,12 @@ function normalizeRoomConfig(value: unknown): RoomConfig {
   const data = value as Partial<RoomConfig> & Record<string, unknown>;
 
   return {
+    timersEnabled:
+      typeof data.timersEnabled === "boolean"
+        ? data.timersEnabled
+        : typeof data.timers_enabled === "boolean"
+          ? data.timers_enabled
+          : DEFAULT_ROOM_CONFIG.timersEnabled,
     readingTimeSeconds: normalizeConfigNumber(
       data.readingTimeSeconds ?? data.reading_time_seconds,
       "readingTimeSeconds",
@@ -261,6 +269,14 @@ function snapTrueCluePercentage({
 
 function durationMs(seconds: number) {
   return seconds * 1000;
+}
+
+function hasPhaseTimer(state: GameState, config: RoomConfig) {
+  return config.timersEnabled || state.phase === "roulette";
+}
+
+function isPhaseExpired(state: GameState, now: number, config: RoomConfig) {
+  return hasPhaseTimer(state, config) && now >= state.phaseEndsAt;
 }
 
 function publicRoom(room: Room) {
@@ -640,6 +656,38 @@ function markClueShared(state: GameState, userId: string, clueId: string) {
   };
 }
 
+function hasSharedEveryClueInCycle({
+  clueCountPerPlayer,
+  state,
+  users,
+}: {
+  clueCountPerPlayer: number;
+  state: GameState;
+  users: RoomUser[];
+}) {
+  if (clueCountPerPlayer <= 0 || users.length === 0) {
+    return false;
+  }
+
+  return users.every(
+    (user) => getSharedClueIds(state, user.id).length >= clueCountPerPlayer,
+  );
+}
+
+function resetSharedClueCycleIfComplete({
+  clueCountPerPlayer,
+  state,
+  users,
+}: {
+  clueCountPerPlayer: number;
+  state: GameState;
+  users: RoomUser[];
+}) {
+  return hasSharedEveryClueInCycle({ clueCountPerPlayer, state, users })
+    ? { ...state, sharedClueIds: {} }
+    : state;
+}
+
 function normalizeTextArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -737,9 +785,11 @@ async function buildAutoSharedClueState({
     playerCount: users.length,
   });
   const usedIds = getSharedClueIds(state, actor.id);
-  const clue =
-    actorClues.find((item) => !item.isFalse && !usedIds.includes(item.id)) ??
-    actorClues.find((item) => item.isFalse && !usedIds.includes(item.id));
+  const availableClues = actorClues.filter((item) => !usedIds.includes(item.id));
+  const clue = seededShuffle(
+    availableClues,
+    `${caseId}:${actor.id}:auto-share:${state.round}:${state.currentTurnIndex}:${now}`,
+  )[0];
 
   if (!clue) {
     return null;
@@ -758,8 +808,6 @@ async function buildAutoSharedClueState({
       clueText: clue.text,
       clueNumber: clue.number,
       clueId: clue.id,
-      autoShared: true,
-      autoSharedFalse: clue.isFalse,
       createdAt: now,
     },
   } satisfies GameState;
@@ -773,6 +821,8 @@ async function advanceGameStateWithAutoShare({
   config,
   caseId,
   client,
+  forceAdvance = false,
+  clueCountPerPlayer = 0,
 }: {
   state: GameState;
   users: RoomUser[];
@@ -781,11 +831,20 @@ async function advanceGameStateWithAutoShare({
   config: RoomConfig;
   caseId: string | null;
   client?: DatabaseClient;
+  forceAdvance?: boolean;
+  clueCountPerPlayer?: number;
 }) {
+  const effectiveClueCountPerPlayer =
+    clueCountPerPlayer > 0
+      ? clueCountPerPlayer
+      : state.phase === "pause" && caseId && users.length > 0
+        ? Math.floor((await getCaseClueCount(caseId, client)) / users.length)
+        : 0;
+
   if (
     state.phase === "turn" &&
     !state.pausedAt &&
-    now >= state.phaseEndsAt
+    (forceAdvance || isPhaseExpired(state, now, config))
   ) {
     const autoShared = await buildAutoSharedClueState({
       state,
@@ -801,7 +860,15 @@ async function advanceGameStateWithAutoShare({
     }
   }
 
-  return advanceGameState(state, users, now, seed, config);
+  return advanceGameState(
+    state,
+    users,
+    now,
+    seed,
+    config,
+    forceAdvance,
+    effectiveClueCountPerPlayer,
+  );
 }
 
 function nextTurnOrPause(
@@ -837,6 +904,8 @@ function advanceGameState(
   now: number,
   seed = "game",
   config = DEFAULT_ROOM_CONFIG,
+  forceAdvance = false,
+  clueCountPerPlayer = 0,
 ) {
   const activeUsers = getActiveUsers(state, users);
   const activeUserIds = activeUsers.map((user) => user.id);
@@ -854,8 +923,9 @@ function advanceGameState(
     return next;
   }
 
-  while (now >= next.phaseEndsAt && guard < 20) {
+  while ((forceAdvance || isPhaseExpired(next, now, config)) && guard < 20) {
     guard += 1;
+    forceAdvance = false;
 
     if (next.phase === "reading") {
       next = startRouletteSpin(next, activeUsers, now, seed);
@@ -864,8 +934,14 @@ function advanceGameState(
     } else if (next.phase === "turn" || next.phase === "shared_clue") {
       next = nextTurnOrPause(next, activeUsers, now, config);
     } else {
+      const cycleState = resetSharedClueCycleIfComplete({
+        clueCountPerPlayer,
+        state: next,
+        users: activeUsers,
+      });
+
       next = {
-        ...next,
+        ...cycleState,
         phase: "turn",
         round: next.round + 1,
         currentTurnIndex: 0,
@@ -932,6 +1008,7 @@ export async function ensureRoomsSchema() {
       CREATE TABLE IF NOT EXISTS game_rooms_config (
         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         room_id uuid UNIQUE REFERENCES game_rooms(id) ON DELETE CASCADE,
+        timers_enabled boolean NOT NULL DEFAULT true,
         reading_time_seconds integer NOT NULL DEFAULT 120 CHECK (reading_time_seconds BETWEEN 0 AND 300),
         clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
@@ -978,6 +1055,7 @@ export async function ensureRoomsSchema() {
       END $$;
 
       ALTER TABLE game_rooms_config
+        ADD COLUMN IF NOT EXISTS timers_enabled boolean NOT NULL DEFAULT true,
         ADD COLUMN IF NOT EXISTS reading_time_seconds integer NOT NULL DEFAULT 120 CHECK (reading_time_seconds BETWEEN 0 AND 300),
         ADD COLUMN IF NOT EXISTS clue_selection_time_seconds integer NOT NULL DEFAULT 10 CHECK (clue_selection_time_seconds BETWEEN 5 AND 60),
         ADD COLUMN IF NOT EXISTS revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
@@ -1429,7 +1507,8 @@ export async function createRoom({
             round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
             final_guess_time_seconds AS "finalGuessTimeSeconds",
             true_clues_per_player AS "trueCluesPerPlayer",
-            clues_per_player AS "cluesPerPlayer"
+            clues_per_player AS "cluesPerPlayer",
+            timers_enabled AS "timersEnabled"
         `,
         [room.id],
       );
@@ -1485,7 +1564,8 @@ export async function getRoom(code: string) {
         cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
         cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
         cfg.true_clues_per_player AS "trueCluesPerPlayer",
-        cfg.clues_per_player AS "cluesPerPlayer"
+        cfg.clues_per_player AS "cluesPerPlayer",
+        cfg.timers_enabled AS "timersEnabled"
       FROM game_rooms gr
       LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
       WHERE gr.room_code = $1
@@ -2265,18 +2345,20 @@ export async function updateRoomConfig({
     await client.query(
       `
         UPDATE game_rooms_config
-        SET reading_time_seconds = $2,
-            clue_selection_time_seconds = $3,
-            revealed_clue_analysis_time_seconds = $4,
-            round_analysis_time_seconds = $5,
-            final_guess_time_seconds = $6,
-            true_clues_per_player = $7,
-            clues_per_player = $8,
+        SET timers_enabled = $2,
+            reading_time_seconds = $3,
+            clue_selection_time_seconds = $4,
+            revealed_clue_analysis_time_seconds = $5,
+            round_analysis_time_seconds = $6,
+            final_guess_time_seconds = $7,
+            true_clues_per_player = $8,
+            clues_per_player = $9,
             updated_at = now()
         WHERE id = $1::uuid
       `,
       [
         configId,
+        snappedConfig.timersEnabled,
         snappedConfig.readingTimeSeconds,
         snappedConfig.clueSelectionTimeSeconds,
         snappedConfig.revealedClueAnalysisTimeSeconds,
@@ -2502,7 +2584,8 @@ export async function cancelCustomCaseCreation({
           cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
           cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
           cfg.true_clues_per_player AS "trueCluesPerPlayer",
-          cfg.clues_per_player AS "cluesPerPlayer"
+          cfg.clues_per_player AS "cluesPerPlayer",
+          cfg.timers_enabled AS "timersEnabled"
         FROM game_rooms gr
         LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
         WHERE gr.room_code = $1
@@ -3046,7 +3129,8 @@ export async function publishRoomEvent({
           cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
           cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
           cfg.true_clues_per_player AS "trueCluesPerPlayer",
-          cfg.clues_per_player AS "cluesPerPlayer"
+          cfg.clues_per_player AS "cluesPerPlayer",
+          cfg.timers_enabled AS "timersEnabled"
         FROM game_rooms gr
         LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
         WHERE gr.room_code = $1
@@ -3502,7 +3586,8 @@ async function getLockedRoomWithConfig(client: DatabaseClient, code: string) {
         cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
         cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
         cfg.true_clues_per_player AS "trueCluesPerPlayer",
-        cfg.clues_per_player AS "cluesPerPlayer"
+        cfg.clues_per_player AS "cluesPerPlayer",
+        cfg.timers_enabled AS "timersEnabled"
       FROM game_rooms gr
       LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
       WHERE gr.room_code = $1
@@ -3668,6 +3753,7 @@ export async function skipGamePhase({
           config,
           caseId: room.activecase,
           client,
+          forceAdvance: true,
         })
       : votedState;
 
@@ -3732,7 +3818,8 @@ export async function shareRoomClue({
           cfg.round_analysis_time_seconds AS "roundAnalysisTimeSeconds",
           cfg.final_guess_time_seconds AS "finalGuessTimeSeconds",
           cfg.true_clues_per_player AS "trueCluesPerPlayer",
-          cfg.clues_per_player AS "cluesPerPlayer"
+          cfg.clues_per_player AS "cluesPerPlayer",
+          cfg.timers_enabled AS "timersEnabled"
         FROM game_rooms gr
         LEFT JOIN game_rooms_config cfg ON cfg.id = gr.config_id
         WHERE gr.room_code = $1

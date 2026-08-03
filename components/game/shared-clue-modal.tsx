@@ -4,11 +4,16 @@ import { RoomModal } from "@/components/rooms/room-modal";
 type SharedClue = NonNullable<GameState["sharedClue"]>;
 
 type SharedClueModalProps = {
+  hasTimer: boolean;
   onClose: () => void;
   sharedClue: SharedClue;
 };
 
-export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
+export function SharedClueModal({
+  hasTimer,
+  onClose,
+  sharedClue,
+}: SharedClueModalProps) {
   return (
     <RoomModal>
       <div className="flex items-start justify-between gap-4">
@@ -48,7 +53,7 @@ export function SharedClueModal({ onClose, sharedClue }: SharedClueModalProps) {
         {sharedClue.clueText}
       </p>
       <p className="mt-5 text-sm font-semibold text-stone-400">
-        Fecha ao fim do tempo.
+        {hasTimer ? "Fecha ao fim do tempo." : "A mesa avança quando todos pularem."}
       </p>
     </RoomModal>
   );

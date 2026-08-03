@@ -368,11 +368,13 @@ export default function GamePage() {
   const isGuessActor = Boolean(
     finalGuessEvent && userId && finalGuessEvent.actorId === userId,
   );
+  const timersEnabled = room?.config?.timersEnabled ?? true;
   const finalGuessDurationMs = (room?.config?.finalGuessTimeSeconds ?? 30) * 1000;
-  const finalGuessEndsAt = finalGuessEvent
+  const finalGuessEndsAt = finalGuessEvent && timersEnabled
     ? finalGuessEvent.createdAt + finalGuessDurationMs
     : null;
-  const phaseEndsAt = gameState?.pausedAt ? null : gameState?.phaseEndsAt ?? null;
+  const phaseEndsAt =
+    gameState?.pausedAt || !timersEnabled ? null : gameState?.phaseEndsAt ?? null;
   const fixedTimerEndsAt = finalGuessEndsAt ?? phaseEndsAt;
   const fixedTimerLabel = finalGuessEvent ? "Palpite final" : phaseLabel;
   const eliminatedClueGroups = useMemo(() => {
@@ -434,7 +436,7 @@ export default function GamePage() {
   }
 
   useEffect(() => {
-    if (!finalGuessEvent || !isGuessActor) {
+    if (!timersEnabled || !finalGuessEvent || !isGuessActor) {
       return;
     }
 
@@ -445,7 +447,7 @@ export default function GamePage() {
     return () => window.clearTimeout(timeout);
     // submitFinalGuess reads the latest textarea value from finalGuessRef at timeout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [finalGuessEvent?.id, finalGuessDurationMs, isGuessActor]);
+  }, [finalGuessEvent?.id, finalGuessDurationMs, isGuessActor, timersEnabled]);
 
   async function publishEvent(body: Record<string, unknown>) {
     if (!userId) {
@@ -651,6 +653,7 @@ export default function GamePage() {
       if (gameState?.phase === "shared_clue" && gameState.sharedClue && dismissedSharedClueId !== gameState.sharedClue.id) {
         return (
           <SharedClueModal
+            hasTimer={timersEnabled}
             onClose={() =>
               setDismissedSharedClueId(gameState.sharedClue?.id ?? null)
             }

@@ -35,6 +35,7 @@ type FriendSummary = {
 };
 
 type RoomConfig = {
+  timersEnabled: boolean;
   readingTimeSeconds: number;
   clueSelectionTimeSeconds: number;
   revealedClueAnalysisTimeSeconds: number;
@@ -43,6 +44,8 @@ type RoomConfig = {
   trueCluesPerPlayer: number;
   cluesPerPlayer: number;
 };
+
+type NumericRoomConfigKey = Exclude<keyof RoomConfig, "timersEnabled">;
 
 type Room = {
   code: string;
@@ -78,13 +81,14 @@ const colorOptions = Object.entries(PLAYER_COLORS) as Array<
 >;
 
 const DEFAULT_ROOM_CONFIG: RoomConfig = {
+  timersEnabled: true,
   readingTimeSeconds: 120,
-  clueSelectionTimeSeconds: 10,
-  revealedClueAnalysisTimeSeconds: 30,
+  clueSelectionTimeSeconds: 20,
+  revealedClueAnalysisTimeSeconds: 40,
   roundAnalysisTimeSeconds: 60,
   finalGuessTimeSeconds: 60,
-  trueCluesPerPlayer: 50,
-  cluesPerPlayer: 6,
+  trueCluesPerPlayer: 67,
+  cluesPerPlayer: 3,
 };
 
 const ROOM_CONFIG_PRESETS = [
@@ -93,13 +97,16 @@ const ROOM_CONFIG_PRESETS = [
     config: DEFAULT_ROOM_CONFIG,
   },
   {
-    name: "Jogo Sério",
+    name: "Jogo Pesadelo",
     config: {
       ...DEFAULT_ROOM_CONFIG,
       readingTimeSeconds: 60,
+      clueSelectionTimeSeconds: 10,
+      revealedClueAnalysisTimeSeconds: 20,
       roundAnalysisTimeSeconds: 10,
-      trueCluesPerPlayer: 35,
-      cluesPerPlayer: 3,
+      finalGuessTimeSeconds: 60,
+      trueCluesPerPlayer: 50,
+      cluesPerPlayer: 2,
     },
   },
 ] satisfies Array<{ name: string; config: RoomConfig }>;
@@ -176,7 +183,7 @@ const configFields = [
     step: 5,
   },
 ] satisfies Array<{
-  key: keyof RoomConfig;
+  key: NumericRoomConfigKey;
   label: string;
   description: string;
   group: "ritmo" | "dossie";
@@ -203,8 +210,13 @@ const configGroups = [
   description: string;
 }>;
 
-function configsMatch(left: RoomConfig, right: RoomConfig) {
-  return configFields.every((field) => left[field.key] === right[field.key]);
+function configsMatch(left: RoomConfig, right: RoomConfig, playerCount = 1) {
+  const normalizedRight = snapRoomConfigToPlayerCount(right, playerCount);
+
+  return (
+    left.timersEnabled === normalizedRight.timersEnabled &&
+    configFields.every((field) => left[field.key] === normalizedRight[field.key])
+  );
 }
 
 function getTrueCluePercentageStates(playerCount: number, cluesPerPlayer: number) {
@@ -282,7 +294,6 @@ export default function RoomPage() {
   const [caseOptions, setCaseOptions] = useState<CaseSummary[]>([]);
   const [isLoadingCases, setIsLoadingCases] = useState(false);
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
-  const [isConfigDirty, setIsConfigDirty] = useState(false);
   const isConfigDirtyRef = useRef(false);
   const isHeartbeatInFlightRef = useRef(false);
   const isLoadingRoomRef = useRef(false);
@@ -475,6 +486,17 @@ export default function RoomPage() {
   );
   const caseSelectionMode = room?.caseSelectionMode ?? "generate";
   const selectedCase = caseOptions.find((item) => item.id === room?.selectedcase);
+  const configPlayerCount = room?.users.length ?? 1;
+  const roomConfigSnapshot = snapRoomConfigToPlayerCount(
+    room?.config ?? DEFAULT_ROOM_CONFIG,
+    configPlayerCount,
+  );
+  const isConfigDirty =
+    canEditConfig && !configsMatch(configDraft, roomConfigSnapshot, configPlayerCount);
+
+  useEffect(() => {
+    isConfigDirtyRef.current = isConfigDirty;
+  }, [isConfigDirty]);
 
   useEffect(() => {
     if (canEditConfig || !isConfigDirtyRef.current) {
@@ -482,7 +504,6 @@ export default function RoomPage() {
     }
 
     isConfigDirtyRef.current = false;
-    setIsConfigDirty(false);
     setConfigDraft(
       snapRoomConfigToPlayerCount(
         room?.config ?? DEFAULT_ROOM_CONFIG,
@@ -528,6 +549,15 @@ export default function RoomPage() {
 
         if (isActive && response.ok && data.room) {
           setRoom(data.room);
+
+          if (!isConfigDirtyRef.current) {
+            setConfigDraft(
+              snapRoomConfigToPlayerCount(
+                data.room.config ?? DEFAULT_ROOM_CONFIG,
+                data.room.users.length,
+              ),
+            );
+          }
         }
       } catch {
         // O polling da sala exibe erro se a conexão realmente cair.
@@ -571,7 +601,6 @@ export default function RoomPage() {
       setUserId(data.user.id);
       setRoom(data.room);
       isConfigDirtyRef.current = false;
-      setIsConfigDirty(false);
       setConfigDraft(
         snapRoomConfigToPlayerCount(
           data.room.config ?? DEFAULT_ROOM_CONFIG,
@@ -621,7 +650,6 @@ export default function RoomPage() {
       });
       setRoom(data.room);
       isConfigDirtyRef.current = false;
-      setIsConfigDirty(false);
       setConfigDraft(
         snapRoomConfigToPlayerCount(
           data.room.config ?? DEFAULT_ROOM_CONFIG,
@@ -641,7 +669,7 @@ export default function RoomPage() {
     }
   }
 
-  function updateConfigDraft(key: keyof RoomConfig, value: string) {
+  function updateConfigDraft(key: NumericRoomConfigKey, value: string) {
     if (!canEditConfig || isSaving) {
       return;
     }
@@ -654,7 +682,6 @@ export default function RoomPage() {
     }
 
     isConfigDirtyRef.current = true;
-    setIsConfigDirty(true);
 
     setConfigDraft((current) => {
       const playerCount = Math.max(1, room?.users.length ?? 1);
@@ -693,10 +720,21 @@ export default function RoomPage() {
     }
 
     isConfigDirtyRef.current = true;
-    setIsConfigDirty(true);
     setConfigDraft(
       snapRoomConfigToPlayerCount(config, room?.users.length ?? 1),
     );
+  }
+
+  function toggleTimersEnabled() {
+    if (!canEditConfig || isSaving) {
+      return;
+    }
+
+    isConfigDirtyRef.current = true;
+    setConfigDraft((current) => ({
+      ...current,
+      timersEnabled: !current.timersEnabled,
+    }));
   }
 
   function cancelConfigChanges() {
@@ -705,7 +743,6 @@ export default function RoomPage() {
     }
 
     isConfigDirtyRef.current = false;
-    setIsConfigDirty(false);
     setConfigDraft(
       snapRoomConfigToPlayerCount(
         room?.config ?? DEFAULT_ROOM_CONFIG,
@@ -715,7 +752,7 @@ export default function RoomPage() {
   }
 
   async function saveRoomConfig() {
-    if (!currentUser || !canEditConfig) {
+    if (!currentUser || !canEditConfig || !isConfigDirty) {
       return;
     }
 
@@ -737,7 +774,6 @@ export default function RoomPage() {
 
       setRoom(data.room);
       isConfigDirtyRef.current = false;
-      setIsConfigDirty(false);
       setConfigDraft(
         snapRoomConfigToPlayerCount(
           data.room.config ?? DEFAULT_ROOM_CONFIG,
@@ -928,7 +964,6 @@ export default function RoomPage() {
       setUserId(null);
       setRoom(data.room);
       isConfigDirtyRef.current = false;
-      setIsConfigDirty(false);
       setConfigDraft(
         snapRoomConfigToPlayerCount(
           data.room?.config ?? DEFAULT_ROOM_CONFIG,
@@ -1492,6 +1527,9 @@ export default function RoomPage() {
 
             <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-[#d7b861]/20 bg-[#171b16] p-3 text-sm font-semibold text-stone-300">
               <span className="rounded-full bg-[#0f120e] px-3 py-1">
+                Timers {configDraft.timersEnabled ? "ligados" : "desligados"}
+              </span>
+              <span className="rounded-full bg-[#0f120e] px-3 py-1">
                 {configDraft.trueCluesPerPlayer}% pistas verdadeiras
               </span>
               <span className="rounded-full bg-[#0f120e] px-3 py-1">
@@ -1506,7 +1544,15 @@ export default function RoomPage() {
           <div className="p-6">
             <div className="grid gap-3 sm:grid-cols-2">
               {ROOM_CONFIG_PRESETS.map((preset) => {
-                const isActivePreset = configsMatch(configDraft, preset.config);
+                const presetConfig = snapRoomConfigToPlayerCount(
+                  preset.config,
+                  room?.users.length ?? 1,
+                );
+                const isActivePreset = configsMatch(
+                  configDraft,
+                  preset.config,
+                  room?.users.length ?? 1,
+                );
 
                 return (
                   <button
@@ -1531,7 +1577,7 @@ export default function RoomPage() {
                       ) : null}
                     </span>
                     <span className="mt-2 block text-sm leading-5 opacity-80">
-                      {preset.config.cluesPerPlayer} pistas por pessoa, {preset.config.trueCluesPerPlayer}% verdadeiras, leitura de {preset.config.readingTimeSeconds}s.
+                      {presetConfig.cluesPerPlayer} pistas por pessoa, {presetConfig.trueCluesPerPlayer}% verdadeiras, resposta de {presetConfig.finalGuessTimeSeconds}s.
                     </span>
                   </button>
                 );
@@ -1553,6 +1599,28 @@ export default function RoomPage() {
                         {group.description}
                       </p>
                     </div>
+                    {group.id === "ritmo" ? (
+                      <button
+                        aria-pressed={configDraft.timersEnabled}
+                        className={`inline-flex h-9 w-fit items-center gap-2 rounded-full border px-3 text-xs font-bold uppercase tracking-[0.12em] transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                          configDraft.timersEnabled
+                            ? "border-[#d7b861]/45 bg-[#d7b861]/10 text-[#f5e7bd]"
+                            : "border-stone-600 bg-[#171b16] text-stone-300 hover:border-[#d7b861]/55"
+                        }`}
+                        disabled={!canEditConfig || isSaving}
+                        onClick={toggleTimersEnabled}
+                        type="button"
+                      >
+                        <span
+                          className={`h-2.5 w-2.5 rounded-full ${
+                            configDraft.timersEnabled
+                              ? "bg-[#d7b861]"
+                              : "bg-stone-600"
+                          }`}
+                        />
+                        Timers {configDraft.timersEnabled ? "ligados" : "desligados"}
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid gap-4 lg:grid-cols-2">

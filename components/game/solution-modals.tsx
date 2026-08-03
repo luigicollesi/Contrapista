@@ -39,7 +39,9 @@ export function FinalGuessModal({
             Escreva sua tese
           </h2>
           <p className="mt-3 text-sm font-semibold text-stone-400">
-            Envio automático em {formatTimer(guessRemainingSeconds)}.
+            {guessEndsAt
+              ? `Envio automático em ${formatTimer(guessRemainingSeconds)}.`
+              : "A partida aguarda o envio do seu palpite."}
           </p>
           <textarea
             className="mt-4 min-h-44 w-full rounded-lg border border-[#d7b861]/35 bg-[#0f120e] p-3 text-base leading-7 text-stone-100 outline-none transition placeholder:text-stone-600 focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20 sm:mt-5 sm:min-h-64 sm:p-4 sm:text-lg sm:leading-8"

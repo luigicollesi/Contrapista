@@ -23,6 +23,7 @@ export function FixedPhaseActions({
   timerLabel,
 }: FixedPhaseActionsProps) {
   const timerSeconds = useCountdownSeconds(timerEndsAt);
+  const hasTimer = timerEndsAt !== null;
 
   return (
     <div className="fixed inset-x-3 bottom-3 z-[90] flex max-w-[calc(100vw-1.5rem)] items-center justify-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-w-[calc(100vw-2rem)]">
@@ -31,7 +32,7 @@ export function FixedPhaseActions({
           {timerLabel}
         </p>
         <p className="mt-0.5 font-mono text-xl font-black leading-none text-[#fff3cf] sm:text-2xl">
-          {formatTimer(timerSeconds)}
+          {hasTimer ? formatTimer(timerSeconds) : "Sem timer"}
         </p>
       </div>
       {canSkipPhase ? (
