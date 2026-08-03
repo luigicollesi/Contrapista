@@ -1,4 +1,10 @@
 import { MatchmakingSearch } from "@/components/public/matchmaking-search";
+import { createNoIndexMetadata } from "@/lib/site-metadata";
+
+export const metadata = createNoIndexMetadata(
+  "Busca de partida",
+  "Fila de pareamento do Contrapista.",
+);
 
 type SearchPageProps = {
   searchParams: Promise<{

@@ -10,6 +10,26 @@ type MatchHistoryParticipant = {
   roomUserId: string;
 };
 
+export type MatchHistoryParticipantClue = {
+  id: string;
+  isFalse: boolean;
+  number: number;
+  text: string;
+};
+
+export type MatchHistoryParticipantSnapshot = MatchHistoryParticipant & {
+  achievements?: {
+    daily_problems_solved: number;
+    ranked_matches_played: number;
+    ranked_matches_won: number;
+    ranked_rating: number;
+    total_matches_played: number;
+    total_matches_won: number;
+  };
+  clues: MatchHistoryParticipantClue[];
+  userFinalGuess: string | null;
+};
+
 export type MatchHistoryEntry = {
   id: string;
   match_id: string | null;
@@ -29,6 +49,7 @@ export type MatchHistoryEntry = {
   case_text: string;
   true_clues: string[];
   false_clues: string[];
+  participants: MatchHistoryParticipantSnapshot[];
 };
 
 let matchHistorySchemaReady: Promise<void> | null = null;
@@ -73,6 +94,154 @@ function getParticipantByRoomUserId(users: RoomUser[], roomUserId: string) {
   );
 }
 
+function hashString(value: string) {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function seededShuffle<T>(items: T[], seedValue: string) {
+  const shuffled = [...items];
+  let seed = hashString(seedValue);
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    seed = Math.imul(seed ^ (seed >>> 15), 2246822507) >>> 0;
+    const swapIndex = seed % (index + 1);
+    const current = shuffled[index];
+    shuffled[index] = shuffled[swapIndex];
+    shuffled[swapIndex] = current;
+  }
+
+  return shuffled;
+}
+
+function getDistributedHistoryClues({
+  caseId,
+  falseClues,
+  playerCount,
+  trueClues,
+  userIndex,
+}: {
+  caseId: string;
+  falseClues: string[];
+  playerCount: number;
+  trueClues: string[];
+  userIndex: number;
+}) {
+  if (playerCount <= 0) {
+    return [];
+  }
+
+  const trueItems = trueClues.map((text, index) => ({
+    id: `true-${index}`,
+    isFalse: false,
+    text,
+  }));
+  const falseItems = falseClues.map((text, index) => ({
+    id: `false-${index}`,
+    isFalse: true,
+    text,
+  }));
+  const totalClues = trueItems.length + falseItems.length;
+  const cluesPerPlayer = Math.floor(totalClues / playerCount);
+  const usableClueCount = cluesPerPlayer * playerCount;
+  const discardCount = totalClues - usableClueCount;
+  const falseDiscardCount = Math.min(discardCount, falseItems.length);
+  const trueDiscardCount = discardCount - falseDiscardCount;
+  const keptFalseItems = falseItems.slice(0, falseItems.length - falseDiscardCount);
+  const keptTrueItems = trueItems.slice(0, trueItems.length - trueDiscardCount);
+  const distributed = seededShuffle(
+    [...keptTrueItems, ...keptFalseItems],
+    `${caseId}:distributed-clues:${playerCount}`,
+  );
+
+  return distributed
+    .slice(userIndex * cluesPerPlayer, (userIndex + 1) * cluesPerPlayer)
+    .map((clue, index) => ({ ...clue, number: index + 1 }));
+}
+
+async function getCaseCluesForHistory(caseId: string, client: DatabaseClient) {
+  const result = await client.query<{
+    false_clues: unknown;
+    true_clues: unknown;
+  }>(
+    `
+      SELECT true_clues, false_clues
+      FROM cases
+      WHERE id = $1::uuid
+      LIMIT 1
+    `,
+    [caseId],
+  );
+
+  return {
+    falseClues: normalizeClueArray(result.rows[0]?.false_clues),
+    trueClues: normalizeClueArray(result.rows[0]?.true_clues),
+  };
+}
+
+function buildParticipantSnapshot({
+  caseId,
+  falseClues,
+  guessesByRoomUserId,
+  participants,
+  trueClues,
+}: {
+  caseId: string;
+  falseClues: string[];
+  guessesByRoomUserId: Record<string, string>;
+  participants: MatchHistoryParticipant[];
+  trueClues: string[];
+}): MatchHistoryParticipantSnapshot[] {
+  return participants.map((participant, index) => ({
+    ...participant,
+    clues: getDistributedHistoryClues({
+      caseId,
+      falseClues,
+      playerCount: participants.length,
+      trueClues,
+      userIndex: index,
+    }),
+    userFinalGuess: guessesByRoomUserId[participant.roomUserId]?.trim() || null,
+  }));
+}
+
+function normalizeParticipantSnapshot(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] satisfies MatchHistoryParticipantSnapshot[];
+  }
+
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+    .map((item) => ({
+      userId: String(item.userId ?? ""),
+      username: String(item.username ?? "Jogador"),
+      roomUserId: String(item.roomUserId ?? ""),
+      userFinalGuess:
+        typeof item.userFinalGuess === "string" && item.userFinalGuess.trim()
+          ? item.userFinalGuess
+          : null,
+      clues: Array.isArray(item.clues)
+        ? item.clues
+            .filter((clue): clue is Record<string, unknown> =>
+              Boolean(clue && typeof clue === "object"),
+            )
+            .map((clue) => ({
+              id: String(clue.id ?? ""),
+              isFalse: Boolean(clue.isFalse),
+              number: Number(clue.number) || 0,
+              text: String(clue.text ?? ""),
+            }))
+        : [],
+    }))
+    .filter((item) => item.userId);
+}
+
 export async function ensureMatchHistorySchema() {
   matchHistorySchemaReady ??= ensureUsersSchema()
     .then(() =>
@@ -101,6 +270,7 @@ export async function ensureMatchHistorySchema() {
           winning_final_guess text,
           user_final_guess text,
           user_won boolean NOT NULL DEFAULT false,
+          participant_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(participant_snapshot) = 'array'),
           finalized_at timestamptz,
           stats_recorded boolean NOT NULL DEFAULT false,
           created_at timestamptz NOT NULL DEFAULT now()
@@ -108,6 +278,7 @@ export async function ensureMatchHistorySchema() {
 
         ALTER TABLE match_history
           ADD COLUMN IF NOT EXISTS match_id uuid,
+          ADD COLUMN IF NOT EXISTS participant_snapshot jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(participant_snapshot) = 'array'),
           ADD COLUMN IF NOT EXISTS finalized_at timestamptz,
           ADD COLUMN IF NOT EXISTS stats_recorded boolean NOT NULL DEFAULT false;
 
@@ -168,6 +339,14 @@ export async function recordEliminatedPlayerHistory({
 
   const matchId = getMatchId(state);
   const userGuess = state.finalGuessesByUserId?.[participant.roomUserId]?.trim() || null;
+  const { falseClues, trueClues } = await getCaseCluesForHistory(caseId, client);
+  const snapshot = buildParticipantSnapshot({
+    caseId,
+    falseClues,
+    guessesByRoomUserId: state.finalGuessesByUserId ?? {},
+    participants: getHistoryParticipants(users),
+    trueClues,
+  });
 
   await client.query(
     `
@@ -178,13 +357,15 @@ export async function recordEliminatedPlayerHistory({
         username,
         official_final_answer,
         user_final_guess,
+        participant_snapshot,
         user_won
       )
-      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, false)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7::jsonb, false)
       ON CONFLICT (match_id, user_id) WHERE match_id IS NOT NULL DO UPDATE
       SET username = EXCLUDED.username,
           official_final_answer = EXCLUDED.official_final_answer,
-          user_final_guess = COALESCE(EXCLUDED.user_final_guess, match_history.user_final_guess)
+          user_final_guess = COALESCE(EXCLUDED.user_final_guess, match_history.user_final_guess),
+          participant_snapshot = EXCLUDED.participant_snapshot
     `,
     [
       matchId,
@@ -193,6 +374,7 @@ export async function recordEliminatedPlayerHistory({
       participant.username,
       finalAnswer,
       userGuess,
+      JSON.stringify(snapshot),
     ],
   );
 
@@ -242,6 +424,14 @@ export async function recordMatchHistory({
   const guessesByUserId = state.finalGuessesByUserId ?? {};
   const matchId = getMatchId(state);
   const finalizedAt = new Date();
+  const { falseClues, trueClues } = await getCaseCluesForHistory(caseId, client);
+  const participantSnapshot = buildParticipantSnapshot({
+    caseId,
+    falseClues,
+    guessesByRoomUserId: guessesByUserId,
+    participants,
+    trueClues,
+  });
 
   for (const participant of participants) {
     const userWon = Boolean(winner && participant.userId === winner.userId);
@@ -259,10 +449,11 @@ export async function recordMatchHistory({
           winning_final_guess,
           user_final_guess,
           user_won,
+          participant_snapshot,
           finalized_at,
           stats_recorded
         )
-        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11, false)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5::uuid, $6, $7, $8, $9, $10, $11::jsonb, $12, false)
         ON CONFLICT (match_id, user_id) WHERE match_id IS NOT NULL DO UPDATE
         SET username = EXCLUDED.username,
             winner_user_id = EXCLUDED.winner_user_id,
@@ -271,6 +462,7 @@ export async function recordMatchHistory({
             winning_final_guess = EXCLUDED.winning_final_guess,
             user_final_guess = COALESCE(match_history.user_final_guess, EXCLUDED.user_final_guess),
             user_won = EXCLUDED.user_won,
+            participant_snapshot = EXCLUDED.participant_snapshot,
             finalized_at = EXCLUDED.finalized_at
         RETURNING stats_recorded
       `,
@@ -285,6 +477,7 @@ export async function recordMatchHistory({
         winningFinalGuess?.trim() || null,
         guessesByUserId[participant.roomUserId]?.trim() || null,
         userWon,
+        JSON.stringify(participantSnapshot),
         finalizedAt,
       ],
     );
@@ -347,7 +540,9 @@ export async function listUserMatchHistory(
 ): Promise<MatchHistoryEntry[]> {
   await ensureMatchHistorySchema();
 
-  const result = await dbQuery<MatchHistoryEntry>(
+  const result = await dbQuery<Omit<MatchHistoryEntry, "participants"> & {
+    participant_snapshot: unknown;
+  }>(
     `
       SELECT
         mh.id::text AS id,
@@ -362,6 +557,7 @@ export async function listUserMatchHistory(
         mh.winning_final_guess,
         mh.user_final_guess,
         mh.user_won,
+        mh.participant_snapshot,
         mh.finalized_at,
         mh.stats_recorded,
         mh.created_at,
@@ -376,10 +572,178 @@ export async function listUserMatchHistory(
     `,
     [userId, Math.max(1, Math.min(100, Math.floor(limit)))],
   );
-
-  return result.rows.map((row) => ({
+  const entries = result.rows.map((row) => ({
     ...row,
+    participants: normalizeParticipantSnapshot(row.participant_snapshot),
     true_clues: normalizeClueArray(row.true_clues),
     false_clues: normalizeClueArray(row.false_clues),
   }));
+  const participantUserIds = Array.from(
+    new Set(entries.flatMap((entry) => entry.participants.map((participant) => participant.userId))),
+  );
+
+  if (!participantUserIds.length) {
+    return entries;
+  }
+
+  const achievementsResult = await dbQuery<{
+    daily_problems_solved: number;
+    ranked_matches_played: number;
+    ranked_matches_won: number;
+    ranked_rating: number;
+    total_matches_played: number;
+    total_matches_won: number;
+    user_id: string;
+  }>(
+    `
+      SELECT
+        user_id::text AS user_id,
+        total_matches_played,
+        ranked_matches_played,
+        total_matches_won,
+        ranked_matches_won,
+        ranked_rating,
+        daily_problems_solved
+      FROM user_achievements
+      WHERE user_id = ANY($1::uuid[])
+    `,
+    [participantUserIds],
+  );
+  const achievementsByUserId = new Map(
+    achievementsResult.rows.map((row) => [row.user_id, row]),
+  );
+
+  return entries.map((entry) => ({
+    ...entry,
+    participants: entry.participants.map((participant) => {
+      const achievements = achievementsByUserId.get(participant.userId);
+
+      return achievements
+        ? {
+            ...participant,
+            achievements: {
+              daily_problems_solved: achievements.daily_problems_solved,
+              ranked_matches_played: achievements.ranked_matches_played,
+              ranked_matches_won: achievements.ranked_matches_won,
+              ranked_rating: achievements.ranked_rating,
+              total_matches_played: achievements.total_matches_played,
+              total_matches_won: achievements.total_matches_won,
+            },
+          }
+        : participant;
+    }),
+  }));
+}
+
+export async function getUserMatchHistoryEntry({
+  historyId,
+  userId,
+}: {
+  historyId: string;
+  userId: string;
+}) {
+  await ensureMatchHistorySchema();
+
+  const result = await dbQuery<Omit<MatchHistoryEntry, "participants"> & {
+    participant_snapshot: unknown;
+  }>(
+    `
+      SELECT
+        mh.id::text AS id,
+        mh.match_id::text AS match_id,
+        mh.case_id::text AS case_id,
+        c.title AS case_title,
+        mh.user_id::text AS user_id,
+        mh.username,
+        mh.winner_user_id::text AS winner_user_id,
+        mh.winner_username,
+        mh.official_final_answer,
+        mh.winning_final_guess,
+        mh.user_final_guess,
+        mh.user_won,
+        mh.participant_snapshot,
+        mh.finalized_at,
+        mh.stats_recorded,
+        mh.created_at,
+        c.case_text,
+        c.true_clues,
+        c.false_clues
+      FROM match_history mh
+      JOIN cases c ON c.id = mh.case_id
+      WHERE mh.user_id = $1::uuid
+        AND mh.id = $2::uuid
+      LIMIT 1
+    `,
+    [userId, historyId],
+  );
+  const row = result.rows[0];
+
+  if (!row) {
+    return null;
+  }
+
+  const entry = {
+    ...row,
+    participants: normalizeParticipantSnapshot(row.participant_snapshot),
+    true_clues: normalizeClueArray(row.true_clues),
+    false_clues: normalizeClueArray(row.false_clues),
+  };
+  const participantUserIds = Array.from(
+    new Set(entry.participants.map((participant) => participant.userId)),
+  );
+
+  if (!participantUserIds.length) {
+    return entry;
+  }
+
+  const achievementsResult = await dbQuery<{
+    daily_problems_solved: number;
+    ranked_matches_played: number;
+    ranked_matches_won: number;
+    ranked_rating: number;
+    total_matches_played: number;
+    total_matches_won: number;
+    user_id: string;
+  }>(
+    `
+      SELECT
+        user_id::text AS user_id,
+        total_matches_played,
+        ranked_matches_played,
+        total_matches_won,
+        ranked_matches_won,
+        ranked_rating,
+        daily_problems_solved
+      FROM user_achievements
+      WHERE user_id = ANY($1::uuid[])
+    `,
+    [participantUserIds],
+  );
+  const achievementsByUserId = new Map(
+    achievementsResult.rows.map((achievement) => [
+      achievement.user_id,
+      achievement,
+    ]),
+  );
+
+  return {
+    ...entry,
+    participants: entry.participants.map((participant) => {
+      const achievements = achievementsByUserId.get(participant.userId);
+
+      return achievements
+        ? {
+            ...participant,
+            achievements: {
+              daily_problems_solved: achievements.daily_problems_solved,
+              ranked_matches_played: achievements.ranked_matches_played,
+              ranked_matches_won: achievements.ranked_matches_won,
+              ranked_rating: achievements.ranked_rating,
+              total_matches_played: achievements.total_matches_played,
+              total_matches_won: achievements.total_matches_won,
+            },
+          }
+        : participant;
+    }),
+  } satisfies MatchHistoryEntry;
 }

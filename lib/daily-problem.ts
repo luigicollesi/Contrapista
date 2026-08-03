@@ -254,7 +254,7 @@ export async function getDailyProblemForUserByDate({
 }
 
 export async function listDailyProblemDates() {
-  await ensureDailyProblem();
+  await ensureDailyProblemSchema();
 
   const result = await dbQuery<DailyProblemDate>(
     `

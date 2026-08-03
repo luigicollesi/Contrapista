@@ -4,6 +4,7 @@ import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
 import { AiModelsUnavailableError } from "@/lib/ai/errors";
 
 const MIN_ANSWER_JUDGE_ATTEMPTS = 3;
+const MAX_ANSWER_JUDGE_ATTEMPTS = 5;
 
 export function parseAiBoolean(text: string): boolean | null {
   const normalized = text.trim().toLowerCase();
@@ -158,7 +159,7 @@ export async function evaluateAnswer({
 
   const maxAttempts = Math.max(
     MIN_ANSWER_JUDGE_ATTEMPTS,
-    await getAvailableAiModelCount(),
+    Math.min(MAX_ANSWER_JUDGE_ATTEMPTS, await getAvailableAiModelCount()),
   );
   const errors: string[] = [];
 

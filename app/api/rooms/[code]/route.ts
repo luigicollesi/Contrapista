@@ -1,5 +1,6 @@
+import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
-import { getRoom } from "@/lib/rooms";
+import { getRoom, getRoomUserByAccountId, publicRoomPreview } from "@/lib/rooms";
 
 export async function GET(
   _request: Request,
@@ -8,10 +9,15 @@ export async function GET(
   const { code } = await params;
 
   try {
+    const session = await auth();
     const room = await getRoom(code);
 
     if (!room) {
       return Response.json({ error: "Sala não encontrada." }, { status: 404 });
+    }
+
+    if (!session?.user?.id || !getRoomUserByAccountId(room, session.user.id)) {
+      return Response.json({ roomPreview: publicRoomPreview(room) });
     }
 
     return Response.json({ room });

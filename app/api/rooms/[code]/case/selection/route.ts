@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { listCaseSummaries } from "@/lib/cases";
-import { getRoom, selectRoomCase } from "@/lib/rooms";
+import { getRoom, getRoomUserByAccountId, selectRoomCase } from "@/lib/rooms";
 import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 function unauthorized() {
@@ -34,6 +34,22 @@ export async function GET(
       return Response.json(
         { error: "A seleção de caso só está disponível em salas personalizadas." },
         { status: 409 },
+      );
+    }
+
+    const requester = getRoomUserByAccountId(room, session.user.id);
+
+    if (!requester) {
+      return Response.json(
+        { error: "Entre na sala para listar os casos disponíveis." },
+        { status: 403 },
+      );
+    }
+
+    if (room.users[0]?.id !== requester.id) {
+      return Response.json(
+        { error: "Apenas o líder pode listar os casos da sala." },
+        { status: 403 },
       );
     }
 

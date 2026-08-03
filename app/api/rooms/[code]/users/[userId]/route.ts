@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
-import { updateRoomUser } from "@/lib/rooms";
+import { kickRoomUser, updateRoomUser } from "@/lib/rooms";
 import { requireAuthorizedRoomUser } from "@/lib/security/route-auth";
 
 export async function PATCH(
@@ -45,5 +45,54 @@ export async function PATCH(
     return Response.json(result);
   } catch (error) {
     return errorResponse(error, "Não deu para salvar sua cor.");
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ code: string; userId: string }> },
+) {
+  const session = await auth();
+
+  if (!session?.user?.id || !session.user.name) {
+    return Response.json(
+      { error: "Entre para remover jogadores." },
+      { status: 401 },
+    );
+  }
+
+  const { code, userId } = await params;
+  const body = (await request.json().catch(() => ({}))) as {
+    leaderUserId?: string;
+  };
+
+  if (!body.leaderUserId) {
+    return Response.json({ error: "Líder inválido." }, { status: 400 });
+  }
+
+  const authorizationFailure = await requireAuthorizedRoomUser({
+    action: "room-kick-user",
+    code,
+    userId: body.leaderUserId,
+  });
+
+  if (authorizationFailure) {
+    return authorizationFailure;
+  }
+
+  try {
+    const room = await kickRoomUser({
+      code,
+      leaderUserId: body.leaderUserId,
+      targetUserId: userId,
+    });
+
+    if (!room) {
+      return Response.json({ room: null, deleted: true });
+    }
+
+    return Response.json({ room });
+  } catch (error) {
+    return errorResponse(error, "Não deu para remover o jogador.");
   }
 }

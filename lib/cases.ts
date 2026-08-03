@@ -492,16 +492,14 @@ function casePrompt({
   playerCount,
   requiredTrueClues,
   requiredFalseClues,
-  trueCluesPerPlayer,
-  falseCluesPerPlayer,
+  trueCluePercentage,
   cluesPerPlayer,
   previousError,
 }: {
   playerCount: number;
   requiredTrueClues: number;
   requiredFalseClues: number;
-  trueCluesPerPlayer: number;
-  falseCluesPerPlayer: number;
+  trueCluePercentage: number;
   cluesPerPlayer: number;
   previousError?: string;
 }) {
@@ -522,8 +520,7 @@ function casePrompt({
 Configuração da partida:
 - jogadores: ${playerCount}
 - pistas por jogador: ${cluesPerPlayer}
-- pistas confiáveis por jogador: ${trueCluesPerPlayer}
-- pistas falsas por jogador: ${falseCluesPerPlayer}
+- proporção desejada de pistas confiáveis: ${trueCluePercentage}%
 - total true_clues: ${requiredTrueClues}
 - total false_clues: ${requiredFalseClues}
 
@@ -634,9 +631,12 @@ async function generateCaseWithAi(
   sessionId: string,
   beforeRequest?: () => Promise<void>,
 ) {
-  const distribution = getClueDistribution(config);
-  const requiredTrueClues = playerCount * distribution.trueCluesPerPlayer;
-  const requiredFalseClues = playerCount * distribution.falseCluesPerPlayer;
+  const distribution = getClueDistribution({ ...config, playerCount });
+  const totalClues = playerCount * distribution.cluesPerPlayer;
+  const requiredTrueClues = Math.round(
+    (totalClues * distribution.trueCluePercentage) / 100,
+  );
+  const requiredFalseClues = totalClues - requiredTrueClues;
   const maxAttempts = Math.max(
     MIN_CASE_GENERATION_ATTEMPTS,
     await getAvailableAiModelCount(),
@@ -674,8 +674,7 @@ async function generateCaseWithAi(
               playerCount,
               requiredTrueClues,
               requiredFalseClues,
-              trueCluesPerPlayer: distribution.trueCluesPerPlayer,
-              falseCluesPerPlayer: distribution.falseCluesPerPlayer,
+              trueCluePercentage: distribution.trueCluePercentage,
               cluesPerPlayer: distribution.cluesPerPlayer,
               previousError,
             }),

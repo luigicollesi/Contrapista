@@ -2,6 +2,7 @@ import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
 import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { PublicError } from "@/lib/api-response";
 import { dbQuery, getDbClient, type DatabaseClient } from "@/lib/db";
+import { touchUserPresence } from "@/lib/friends";
 import {
   recordEliminatedPlayerHistory,
   recordMatchHistory,
@@ -102,6 +103,7 @@ export type GameState = {
 const ROULETTE_MS = 3_000;
 const DISCONNECTED_USER_TIMEOUT_MS = 2 * 60 * 1000;
 const ROOM_NICKNAME_MAX_LENGTH = 18;
+const CUSTOM_ROOM_MAX_USERS = 10;
 
 export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   readingTimeSeconds: 120,
@@ -109,7 +111,7 @@ export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   revealedClueAnalysisTimeSeconds: 30,
   roundAnalysisTimeSeconds: 60,
   finalGuessTimeSeconds: 60,
-  trueCluesPerPlayer: 3,
+  trueCluesPerPlayer: 50,
   cluesPerPlayer: 6,
 };
 
@@ -119,7 +121,7 @@ const ROOM_CONFIG_LIMITS = {
   revealedClueAnalysisTimeSeconds: { min: 10, max: 120 },
   roundAnalysisTimeSeconds: { min: 0, max: 180 },
   finalGuessTimeSeconds: { min: 30, max: 120 },
-  trueCluesPerPlayer: { min: 0, max: 10 },
+  trueCluesPerPlayer: { min: 0, max: 100 },
   cluesPerPlayer: { min: 2, max: 10 },
 } satisfies Record<keyof RoomConfig, { min: number; max: number }>;
 
@@ -225,14 +227,36 @@ function normalizeRoomConfig(value: unknown): RoomConfig {
       data.cluesPerPlayer ?? data.clues_per_player,
       "cluesPerPlayer",
     ),
-    trueCluesPerPlayer: Math.min(
-      normalizeConfigNumber(
-        data.trueCluesPerPlayer ?? data.true_clues_per_player,
-        "trueCluesPerPlayer",
-      ),
-      normalizeConfigNumber(data.cluesPerPlayer ?? data.clues_per_player, "cluesPerPlayer"),
+    trueCluesPerPlayer: normalizeConfigNumber(
+      data.trueCluesPerPlayer ??
+        data.true_clues_per_player ??
+        data.trueCluePercentage ??
+        data.true_clue_percentage,
+      "trueCluesPerPlayer",
     ),
   };
+}
+
+function getTrueCluePercentageStepCount(playerCount: number, cluesPerPlayer: number) {
+  return Math.max(1, Math.max(1, playerCount) * Math.max(1, cluesPerPlayer));
+}
+
+function snapTrueCluePercentage({
+  cluesPerPlayer,
+  playerCount,
+  percentage,
+}: {
+  cluesPerPlayer: number;
+  percentage: number;
+  playerCount: number;
+}) {
+  const stepCount = getTrueCluePercentageStepCount(playerCount, cluesPerPlayer);
+  const stepIndex = Math.min(
+    stepCount,
+    Math.max(0, Math.round((percentage / 100) * stepCount)),
+  );
+
+  return Math.round((stepIndex * 100) / stepCount);
 }
 
 function durationMs(seconds: number) {
@@ -255,6 +279,31 @@ function publicRoom(room: Room) {
     gamestate: room.gamestate,
     config,
     allReady,
+  };
+}
+
+export function getRoomUserByAccountId(room: Room, accountUserId: string) {
+  return normalizeUsers(room.users).find(
+    (user) => user.accountUserId === accountUserId,
+  ) ?? null;
+}
+
+export function publicRoomPreview(room: Room) {
+  const users = normalizeUsers(room.users);
+  const reachedCustomLimit =
+    (room.mode ?? "custom") === "custom" && users.length >= CUSTOM_ROOM_MAX_USERS;
+  const canJoin = isRoomAcceptingNewUsers(room, users) && !reachedCustomLimit;
+
+  return {
+    code: room.code,
+    mode: room.mode ?? "custom",
+    userCount: users.length,
+    canJoin,
+    joinBlockedReason: canJoin
+      ? null
+      : reachedCustomLimit
+        ? "Salas personalizadas aceitam até 10 participantes."
+        : "A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.",
   };
 }
 
@@ -888,7 +937,7 @@ export async function ensureRoomsSchema() {
         revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
         final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
-        true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
+        true_clues_per_player integer NOT NULL DEFAULT 50 CHECK (true_clues_per_player BETWEEN 0 AND 100),
         clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
@@ -934,7 +983,7 @@ export async function ensureRoomsSchema() {
         ADD COLUMN IF NOT EXISTS revealed_clue_analysis_time_seconds integer NOT NULL DEFAULT 30 CHECK (revealed_clue_analysis_time_seconds BETWEEN 10 AND 120),
         ADD COLUMN IF NOT EXISTS round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
         ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
-        ADD COLUMN IF NOT EXISTS true_clues_per_player integer NOT NULL DEFAULT 3 CHECK (true_clues_per_player BETWEEN 0 AND 10),
+        ADD COLUMN IF NOT EXISTS true_clues_per_player integer NOT NULL DEFAULT 50 CHECK (true_clues_per_player BETWEEN 0 AND 100),
         ADD COLUMN IF NOT EXISTS clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
@@ -952,6 +1001,16 @@ export async function ensureRoomsSchema() {
         ADD CONSTRAINT game_rooms_config_final_guess_time_seconds_check
           CHECK (final_guess_time_seconds BETWEEN 30 AND 120);
 
+      ALTER TABLE game_rooms_config
+        DROP CONSTRAINT IF EXISTS game_rooms_config_true_clues_per_player_check;
+
+      UPDATE game_rooms_config
+      SET true_clues_per_player = LEAST(100, GREATEST(0, true_clues_per_player));
+
+      ALTER TABLE game_rooms_config
+        ADD CONSTRAINT game_rooms_config_true_clues_per_player_check
+          CHECK (true_clues_per_player BETWEEN 0 AND 100);
+
       DO $$
       BEGIN
         IF EXISTS (
@@ -961,11 +1020,8 @@ export async function ensureRoomsSchema() {
             AND column_name = 'true_clue_percentage'
         ) THEN
           UPDATE game_rooms_config
-          SET true_clues_per_player = LEAST(
-            clues_per_player,
-            GREATEST(0, ROUND((clues_per_player * true_clue_percentage) / 100.0)::integer)
-          )
-          WHERE true_clues_per_player = 3;
+          SET true_clues_per_player = LEAST(100, GREATEST(0, true_clue_percentage))
+          WHERE true_clues_per_player = 50;
         END IF;
       END $$;
 
@@ -1625,6 +1681,11 @@ export async function joinRoom({
       throw new PublicError("A sala está no meio de uma sessão. Aguarde o jogo terminar para entrar.");
     }
 
+    if ((room.mode ?? "custom") === "custom" && users.length >= CUSTOM_ROOM_MAX_USERS) {
+      await client.query("ROLLBACK");
+      throw new PublicError("Salas personalizadas aceitam até 10 participantes.");
+    }
+
     const now = Date.now();
 
     const user: RoomUser = {
@@ -1858,6 +1919,7 @@ export async function heartbeatRoomUser({
     }
 
     let userExists = false;
+    let accountUserId: string | null = null;
     const now = Date.now();
     const users = normalizeUsers(room.users).map((user) => {
       if (user.id !== userId) {
@@ -1865,6 +1927,7 @@ export async function heartbeatRoomUser({
       }
 
       userExists = true;
+      accountUserId = user.accountUserId ?? null;
       return {
         ...user,
         lastSeenAt: now,
@@ -1888,6 +1951,12 @@ export async function heartbeatRoomUser({
 
     await client.query("COMMIT");
 
+    if (accountUserId) {
+      touchUserPresence(accountUserId).catch((error: unknown) => {
+        console.warn("[friends][presence] heartbeat update failed", error);
+      });
+    }
+
     return publicRoom({
       code,
       mode: room.mode,
@@ -1897,6 +1966,111 @@ export async function heartbeatRoomUser({
       caseSelectionMode: room.caseSelectionMode,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function kickRoomUser({
+  code,
+  leaderUserId,
+  targetUserId,
+}: {
+  code: string;
+  leaderUserId: string;
+  targetUserId: string;
+}) {
+  await ensureSchema();
+
+  if (leaderUserId === targetUserId) {
+    throw new PublicError("Use sair da sala para deixar a mesa.");
+  }
+
+  const client = await getDbClient();
+
+  try {
+    await client.query("BEGIN");
+
+    const current = await client.query<Room>(
+      `
+        SELECT
+          room_code AS code,
+          mode,
+          users,
+          activecase::text AS activecase,
+          selectedcase::text AS selectedcase,
+          case_selection_mode AS "caseSelectionMode",
+          activeevent,
+          gamestate
+        FROM game_rooms
+        WHERE room_code = $1
+        FOR UPDATE
+      `,
+      [code],
+    );
+    const room = current.rows[0];
+
+    if (!room) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+
+    const users = normalizeUsers(room.users);
+    const leader = users[0];
+
+    if ((room.mode ?? "custom") !== "custom") {
+      throw new PublicError("Remoção disponível apenas em sala personalizada.");
+    }
+
+    if (room.activecase) {
+      throw new PublicError("Não é possível remover jogadores depois da largada.");
+    }
+
+    if (!leader || leader.id !== leaderUserId) {
+      throw new PublicError("Apenas o líder pode remover jogadores da sala.");
+    }
+
+    if (!users.some((user) => user.id === targetUserId)) {
+      throw new PublicError("Jogador não encontrado na sala.", 404);
+    }
+
+    const updatedUsers = users
+      .filter((user) => user.id !== targetUserId)
+      .map((user) => ({ ...user, ready: false }));
+
+    if (!updatedUsers.length) {
+      await client.query(`DELETE FROM game_rooms WHERE room_code = $1`, [code]);
+      await client.query("COMMIT");
+      return null;
+    }
+
+    await client.query(
+      `
+        UPDATE game_rooms
+        SET users = $2::jsonb,
+            gamestate = NULL,
+            activeevent = NULL,
+            updated_at = now()
+        WHERE room_code = $1
+      `,
+      [code, JSON.stringify(updatedUsers)],
+    );
+
+    await client.query("COMMIT");
+
+    return publicRoom({
+      code,
+      mode: room.mode,
+      users: updatedUsers,
+      activecase: room.activecase,
+      selectedcase: room.selectedcase,
+      caseSelectionMode: room.caseSelectionMode,
+      activeevent: null,
+      gamestate: null,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -2078,6 +2252,14 @@ export async function updateRoomConfig({
       );
     }
 
+    const snappedConfig = {
+      ...nextConfig,
+      trueCluesPerPlayer: snapTrueCluePercentage({
+        cluesPerPlayer: nextConfig.cluesPerPlayer,
+        percentage: nextConfig.trueCluesPerPlayer,
+        playerCount: users.length,
+      }),
+    };
     const updatedUsers = users.map((user) => ({ ...user, ready: false }));
 
     await client.query(
@@ -2095,13 +2277,13 @@ export async function updateRoomConfig({
       `,
       [
         configId,
-        nextConfig.readingTimeSeconds,
-        nextConfig.clueSelectionTimeSeconds,
-        nextConfig.revealedClueAnalysisTimeSeconds,
-        nextConfig.roundAnalysisTimeSeconds,
-        nextConfig.finalGuessTimeSeconds,
-        nextConfig.trueCluesPerPlayer,
-        nextConfig.cluesPerPlayer,
+        snappedConfig.readingTimeSeconds,
+        snappedConfig.clueSelectionTimeSeconds,
+        snappedConfig.revealedClueAnalysisTimeSeconds,
+        snappedConfig.roundAnalysisTimeSeconds,
+        snappedConfig.finalGuessTimeSeconds,
+        snappedConfig.trueCluesPerPlayer,
+        snappedConfig.cluesPerPlayer,
       ],
     );
 
@@ -2126,7 +2308,7 @@ export async function updateRoomConfig({
       caseSelectionMode: room.caseSelectionMode,
       activeevent: room.activeevent,
       gamestate: normalizeGameState(room.gamestate),
-      config: nextConfig,
+      config: snappedConfig,
     });
   } catch (error) {
     await client.query("ROLLBACK");
@@ -2951,6 +3133,16 @@ export async function publishRoomEvent({
       if (!room.activecase) {
         await client.query("ROLLBACK");
         throw new PublicError("Caso ativo não encontrado.");
+      }
+
+      const currentEvent = room.activeevent as RoomEvent | null;
+
+      if (
+        currentEvent?.type === "solution_pending" ||
+        currentEvent?.type === "solution_manual_review"
+      ) {
+        await client.query("ROLLBACK");
+        throw new PublicError("Já existe um palpite em avaliação.");
       }
 
       const pendingEvent = {

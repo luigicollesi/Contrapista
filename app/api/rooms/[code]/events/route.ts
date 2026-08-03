@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { errorResponse } from "@/lib/api-response";
 import { publishRoomEvent, resolvePendingFinalGuessEvent } from "@/lib/rooms";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
@@ -6,12 +7,19 @@ import { after } from "next/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+const FINAL_GUESS_MAX_LENGTH = 1000;
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params;
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    return Response.json({ error: "Faça login para continuar." }, { status: 401 });
+  }
+
   const body = (await request.json().catch(() => ({}))) as {
     userId?: string;
     type?: "solution" | "solution_guess" | "solution_manual_result";
@@ -30,8 +38,18 @@ export async function POST(
     return Response.json({ error: "Evento inválido." }, { status: 400 });
   }
 
+  if (
+    body.type === "solution_guess" &&
+    (body.guess ?? "").trim().length > FINAL_GUESS_MAX_LENGTH
+  ) {
+    return Response.json(
+      { error: `Use no máximo ${FINAL_GUESS_MAX_LENGTH} caracteres no palpite.` },
+      { status: 400 },
+    );
+  }
+
   const limited = rateLimitResponse({
-    identity: body.userId,
+    identity: session.user.id,
     limit: 8,
     namespace: "room-events",
     request,

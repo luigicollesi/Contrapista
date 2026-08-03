@@ -1,4 +1,12 @@
 import Link from "next/link";
+import { createPublicMetadata } from "@/lib/site-metadata";
+
+export const metadata = createPublicMetadata({
+  title: "Política de Privacidade",
+  description:
+    "Veja como o Contrapista trata dados de conta, partidas, histórico, login social e segurança.",
+  path: "/privacidade",
+});
 
 const sections = [
   {

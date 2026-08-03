@@ -1,4 +1,12 @@
 import { PlayOptions } from "@/components/public/play-options";
+import { createPublicMetadata } from "@/lib/site-metadata";
+
+export const metadata = createPublicMetadata({
+  title: "Jogar",
+  description:
+    "Escolha entre partida casual, ranqueada, sala personalizada ou problema diário no Contrapista.",
+  path: "/jogar",
+});
 
 export default function PlayPage() {
   return (

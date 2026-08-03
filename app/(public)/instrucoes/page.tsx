@@ -1,3 +1,12 @@
+import { createPublicMetadata } from "@/lib/site-metadata";
+
+export const metadata = createPublicMetadata({
+  title: "Como jogar",
+  description:
+    "Aprenda o fluxo do Contrapista: ante-sala, leitura, compartilhamento de pistas, palpites e vitória.",
+  path: "/instrucoes",
+});
+
 const flow = [
   {
     title: "1. Ante-sala",
@@ -5,7 +14,7 @@ const flow = [
   },
   {
     title: "2. Criação do caso",
-    body: "Escolha um caso pronto, sorteado ou novo.",
+    body: "Escolha um caso pronto, sorteado ou novo. Em sala personalizada, o líder ajusta pistas por pessoa e proporção de pistas confiáveis.",
   },
   {
     title: "3. Leitura inicial",
@@ -27,6 +36,7 @@ const flow = [
 
 const rules = [
   "Vence quem acertar primeiro.",
+  "Salas personalizadas aceitam até 10 participantes.",
   "Nome e cor são obrigatórios.",
   "Inativos saem da disputa.",
   "Pistas de eliminados viram consulta.",

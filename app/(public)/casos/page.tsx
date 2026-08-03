@@ -1,6 +1,14 @@
+import { createPublicMetadata } from "@/lib/site-metadata";
 import { listCaseSummaries, type CaseSummary } from "@/lib/cases";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = createPublicMetadata({
+  title: "Casos disponíveis",
+  description:
+    "Consulte o arquivo público de casos do Contrapista com título, quantidade de pistas e proporção de pistas falsas.",
+  path: "/casos",
+});
 
 function CaseCard({ item }: { item: CaseSummary }) {
   return (

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type SubmitEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { FriendNetworkPanel } from "@/components/public/friend-network-panel";
 import { LeaveRoomButton } from "@/components/rooms/leave-room-button";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 import { readJsonResponse, requestJson, withCsrfHeader } from "@/lib/client-http";
@@ -19,11 +20,18 @@ import {
 } from "@/lib/player-colors";
 
 type RoomUser = {
+  accountUserId?: string | null;
   id: string;
   browserId: string;
   nickname: string | null;
   color: PlayerColor | null;
   ready: boolean;
+};
+
+type FriendSummary = {
+  presence: "offline" | "online";
+  userId: string;
+  username: string;
 };
 
 type RoomConfig = {
@@ -48,6 +56,14 @@ type Room = {
   config: RoomConfig;
 };
 
+type RoomPreview = {
+  canJoin: boolean;
+  code: string;
+  joinBlockedReason: string | null;
+  mode: "custom" | "casual" | "ranked";
+  userCount: number;
+};
+
 type CaseSummary = {
   id: string;
   title: string;
@@ -67,7 +83,7 @@ const DEFAULT_ROOM_CONFIG: RoomConfig = {
   revealedClueAnalysisTimeSeconds: 30,
   roundAnalysisTimeSeconds: 60,
   finalGuessTimeSeconds: 60,
-  trueCluesPerPlayer: 3,
+  trueCluesPerPlayer: 50,
   cluesPerPlayer: 6,
 };
 
@@ -82,7 +98,7 @@ const ROOM_CONFIG_PRESETS = [
       ...DEFAULT_ROOM_CONFIG,
       readingTimeSeconds: 60,
       roundAnalysisTimeSeconds: 10,
-      trueCluesPerPlayer: 1,
+      trueCluesPerPlayer: 35,
       cluesPerPlayer: 3,
     },
   },
@@ -151,13 +167,13 @@ const configFields = [
   },
   {
     key: "trueCluesPerPlayer",
-    label: "Pistas verdadeiras por jogador",
-    description: "Controle a proporção entre evidência confiável e ruído narrativo.",
+    label: "Pistas verdadeiras",
+    description: "Percentual aproximado de evidências confiáveis no conjunto total.",
     group: "dossie",
-    suffix: "",
+    suffix: "%",
     min: 0,
-    max: 6,
-    step: 1,
+    max: 100,
+    step: 5,
   },
 ] satisfies Array<{
   key: keyof RoomConfig;
@@ -179,7 +195,7 @@ const configGroups = [
   {
     id: "dossie",
     title: "Estrutura do dossiê",
-    description: "Volume de pistas e proporção de informações verdadeiras.",
+    description: "Volume de pistas por pessoa e proporção do conjunto confiável.",
   },
 ] satisfies Array<{
   id: "ritmo" | "dossie";
@@ -189,6 +205,45 @@ const configGroups = [
 
 function configsMatch(left: RoomConfig, right: RoomConfig) {
   return configFields.every((field) => left[field.key] === right[field.key]);
+}
+
+function getTrueCluePercentageStates(playerCount: number, cluesPerPlayer: number) {
+  const stepCount = Math.max(1, Math.max(1, playerCount) * Math.max(1, cluesPerPlayer));
+
+  return Array.from({ length: stepCount + 1 }, (_, index) =>
+    Math.round((index * 100) / stepCount),
+  );
+}
+
+function snapToClosestState(value: number, states: number[]) {
+  return states.reduce((closest, option) =>
+    Math.abs(option - value) < Math.abs(closest - value) ? option : closest,
+  );
+}
+
+function getAdjacentState(value: number, states: number[], direction: -1 | 1) {
+  const currentIndex = states.indexOf(snapToClosestState(value, states));
+  const nextIndex = Math.min(
+    states.length - 1,
+    Math.max(0, currentIndex + direction),
+  );
+
+  return states[nextIndex];
+}
+
+function snapRoomConfigToPlayerCount(config: RoomConfig, playerCount: number) {
+  const trueClueStates = getTrueCluePercentageStates(
+    playerCount,
+    config.cluesPerPlayer,
+  );
+
+  return {
+    ...config,
+    trueCluesPerPlayer: snapToClosestState(
+      config.trueCluesPerPlayer,
+      trueClueStates,
+    ),
+  };
 }
 
 function hasCompleteProfile(user: RoomUser | null | undefined) {
@@ -221,6 +276,9 @@ export default function RoomPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isRoomMissing, setIsRoomMissing] = useState(false);
   const [isCasePickerOpen, setIsCasePickerOpen] = useState(false);
+  const [isSocialOpen, setIsSocialOpen] = useState(false);
+  const [friends, setFriends] = useState<FriendSummary[]>([]);
+  const [socialMessage, setSocialMessage] = useState("");
   const [caseOptions, setCaseOptions] = useState<CaseSummary[]>([]);
   const [isLoadingCases, setIsLoadingCases] = useState(false);
   const [configDraft, setConfigDraft] = useState<RoomConfig>(DEFAULT_ROOM_CONFIG);
@@ -233,6 +291,40 @@ export default function RoomPage() {
   useEffect(() => {
     noticeRef.current = notice;
   }, [notice]);
+
+  useEffect(() => {
+    if (!isSocialOpen) {
+      return;
+    }
+
+    let ignore = false;
+    const timeout = window.setTimeout(() => {
+      fetch("/api/users/me/friends", { cache: "no-store" })
+        .then((response) => readJsonResponse<{
+          dashboard?: { friends?: FriendSummary[] };
+          error?: string;
+        }>(response))
+        .then((payload) => {
+          if (!ignore) {
+            setFriends(payload.dashboard?.friends ?? []);
+          }
+        })
+        .catch((caughtError) => {
+          if (!ignore) {
+            setSocialMessage(
+              caughtError instanceof Error
+                ? caughtError.message
+                : "Não deu para abrir sua rede.",
+            );
+          }
+        });
+    }, 0);
+
+    return () => {
+      ignore = true;
+      window.clearTimeout(timeout);
+    };
+  }, [isSocialOpen]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -271,9 +363,11 @@ export default function RoomPage() {
         const response = await fetch(`/api/rooms/${code}`, {
           cache: "no-store",
         });
-        const data = await readJsonResponse<{ room?: Room; error?: string }>(
-          response,
-        );
+        const data = await readJsonResponse<{
+          error?: string;
+          room?: Room;
+          roomPreview?: RoomPreview;
+        }>(response);
 
         if (!isActive) {
           return;
@@ -285,6 +379,18 @@ export default function RoomPage() {
           return;
         }
 
+        if (response.ok && !data.room && data.roomPreview) {
+          setRoom(null);
+          setIsRoomMissing(false);
+          setError(
+            data.roomPreview.canJoin
+              ? ""
+              : data.roomPreview.joinBlockedReason ??
+                  "Mesa em andamento. Aguarde o fim da partida.",
+          );
+          return;
+        }
+
         if (!response.ok || !data.room) {
           throw new Error(data.error ?? "Não deu para atualizar a ante-sala.");
         }
@@ -292,7 +398,12 @@ export default function RoomPage() {
         setRoom(data.room);
 
         if (!isConfigDirtyRef.current) {
-          setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+          setConfigDraft(
+            snapRoomConfigToPlayerCount(
+              data.room.config ?? DEFAULT_ROOM_CONFIG,
+              data.room.users.length,
+            ),
+          );
         }
 
         setIsRoomMissing(false);
@@ -309,6 +420,13 @@ export default function RoomPage() {
 
         if (!isCurrentUserInRoom && (data.room.activecase || data.room.allReady)) {
           setError("Mesa em andamento. Aguarde o fim da partida.");
+          return;
+        }
+
+        if (userId && !isCurrentUserInRoom) {
+          clearSession(code);
+          setUserId(null);
+          setError("Você foi removido da sala.");
           return;
         }
 
@@ -365,8 +483,13 @@ export default function RoomPage() {
 
     isConfigDirtyRef.current = false;
     setIsConfigDirty(false);
-    setConfigDraft(room?.config ?? DEFAULT_ROOM_CONFIG);
-  }, [canEditConfig, room?.config]);
+    setConfigDraft(
+      snapRoomConfigToPlayerCount(
+        room?.config ?? DEFAULT_ROOM_CONFIG,
+        room?.users.length ?? 1,
+      ),
+    );
+  }, [canEditConfig, room?.config, room?.users.length]);
 
   useEffect(() => {
     if (!currentUserId) {
@@ -449,7 +572,12 @@ export default function RoomPage() {
       setRoom(data.room);
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
-      setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+      setConfigDraft(
+        snapRoomConfigToPlayerCount(
+          data.room.config ?? DEFAULT_ROOM_CONFIG,
+          data.room.users.length,
+        ),
+      );
       setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
@@ -494,7 +622,12 @@ export default function RoomPage() {
       setRoom(data.room);
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
-      setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+      setConfigDraft(
+        snapRoomConfigToPlayerCount(
+          data.room.config ?? DEFAULT_ROOM_CONFIG,
+          data.room.users.length,
+        ),
+      );
       setColor(data.user.color ?? "");
       setIsEditing(false);
     } catch (caughtError) {
@@ -524,18 +657,33 @@ export default function RoomPage() {
     setIsConfigDirty(true);
 
     setConfigDraft((current) => {
-      const max = key === "trueCluesPerPlayer" ? current.cluesPerPlayer : field.max;
-      const nextValue = Math.min(max, Math.max(field.min, Math.round(numericValue)));
+      const playerCount = Math.max(1, room?.users.length ?? 1);
+      const rawValue = Math.min(field.max, Math.max(field.min, Math.round(numericValue)));
+      const nextCluesPerPlayer =
+        key === "cluesPerPlayer" ? rawValue : current.cluesPerPlayer;
+      const trueClueStates = getTrueCluePercentageStates(
+        playerCount,
+        nextCluesPerPlayer,
+      );
+      const nextValue =
+        key === "trueCluesPerPlayer"
+          ? snapToClosestState(rawValue, trueClueStates)
+          : rawValue;
       const next = {
         ...current,
         [key]: nextValue,
       };
 
       if (key === "cluesPerPlayer") {
-        next.trueCluesPerPlayer = Math.min(next.trueCluesPerPlayer, nextValue);
+        next.trueCluesPerPlayer = snapToClosestState(
+          next.trueCluesPerPlayer,
+          trueClueStates,
+        );
       }
 
-      return next;
+      return {
+        ...next,
+      };
     });
   }
 
@@ -546,7 +694,9 @@ export default function RoomPage() {
 
     isConfigDirtyRef.current = true;
     setIsConfigDirty(true);
-    setConfigDraft(config);
+    setConfigDraft(
+      snapRoomConfigToPlayerCount(config, room?.users.length ?? 1),
+    );
   }
 
   function cancelConfigChanges() {
@@ -556,7 +706,12 @@ export default function RoomPage() {
 
     isConfigDirtyRef.current = false;
     setIsConfigDirty(false);
-    setConfigDraft(room?.config ?? DEFAULT_ROOM_CONFIG);
+    setConfigDraft(
+      snapRoomConfigToPlayerCount(
+        room?.config ?? DEFAULT_ROOM_CONFIG,
+        room?.users.length ?? 1,
+      ),
+    );
   }
 
   async function saveRoomConfig() {
@@ -583,7 +738,12 @@ export default function RoomPage() {
       setRoom(data.room);
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
-      setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+      setConfigDraft(
+        snapRoomConfigToPlayerCount(
+          data.room.config ?? DEFAULT_ROOM_CONFIG,
+          data.room.users.length,
+        ),
+      );
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -699,7 +859,12 @@ export default function RoomPage() {
       setRoom(data.room);
 
       if (!isConfigDirtyRef.current) {
-        setConfigDraft(data.room.config ?? DEFAULT_ROOM_CONFIG);
+        setConfigDraft(
+          snapRoomConfigToPlayerCount(
+            data.room.config ?? DEFAULT_ROOM_CONFIG,
+            data.room.users.length,
+          ),
+        );
       }
 
       if (data.room.activecase) {
@@ -764,7 +929,12 @@ export default function RoomPage() {
       setRoom(data.room);
       isConfigDirtyRef.current = false;
       setIsConfigDirty(false);
-      setConfigDraft(data.room?.config ?? DEFAULT_ROOM_CONFIG);
+      setConfigDraft(
+        snapRoomConfigToPlayerCount(
+          data.room?.config ?? DEFAULT_ROOM_CONFIG,
+          data.room?.users.length ?? 1,
+        ),
+      );
       setIsEditing(false);
 
       router.push("/");
@@ -774,6 +944,82 @@ export default function RoomPage() {
           ? caughtError.message
           : "Não deu para sair da sala.",
       );
+    }
+  }
+
+  async function sendFriendRequestToRoomUser(user: RoomUser) {
+    setSocialMessage("");
+
+    try {
+      const data = await requestJson<{ ok?: boolean; error?: string }>(
+        "/api/users/me/friends",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username: getUserName(user) }),
+        },
+        "Não deu para enviar o pedido.",
+      );
+
+      if (data.ok === false) {
+        throw new Error(data.error ?? "Não deu para enviar o pedido.");
+      }
+
+      setSocialMessage(`Pedido enviado para ${getUserName(user)}.`);
+      const response = await fetch("/api/users/me/friends", { cache: "no-store" });
+      const payload = await readJsonResponse<{
+        dashboard?: { friends?: FriendSummary[] };
+      }>(response);
+
+      setFriends(payload.dashboard?.friends ?? []);
+    } catch (caughtError) {
+      setSocialMessage(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não deu para enviar o pedido.",
+      );
+    }
+  }
+
+  async function kickUserFromRoom(targetUser: RoomUser) {
+    if (!currentUser || !canEditConfig) {
+      return;
+    }
+
+    setSocialMessage("");
+    setIsSaving(true);
+
+    try {
+      const data = await requestJson<{ room: Room | null }>(
+        `/api/rooms/${code}/users/${targetUser.id}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ leaderUserId: currentUser.id }),
+        },
+        "Não deu para remover o jogador.",
+      );
+
+      setRoom(data.room);
+      setConfigDraft(
+        snapRoomConfigToPlayerCount(
+          data.room?.config ?? DEFAULT_ROOM_CONFIG,
+          data.room?.users.length ?? 1,
+        ),
+      );
+      setSocialMessage(`${getUserName(targetUser)} saiu da sala.`);
+    } catch (caughtError) {
+      setSocialMessage(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Não deu para remover o jogador.",
+      );
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -818,6 +1064,13 @@ export default function RoomPage() {
   const readyCount =
     room?.users.filter((user) => hasCompleteProfile(user) && user.ready).length ?? 0;
   const canSubmitProfile = currentUser ? Boolean(color) : true;
+  const roomMemberAccountIds = new Set(
+    room?.users
+      .map((user) => user.accountUserId)
+      .filter((id): id is string => Boolean(id)) ?? [],
+  );
+  const friendUserIds = new Set(friends.map((friend) => friend.userId));
+  const canUseSocial = Boolean(room && !isMatchmadeRoom && !room.activecase);
 
   return (
     <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-3 py-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
@@ -1008,9 +1261,23 @@ export default function RoomPage() {
             <h2 className="font-serif text-3xl font-bold text-[#fff3cf]">
               Participantes na mesa
             </h2>
-            <span className="rounded-full border border-[#d7b861]/40 bg-[#171b16] px-3 py-1 text-sm font-semibold text-[#d7b861]">
-              {room?.userCount ?? 0}
-            </span>
+            <div className="flex items-center gap-2">
+              {canUseSocial ? (
+                <button
+                  className="rounded-full border border-[#d7b861]/40 bg-[#171b16] px-4 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-[#fff3cf] transition hover:bg-[#d7b861]/10"
+                  onClick={() => {
+                    setSocialMessage("");
+                    setIsSocialOpen(true);
+                  }}
+                  type="button"
+                >
+                  Social
+                </button>
+              ) : null}
+              <span className="rounded-full border border-[#d7b861]/40 bg-[#171b16] px-3 py-1 text-sm font-semibold text-[#d7b861]">
+                {room?.userCount ?? 0}
+              </span>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -1225,7 +1492,7 @@ export default function RoomPage() {
 
             <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-[#d7b861]/20 bg-[#171b16] p-3 text-sm font-semibold text-stone-300">
               <span className="rounded-full bg-[#0f120e] px-3 py-1">
-                {configDraft.trueCluesPerPlayer}/{configDraft.cluesPerPlayer} pistas verdadeiras
+                {configDraft.trueCluesPerPlayer}% pistas verdadeiras
               </span>
               <span className="rounded-full bg-[#0f120e] px-3 py-1">
                 Leitura {configDraft.readingTimeSeconds}s
@@ -1264,7 +1531,7 @@ export default function RoomPage() {
                       ) : null}
                     </span>
                     <span className="mt-2 block text-sm leading-5 opacity-80">
-                      {preset.config.cluesPerPlayer} pistas, {preset.config.trueCluesPerPlayer} verdadeira(s), leitura de {preset.config.readingTimeSeconds}s.
+                      {preset.config.cluesPerPlayer} pistas por pessoa, {preset.config.trueCluesPerPlayer}% verdadeiras, leitura de {preset.config.readingTimeSeconds}s.
                     </span>
                   </button>
                 );
@@ -1292,8 +1559,27 @@ export default function RoomPage() {
                     {configFields
                       .filter((field) => field.group === group.id)
                       .map((field) => {
-                        const max = field.key === "trueCluesPerPlayer" ? configDraft.cluesPerPlayer : field.max;
+                        const max = field.max;
                         const value = configDraft[field.key];
+                        const playerCount = Math.max(1, room?.users.length ?? 1);
+                        const trueClueStates = getTrueCluePercentageStates(
+                          playerCount,
+                          configDraft.cluesPerPlayer,
+                        );
+                        const isTrueCluePercentage =
+                          field.key === "trueCluesPerPlayer";
+                        const decrementValue = isTrueCluePercentage
+                          ? getAdjacentState(value, trueClueStates, -1)
+                          : value - field.step;
+                        const incrementValue = isTrueCluePercentage
+                          ? getAdjacentState(value, trueClueStates, 1)
+                          : value + field.step;
+                        const inputStep = isTrueCluePercentage ? 1 : field.step;
+                        const trueClueCount = isTrueCluePercentage
+                          ? Math.round(
+                              (playerCount * configDraft.cluesPerPlayer * value) / 100,
+                            )
+                          : 0;
 
                         return (
                           <div
@@ -1319,7 +1605,9 @@ export default function RoomPage() {
                                 aria-label={`Diminuir ${field.label}`}
                                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-700 bg-[#0f120e] text-lg font-black text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!canEditConfig || isSaving || value <= field.min}
-                                onClick={() => updateConfigDraft(field.key, String(value - field.step))}
+                                onClick={() =>
+                                  updateConfigDraft(field.key, String(decrementValue))
+                                }
                                 type="button"
                               >
                                 -
@@ -1333,7 +1621,7 @@ export default function RoomPage() {
                                 onChange={(event) =>
                                   updateConfigDraft(field.key, event.target.value)
                                 }
-                                step={field.step}
+                                step={inputStep}
                                 type="range"
                                 value={value}
                               />
@@ -1341,7 +1629,9 @@ export default function RoomPage() {
                                 aria-label={`Aumentar ${field.label}`}
                                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-700 bg-[#0f120e] text-lg font-black text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!canEditConfig || isSaving || value >= max}
-                                onClick={() => updateConfigDraft(field.key, String(value + field.step))}
+                                onClick={() =>
+                                  updateConfigDraft(field.key, String(incrementValue))
+                                }
                                 type="button"
                               >
                                 +
@@ -1363,7 +1653,7 @@ export default function RoomPage() {
                                   onChange={(event) =>
                                     updateConfigDraft(field.key, event.target.value)
                                   }
-                                  step={field.step}
+                                  step={inputStep}
                                   type="number"
                                   value={value}
                                 />
@@ -1374,6 +1664,12 @@ export default function RoomPage() {
                                 ) : null}
                               </div>
                             </div>
+
+                            {isTrueCluePercentage ? (
+                              <p className="mt-3 text-xs font-semibold text-stone-500">
+                                {trueClueCount} de {playerCount * configDraft.cluesPerPlayer} cartas verdadeiras
+                              </p>
+                            ) : null}
                           </div>
                         );
                       })}
@@ -1415,6 +1711,121 @@ export default function RoomPage() {
         </section>
           </>
         )}
+
+        {isSocialOpen && canUseSocial ? (
+          <ResponsiveSheet
+            backdropClassName="bg-black/70 backdrop-blur-sm"
+            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:w-[48rem] sm:p-6"
+          >
+            <div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
+                    Social
+                  </p>
+                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                    Mesa e amigos
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+                    Veja quem está na sala e convide amigos online.
+                  </p>
+                </div>
+                <button
+                  aria-label="Fechar social"
+                  className="h-9 w-9 rounded-lg border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d7b861]"
+                  onClick={() => setIsSocialOpen(false)}
+                  type="button"
+                >
+                  X
+                </button>
+              </div>
+
+              <section className="mt-6 rounded-lg border border-[#d7b861]/25 bg-[#0f120e] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="font-serif text-2xl font-bold text-[#fff3cf]">
+                    Membros na sala
+                  </h3>
+                  <span className="rounded-full border border-[#d7b861]/30 px-3 py-1 text-xs font-bold text-[#d7b861]">
+                    {room?.users.length ?? 0}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {room?.users.map((user, index) => {
+                    const isSelf = user.id === currentUser?.id;
+                    const isFriend = Boolean(
+                      user.accountUserId && friendUserIds.has(user.accountUserId),
+                    );
+
+                    return (
+                      <article
+                        className="rounded-lg border border-[#d7b861]/20 bg-[#171b16] p-4"
+                        key={user.id}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-serif text-xl font-bold text-[#fff3cf]">
+                              {getUserName(user)}
+                            </p>
+                            <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-stone-500">
+                              {isSelf ? "Você" : isFriend ? "Amigo" : "Participante"}
+                              {index === 0 ? " / Líder" : ""}
+                            </p>
+                          </div>
+                          <span
+                            className="h-9 w-9 shrink-0 rounded-full border border-white/35"
+                            style={{ backgroundColor: getUserColorHex(user.color) }}
+                          />
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {!isSelf && !isFriend ? (
+                            <button
+                              className="rounded-sm border border-[#d7b861]/40 px-3 py-2 text-xs font-bold text-[#fff3cf] transition hover:bg-[#d7b861]/10 disabled:opacity-60"
+                              disabled={isSaving}
+                              onClick={() => sendFriendRequestToRoomUser(user)}
+                              type="button"
+                            >
+                              Fazer amizade
+                            </button>
+                          ) : null}
+                          {canEditConfig && !isSelf ? (
+                            <button
+                              className="rounded-sm border border-red-400/40 px-3 py-2 text-xs font-bold text-red-100 transition hover:bg-red-950/35 disabled:opacity-60"
+                              disabled={isSaving}
+                              onClick={() => kickUserFromRoom(user)}
+                              type="button"
+                            >
+                              Remover da sala
+                            </button>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="mt-5 rounded-lg border border-[#d7b861]/25 bg-[#0f120e] p-4">
+                <h3 className="font-serif text-2xl font-bold text-[#fff3cf]">
+                  Amigos online
+                </h3>
+                <FriendNetworkPanel
+                  action="invite"
+                  excludedUserIds={Array.from(roomMemberAccountIds)}
+                  roomCode={code}
+                  showSearch={false}
+                  view="friends"
+                />
+              </section>
+
+              {socialMessage ? (
+                <p className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#2d2818]/80 px-4 py-3 text-sm font-semibold text-[#fff3cf]">
+                  {socialMessage}
+                </p>
+              ) : null}
+            </div>
+          </ResponsiveSheet>
+        ) : null}
 
         {isCasePickerOpen ? (
           <ResponsiveSheet

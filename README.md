@@ -85,6 +85,8 @@ GOOGLE_GMAIL_REDIRECT_URI=https://seudominio.com/api/auth/google-gmail/callback
 NEXT_PUBLIC_APP_URL=https://seudominio.com
 ```
 
+`NEXT_PUBLIC_APP_URL` também define URLs canônicas, sitemap e metadados sociais. Em produção, use sempre o domínio público final.
+
 Callbacks para cadastrar no Google Cloud:
 
 ```text

@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { DeleteAccountPanel } from "@/components/public/delete-account-panel";
+import { FriendNetworkTabs } from "@/components/public/friend-network-panel";
 import { MatchHistoryPanel } from "@/components/public/match-history-panel";
 import { ensureUserAchievements } from "@/lib/auth-users";
 import { listUserMatchHistory } from "@/lib/match-history";
+import { createNoIndexMetadata } from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = createNoIndexMetadata(
+  "Perfil",
+  "Área pessoal do jogador no Contrapista.",
+);
 
 export default async function ProfilePage() {
   const session = await auth();
@@ -57,6 +64,7 @@ export default async function ProfilePage() {
               ))}
             </div>
 
+            <FriendNetworkTabs />
             <MatchHistoryPanel history={matchHistory} />
             <DeleteAccountPanel />
           </>

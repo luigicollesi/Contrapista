@@ -1,4 +1,10 @@
 import Link from "next/link";
+import { createNoIndexMetadata } from "@/lib/site-metadata";
+
+export const metadata = createNoIndexMetadata(
+  "Entrar",
+  "Acesso à conta do Contrapista.",
+);
 
 type SignInPageProps = {
   searchParams?: Promise<{

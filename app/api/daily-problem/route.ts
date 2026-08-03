@@ -7,6 +7,8 @@ import {
 } from "@/lib/daily-problem";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
 
+const DAILY_ANSWER_MAX_LENGTH = 1000;
+
 function unauthorized() {
   return Response.json(
     { error: "Entre para acessar o desafio diário." },
@@ -81,6 +83,13 @@ export async function POST(request: Request) {
 
   if (!body.answer?.trim()) {
     return Response.json({ error: "Resposta inválida." }, { status: 400 });
+  }
+
+  if (body.answer.trim().length > DAILY_ANSWER_MAX_LENGTH) {
+    return Response.json(
+      { error: `Use no máximo ${DAILY_ANSWER_MAX_LENGTH} caracteres na resposta.` },
+      { status: 400 },
+    );
   }
 
   try {

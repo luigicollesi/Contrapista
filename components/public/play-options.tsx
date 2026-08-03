@@ -53,9 +53,9 @@ const modes: PlayMode[] = [
   {
     id: "custom",
     title: "Sala personalizada",
-    eyebrow: "Código privado · seu grupo",
+    eyebrow: "Até 10 jogadores · seu grupo",
     body: "Abra uma mesa para jogar com seu grupo.",
-    facts: ["Código privado", "Ritmo ajustável", "Convite direto"],
+    facts: ["Até 10 pessoas", "Ritmo ajustável", "Proporção de pistas"],
     action: "Criar sala",
     accent: "#f2e6c8",
   },

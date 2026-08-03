@@ -6,6 +6,9 @@ import {
   type AuthFormValues,
   type AuthMode,
 } from "@/components/public/auth-modal";
+import {
+  FriendNetworkPanel,
+} from "@/components/public/friend-network-panel";
 import { ResponsiveSheet } from "@/components/rooms/responsive-sheet";
 import { withCsrfHeader } from "@/lib/client-http";
 import { signIn, signOut, useSession } from "next-auth/react";
@@ -27,6 +30,27 @@ type Achievements = {
   ranked_rating: number;
   daily_problems_solved: number;
 };
+
+type FriendsSummaryResponse = {
+  notifications?: BrowserFriendNotification[];
+  ok?: boolean;
+  unreadNotificationCount?: number;
+};
+
+type BrowserFriendNotification = {
+  createdAt: string;
+  id: string;
+  message: string;
+  type: "friend_request" | "friend_added" | "room_invite";
+};
+
+type BrowserNotificationPermission =
+  | "default"
+  | "denied"
+  | "granted"
+  | "unsupported";
+
+const BROWSER_NOTIFICATION_SHOWN_KEY = "contrapista-browser-notifications-shown";
 
 function getFormValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -59,8 +83,16 @@ export function AuthModalControls() {
   const [message, setMessage] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isAccountOpen, setIsAccountOpen] = useState(false);
+  const [accountTab, setAccountTab] = useState<
+    "friends" | "notifications" | "profile"
+  >("profile");
   const [usesTouchAccountMenu, setUsesTouchAccountMenu] = useState(false);
   const [achievements, setAchievements] = useState<Achievements | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [
+    browserNotificationPermission,
+    setBrowserNotificationPermission,
+  ] = useState<BrowserNotificationPermission>("unsupported");
   const [usernameDraft, setUsernameDraft] = useState("");
   const [isPending, startTransition] = useTransition();
   const isAuthenticated = status === "authenticated";
@@ -101,6 +133,55 @@ export function AuthModalControls() {
     }
 
     setIsAccountOpen(true);
+  }
+
+  function readShownBrowserNotificationIds() {
+    try {
+      const stored = localStorage.getItem(BROWSER_NOTIFICATION_SHOWN_KEY);
+      const parsed = stored ? (JSON.parse(stored) as unknown) : [];
+
+      return Array.isArray(parsed)
+        ? new Set(parsed.filter((item): item is string => typeof item === "string"))
+        : new Set<string>();
+    } catch {
+      localStorage.removeItem(BROWSER_NOTIFICATION_SHOWN_KEY);
+      return new Set<string>();
+    }
+  }
+
+  function saveShownBrowserNotificationIds(ids: Set<string>) {
+    localStorage.setItem(
+      BROWSER_NOTIFICATION_SHOWN_KEY,
+      JSON.stringify(Array.from(ids).slice(-120)),
+    );
+  }
+
+  function showBrowserNotification(notification: BrowserFriendNotification) {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      return;
+    }
+
+    const nativeNotification = new Notification("Contrapista", {
+      body: notification.message,
+      icon: "/contrapista-icon.png",
+      tag: notification.id,
+    });
+
+    nativeNotification.onclick = () => {
+      window.focus();
+      window.location.assign("/perfil");
+      nativeNotification.close();
+    };
+  }
+
+  async function enableBrowserNotifications() {
+    if (!("Notification" in window)) {
+      setBrowserNotificationPermission("unsupported");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setBrowserNotificationPermission(permission);
   }
 
   function openModal(nextMode: AuthMode) {
@@ -224,6 +305,87 @@ export function AuthModalControls() {
   }
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let ignore = false;
+
+    fetch("/api/users/me/friends?summary=1", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload: FriendsSummaryResponse) => {
+        if (!ignore && payload.ok !== false) {
+          setUnreadNotificationCount(payload.unreadNotificationCount ?? 0);
+        }
+      })
+      .catch(() => undefined);
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setBrowserNotificationPermission(
+        "Notification" in window ? Notification.permission : "unsupported",
+      );
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || browserNotificationPermission !== "granted") {
+      return;
+    }
+
+    let ignore = false;
+
+    async function pollBrowserNotifications() {
+      try {
+        const response = await fetch(
+          "/api/users/me/friends?summary=1&includeNotifications=1",
+          { cache: "no-store" },
+        );
+        const payload = (await response.json().catch(() => ({}))) as FriendsSummaryResponse;
+
+        if (ignore || !response.ok || payload.ok === false) {
+          return;
+        }
+
+        setUnreadNotificationCount(payload.unreadNotificationCount ?? 0);
+
+        const shownIds = readShownBrowserNotificationIds();
+        const newNotifications = (payload.notifications ?? []).filter(
+          (notification) => !shownIds.has(notification.id),
+        );
+
+        for (const notification of newNotifications) {
+          showBrowserNotification(notification);
+          shownIds.add(notification.id);
+        }
+
+        if (newNotifications.length) {
+          saveShownBrowserNotificationIds(shownIds);
+        }
+      } catch {
+        // A checagem roda em segundo plano; falhas pontuais não devem quebrar a UI.
+      }
+    }
+
+    void pollBrowserNotifications();
+    const interval = window.setInterval(pollBrowserNotifications, 30_000);
+
+    return () => {
+      ignore = true;
+      window.clearInterval(interval);
+    };
+  }, [browserNotificationPermission, isAuthenticated]);
+
+  useEffect(() => {
     if (!isAccountOpen || achievements) {
       return;
     }
@@ -327,52 +489,118 @@ export function AuthModalControls() {
         >
           <button
             aria-expanded={isAccountOpen}
-            className="flex h-10 max-w-[38vw] items-center truncate rounded-sm px-2 text-xs font-bold text-stone-300 transition hover:bg-[#d0a85c]/10 hover:text-[#f5e7bd] focus:bg-[#d0a85c]/10 focus:text-[#f5e7bd] focus:outline-none sm:h-full sm:max-w-48 sm:px-3 sm:py-2 sm:text-sm"
+            className="relative flex h-10 max-w-[38vw] items-center truncate rounded-sm px-2 text-xs font-bold text-stone-300 transition hover:bg-[#d0a85c]/10 hover:text-[#f5e7bd] focus:bg-[#d0a85c]/10 focus:text-[#f5e7bd] focus:outline-none sm:h-full sm:max-w-48 sm:px-3 sm:py-2 sm:text-sm"
             onClick={handleAccountButtonClick}
             type="button"
           >
             {session.user?.name ?? "Escolha seu nome"}
+            {unreadNotificationCount > 0 ? (
+              <span className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white shadow-lg shadow-black/30">
+                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+              </span>
+            ) : null}
           </button>
           {isAccountOpen ? (
-            <div className="fixed inset-x-3 top-16 z-[70] rounded-sm border border-[#d0a85c]/35 bg-[#121616] p-4 text-stone-100 shadow-2xl shadow-black/50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-0 sm:w-80">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d0a85c]">
-                Perfil
-              </p>
-              <p className="mt-1 truncate font-serif text-2xl font-bold text-[#f2e6c8]">
-                {session.user?.name ?? session.user?.email}
-              </p>
-              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="fixed inset-x-3 top-16 z-[70] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-sm border border-[#d0a85c]/35 bg-[#121616] p-4 text-stone-100 shadow-2xl shadow-black/50 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-0 sm:w-96">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#d0a85c]">
+                    Perfil
+                  </p>
+                  <p className="mt-1 truncate font-serif text-2xl font-bold text-[#f2e6c8]">
+                    {session.user?.name ?? session.user?.email}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
                 {[
-                  ["Partidas", achievements?.total_matches_played ?? 0],
-                  ["Rankeadas", achievements?.ranked_matches_played ?? 0],
-                  ["Vitórias", achievements?.total_matches_won ?? 0],
-                  ["Vitórias R.", achievements?.ranked_matches_won ?? 0],
-                  ["Rating", achievements?.ranked_rating ?? 1000],
-                  ["Diários", achievements?.daily_problems_solved ?? 0],
-                ].map(([label, value]) => (
-                  <div
-                    className="border-l border-[#d0a85c]/30 pl-2"
-                    key={label}
+                  ["profile", "Perfil"],
+                  ["friends", "Amizades"],
+                  ["notifications", "Avisos"],
+                ].map(([id, label]) => (
+                  <button
+                    className={`h-9 rounded-sm border px-2 text-[10px] font-black uppercase tracking-[0.1em] transition ${
+                      accountTab === id
+                        ? "border-[#d0a85c] bg-[#d0a85c] text-[#17130d]"
+                        : "border-[#d0a85c]/30 text-[#f5e7bd] hover:bg-[#d0a85c]/10"
+                    }`}
+                    key={id}
+                    onClick={() =>
+                      setAccountTab(id as "friends" | "notifications" | "profile")
+                    }
+                    type="button"
                   >
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">
+                    <span className="relative inline-flex items-center justify-center">
                       {label}
-                    </p>
-                    <p className="text-lg font-black text-[#f2e6c8]">{value}</p>
-                  </div>
+                      {id === "notifications" && unreadNotificationCount > 0 ? (
+                        <span className="absolute -right-4 -top-3 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-black leading-5 text-white shadow-lg shadow-black/30">
+                          {unreadNotificationCount > 9
+                            ? "9+"
+                            : unreadNotificationCount}
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
                 ))}
               </div>
-              <Link
-                className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-sm bg-[#d0a85c] px-4 text-sm font-black uppercase tracking-[0.16em] text-[#17130d] transition hover:bg-[#f3dfaa]"
-                href="/perfil"
-              >
-                Ver meu perfil
-              </Link>
+              {accountTab === "profile" ? (
+                <>
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    {[
+                      ["Partidas", achievements?.total_matches_played ?? 0],
+                      ["Ranqueadas", achievements?.ranked_matches_played ?? 0],
+                      ["Vitórias", achievements?.total_matches_won ?? 0],
+                      ["Vitórias R.", achievements?.ranked_matches_won ?? 0],
+                      ["Rating", achievements?.ranked_rating ?? 1000],
+                      ["Diários", achievements?.daily_problems_solved ?? 0],
+                    ].map(([label, value]) => (
+                      <div
+                        className="border-l border-[#d0a85c]/30 pl-2"
+                        key={label}
+                      >
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-stone-400">
+                          {label}
+                        </p>
+                        <p className="text-lg font-black text-[#f2e6c8]">
+                          {value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <Link
+                    className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-sm bg-[#d0a85c] px-4 text-sm font-black uppercase tracking-[0.16em] text-[#17130d] transition hover:bg-[#f3dfaa]"
+                    href="/perfil"
+                  >
+                    Ver meu perfil
+                  </Link>
+                  {browserNotificationPermission === "default" ? (
+                    <button
+                      className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-sm border border-[#d0a85c]/30 px-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+                      onClick={() => void enableBrowserNotifications()}
+                      type="button"
+                    >
+                      Ativar avisos do navegador
+                    </button>
+                  ) : null}
+                  {browserNotificationPermission === "denied" ? (
+                    <p className="mt-2 rounded-sm border border-stone-700 bg-[#0e1111] px-3 py-2 text-xs leading-5 text-stone-400">
+                      Avisos do navegador bloqueados nas permissões do site.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <FriendNetworkPanel
+                  compact
+                  onUnreadCountChange={setUnreadNotificationCount}
+                  view={accountTab}
+                />
+              )}
             </div>
           ) : null}
         </div>
         <button
           className="inline-flex h-10 shrink-0 items-center justify-center rounded-sm border border-[#d0a85c]/45 px-3 text-xs font-bold text-[#f5e7bd] transition hover:bg-[#d0a85c]/10 sm:px-4 sm:text-sm"
-          onClick={() => void signOut({ redirect: false })}
+          onClick={() => void signOut({ callbackUrl: "/", redirect: true })}
           type="button"
         >
           Sair

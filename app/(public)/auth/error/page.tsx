@@ -1,4 +1,10 @@
 import Link from "next/link";
+import { createNoIndexMetadata } from "@/lib/site-metadata";
+
+export const metadata = createNoIndexMetadata(
+  "Entrada interrompida",
+  "Falha de autenticação no Contrapista.",
+);
 
 type AuthErrorPageProps = {
   searchParams?: Promise<{

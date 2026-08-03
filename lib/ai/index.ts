@@ -13,8 +13,15 @@ import type {
 
 const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
 const INVALID_RESPONSE_STANDOFF_MS = 5 * 60 * 1000;
+const MODEL_INFO_CACHE_TTL_MS = 15 * 60 * 1000;
 const modelStandoffUntil = new Map<string, number>();
 const sessionQueues = new Map<string, Promise<void>>();
+let modelInfoCache:
+  | {
+      expiresAt: number;
+      value: Map<string, AiProviderModelInfo>;
+    }
+  | null = null;
 
 type ModelSlot = {
   id: string;
@@ -69,6 +76,12 @@ function isTextGenerationModel(info?: AiProviderModelInfo) {
 }
 
 async function getModelInfoById() {
+  const now = Date.now();
+
+  if (modelInfoCache && modelInfoCache.expiresAt > now) {
+    return modelInfoCache.value;
+  }
+
   const client = getAiClient();
 
   if (!client.listModels) {
@@ -77,8 +90,14 @@ async function getModelInfoById() {
 
   try {
     const models = await client.listModels();
+    const value = new Map(models.map((model) => [model.id, model]));
 
-    return new Map(models.map((model) => [model.id, model]));
+    modelInfoCache = {
+      expiresAt: now + MODEL_INFO_CACHE_TTL_MS,
+      value,
+    };
+
+    return value;
   } catch (error) {
     console.warn(
       "[AI][models] Não foi possível carregar metadados do OpenRouter; usando lista do ambiente.",

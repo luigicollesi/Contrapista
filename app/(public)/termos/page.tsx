@@ -1,4 +1,12 @@
 import Link from "next/link";
+import { createPublicMetadata } from "@/lib/site-metadata";
+
+export const metadata = createPublicMetadata({
+  title: "Termos de Uso",
+  description:
+    "Leia as regras de uso do Contrapista para jogar, manter sua conta e preservar partidas justas.",
+  path: "/termos",
+});
 
 const sections = [
   {
