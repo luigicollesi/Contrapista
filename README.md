@@ -61,6 +61,7 @@ Crie ou mantenha um arquivo `.env` com:
 DATABASE=postgresql://...
 AUTH_SECRET=uma-string-segura-com-32-bytes-ou-mais
 BACKEND_TRUSTED_HOSTS=localhost:3000,seudominio.com
+AUTH_URL=http://localhost:3000
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_GMAIL_SENDER_EMAIL=conta-remetente@gmail.com
@@ -83,9 +84,10 @@ Para produção, ajuste:
 ```env
 GOOGLE_GMAIL_REDIRECT_URI=https://seudominio.com/api/auth/google-gmail/callback
 NEXT_PUBLIC_APP_URL=https://seudominio.com
+AUTH_URL=https://seudominio.com
 ```
 
-`NEXT_PUBLIC_APP_URL` também define URLs canônicas, sitemap e metadados sociais. Em produção, use sempre o domínio público final.
+`NEXT_PUBLIC_APP_URL` também define URLs canônicas, sitemap e metadados sociais. `AUTH_URL` define a origem pública usada pelo Auth.js para montar callbacks de login. Em produção, use sempre o domínio público final nos dois valores.
 
 Callbacks para cadastrar no Google Cloud:
 
@@ -93,6 +95,8 @@ Callbacks para cadastrar no Google Cloud:
 Auth.js Google login:        https://seudominio.com/api/auth/callback/google
 Gmail remetente do sistema:  https://seudominio.com/api/auth/google-gmail/callback
 ```
+
+O login com Google deve usar um OAuth Client do tipo **Web application** no Google Cloud. Clientes do tipo aplicativo/desktop/mobile usam outro modelo de callback e podem gerar `redirect_uri_mismatch` neste fluxo web. No GitHub, cadastre a callback da OAuth App como `https://seudominio.com/api/auth/callback/github`.
 
 Para gerar `GOOGLE_GMAIL_REFRESH_TOKEN`, use o email remetente em `GOOGLE_GMAIL_SENDER_EMAIL`, configure a callback do Gmail no Google Cloud e rode:
 

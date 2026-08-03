@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { auth } from "@/auth";
 import { DeleteAccountPanel } from "@/components/public/delete-account-panel";
 import { FriendNetworkTabs } from "@/components/public/friend-network-panel";
@@ -69,13 +68,6 @@ export default async function ProfilePage() {
             <DeleteAccountPanel />
           </>
         ) : null}
-
-        <Link
-          className="mt-8 inline-flex h-11 items-center justify-center rounded-sm bg-[#d0a85c] px-5 text-sm font-black uppercase tracking-[0.18em] text-[#17130d] transition hover:bg-[#f3dfaa]"
-          href="/"
-        >
-          Voltar
-        </Link>
       </section>
     </main>
   );
