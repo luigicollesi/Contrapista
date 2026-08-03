@@ -15,9 +15,40 @@ import {
   AUTH_SESSION_UPDATE_AGE_SECONDS,
 } from "@/lib/auth-config";
 
+function getAuthRouteBaseUrl() {
+  const configured =
+    process.env.AUTH_REDIRECT_PROXY_URL?.trim() ||
+    process.env.AUTH_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (!configured) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(configured);
+    url.pathname = url.pathname.replace(/\/+$/, "");
+
+    if (!url.pathname.endsWith("/api/auth")) {
+      url.pathname = `${url.pathname}/api/auth`.replace(/\/{2,}/g, "/");
+    }
+
+    url.search = "";
+    url.hash = "";
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return undefined;
+  }
+}
+
+const authRouteBaseUrl = getAuthRouteBaseUrl();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: AUTH_SECRET,
   trustHost: true,
+  redirectProxyUrl: authRouteBaseUrl,
   session: {
     strategy: "jwt",
     maxAge: AUTH_SESSION_MAX_AGE_SECONDS,

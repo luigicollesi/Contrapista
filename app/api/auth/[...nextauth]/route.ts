@@ -1,42 +1,8 @@
 import { handlers } from "@/auth";
 import { rateLimitResponse } from "@/lib/security/rate-limit";
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
-function getConfiguredAuthOrigin() {
-  const configured =
-    process.env.AUTH_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim();
-
-  if (!configured) {
-    return null;
-  }
-
-  try {
-    return new URL(configured).origin;
-  } catch {
-    return null;
-  }
-}
-
-function withConfiguredAuthOrigin(request: NextRequest) {
-  const configuredOrigin = getConfiguredAuthOrigin();
-
-  if (!configuredOrigin || request.nextUrl.origin === configuredOrigin) {
-    return request;
-  }
-
-  const nextUrl = new URL(request.url);
-  const originUrl = new URL(configuredOrigin);
-  nextUrl.protocol = originUrl.protocol;
-  nextUrl.host = originUrl.host;
-
-  return new NextRequest(nextUrl, request);
-}
-
-export function GET(request: NextRequest) {
-  return handlers.GET(withConfiguredAuthOrigin(request));
-}
+export const { GET } = handlers;
 
 function shouldLimitAuthPost(pathname: string) {
   return (
@@ -62,5 +28,5 @@ export async function POST(request: NextRequest) {
     return limited;
   }
 
-  return handlers.POST(withConfiguredAuthOrigin(request));
+  return handlers.POST(request);
 }

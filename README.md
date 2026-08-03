@@ -62,6 +62,7 @@ DATABASE=postgresql://...
 AUTH_SECRET=uma-string-segura-com-32-bytes-ou-mais
 BACKEND_TRUSTED_HOSTS=localhost:3000,seudominio.com
 AUTH_URL=http://localhost:3000
+AUTH_REDIRECT_PROXY_URL=http://localhost:3000/api/auth
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 GOOGLE_GMAIL_SENDER_EMAIL=conta-remetente@gmail.com
@@ -85,9 +86,10 @@ Para produção, ajuste:
 GOOGLE_GMAIL_REDIRECT_URI=https://seudominio.com/api/auth/google-gmail/callback
 NEXT_PUBLIC_APP_URL=https://seudominio.com
 AUTH_URL=https://seudominio.com
+AUTH_REDIRECT_PROXY_URL=https://seudominio.com/api/auth
 ```
 
-`NEXT_PUBLIC_APP_URL` também define URLs canônicas, sitemap e metadados sociais. `AUTH_URL` define a origem pública usada pelo Auth.js para montar callbacks de login. Em produção, use sempre o domínio público final nos dois valores.
+`NEXT_PUBLIC_APP_URL` também define URLs canônicas, sitemap e metadados sociais. `AUTH_URL` define a origem pública usada pelo Auth.js. `AUTH_REDIRECT_PROXY_URL` força o OAuth a montar callbacks sempre a partir de `/api/auth`. Em produção, use sempre o domínio público final nesses valores.
 
 Callbacks para cadastrar no Google Cloud:
 
