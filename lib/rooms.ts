@@ -12,6 +12,7 @@ import {
   normalizePlayerColor,
   type PlayerColor,
 } from "@/lib/player-colors";
+import { getMinimumCluesPerPlayer } from "@/lib/room-config";
 import { validateDisplayNamePolicy } from "@/lib/name-policy";
 
 export type RoomUser = {
@@ -124,7 +125,7 @@ const ROOM_CONFIG_LIMITS = {
   roundAnalysisTimeSeconds: { min: 0, max: 180 },
   finalGuessTimeSeconds: { min: 30, max: 120 },
   trueCluesPerPlayer: { min: 0, max: 100 },
-  cluesPerPlayer: { min: 2, max: 10 },
+  cluesPerPlayer: { min: 1, max: 10 },
 } satisfies Record<Exclude<keyof RoomConfig, "timersEnabled">, { min: number; max: number }>;
 
 let schemaReady: Promise<void> | null = null;
@@ -261,10 +262,27 @@ function snapTrueCluePercentage({
   const stepCount = getTrueCluePercentageStepCount(playerCount, cluesPerPlayer);
   const stepIndex = Math.min(
     stepCount,
-    Math.max(0, Math.round((percentage / 100) * stepCount)),
+    Math.max(3, Math.round((percentage / 100) * stepCount)),
   );
 
   return Math.round((stepIndex * 100) / stepCount);
+}
+
+function applyRoomClueMinimums(config: RoomConfig, playerCount: number): RoomConfig {
+  const cluesPerPlayer = Math.max(
+    getMinimumCluesPerPlayer(playerCount),
+    config.cluesPerPlayer,
+  );
+
+  return {
+    ...config,
+    cluesPerPlayer,
+    trueCluesPerPlayer: snapTrueCluePercentage({
+      cluesPerPlayer,
+      percentage: config.trueCluesPerPlayer,
+      playerCount,
+    }),
+  };
 }
 
 function durationMs(seconds: number) {
@@ -280,7 +298,10 @@ function isPhaseExpired(state: GameState, now: number, config: RoomConfig) {
 }
 
 function publicRoom(room: Room) {
-  const config = room.config ?? DEFAULT_ROOM_CONFIG;
+  const config = applyRoomClueMinimums(
+    room.config ?? DEFAULT_ROOM_CONFIG,
+    room.users.length,
+  );
   const allReady = areAllRoomUsersReady(room.users);
 
   return {
@@ -730,7 +751,7 @@ async function getCaseClueCount(caseId: string, client?: DatabaseClient) {
   return Number(result.rows[0]?.total_count ?? 0) || 0;
 }
 
-async function getRandomCaseWithMoreCluesThan(
+async function getRandomCaseWithAtLeastClues(
   playerCount: number,
   client?: DatabaseClient,
 ) {
@@ -739,7 +760,7 @@ async function getRandomCaseWithMoreCluesThan(
     `
       SELECT id::text AS id
       FROM cases
-      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) > $1
+      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) >= $1
       ORDER BY random()
       LIMIT 1
     `,
@@ -1015,7 +1036,7 @@ export async function ensureRoomsSchema() {
         round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
         final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
         true_clues_per_player integer NOT NULL DEFAULT 50 CHECK (true_clues_per_player BETWEEN 0 AND 100),
-        clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
+        clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 1 AND 10),
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now()
       );
@@ -1062,7 +1083,7 @@ export async function ensureRoomsSchema() {
         ADD COLUMN IF NOT EXISTS round_analysis_time_seconds integer NOT NULL DEFAULT 60 CHECK (round_analysis_time_seconds BETWEEN 0 AND 180),
         ADD COLUMN IF NOT EXISTS final_guess_time_seconds integer NOT NULL DEFAULT 60 CHECK (final_guess_time_seconds BETWEEN 30 AND 120),
         ADD COLUMN IF NOT EXISTS true_clues_per_player integer NOT NULL DEFAULT 50 CHECK (true_clues_per_player BETWEEN 0 AND 100),
-        ADD COLUMN IF NOT EXISTS clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 2 AND 10),
+        ADD COLUMN IF NOT EXISTS clues_per_player integer NOT NULL DEFAULT 6 CHECK (clues_per_player BETWEEN 1 AND 10),
         ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
         ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
 
@@ -1088,6 +1109,11 @@ export async function ensureRoomsSchema() {
       ALTER TABLE game_rooms_config
         ADD CONSTRAINT game_rooms_config_true_clues_per_player_check
           CHECK (true_clues_per_player BETWEEN 0 AND 100);
+
+      ALTER TABLE game_rooms_config
+        DROP CONSTRAINT IF EXISTS game_rooms_config_clues_per_player_check,
+        ADD CONSTRAINT game_rooms_config_clues_per_player_check
+          CHECK (clues_per_player BETWEEN 1 AND 10);
 
       DO $$
       BEGIN
@@ -2347,14 +2373,7 @@ export async function updateRoomConfig({
       );
     }
 
-    const snappedConfig = {
-      ...nextConfig,
-      trueCluesPerPlayer: snapTrueCluePercentage({
-        cluesPerPlayer: nextConfig.cluesPerPlayer,
-        percentage: nextConfig.trueCluesPerPlayer,
-        playerCount: users.length,
-      }),
-    };
+    const snappedConfig = applyRoomClueMinimums(nextConfig, users.length);
     const updatedUsers = users.map((user) => ({ ...user, ready: false }));
 
     await client.query(
@@ -2484,7 +2503,7 @@ export async function setRoomUserReady({
     if (selectedCaseToStart) {
       const totalClues = await getCaseClueCount(selectedCaseToStart, client);
 
-      if (totalClues <= nextUsers.length) {
+      if (totalClues < nextUsers.length) {
         nextUsers = nextUsers.map((user) => ({ ...user, ready: false }));
         selectedcase = null;
         caseSelectionMode = "generate";
@@ -2493,7 +2512,7 @@ export async function setRoomUserReady({
         selectedcase = null;
       }
     } else if (allUsersReady && caseSelectionMode === "automatic") {
-      const randomCaseId = await getRandomCaseWithMoreCluesThan(nextUsers.length, client);
+      const randomCaseId = await getRandomCaseWithAtLeastClues(nextUsers.length, client);
 
       if (randomCaseId) {
         activecase = randomCaseId;
@@ -2742,8 +2761,8 @@ export async function selectRoomCase({
     if (mode === "manual" && caseId) {
       const totalClues = await getCaseClueCount(caseId, client);
 
-      if (totalClues <= users.length) {
-        throw new PublicError("Escolha um caso com mais pistas do que jogadores na sala.");
+      if (totalClues < users.length) {
+        throw new PublicError("Escolha um caso com ao menos uma pista por jogador.");
       }
     }
 

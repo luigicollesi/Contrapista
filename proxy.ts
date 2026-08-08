@@ -8,7 +8,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const backendApiPrefix = "/api";
 const providerCallbackPrefixes = ["/api/auth/callback/google", "/api/auth/callback/github"];
-const protectedPagePrefixes = ["/jogar/busca", "/jogar/diario", "/sala"];
+const protectedPagePrefixes = ["/adm", "/jogar/busca", "/jogar/diario", "/sala"];
 const protectedApiPrefixes = [
   "/api/cases",
   "/api/daily-problem",

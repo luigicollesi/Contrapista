@@ -1,7 +1,11 @@
 import { chatCompletion, getAvailableAiModelCount } from "@/lib/ai";
 import { AiModelsUnavailableError } from "@/lib/ai/errors";
 import { dbQuery } from "@/lib/db";
-import { getClueDistribution } from "@/lib/room-config";
+import {
+  getClueDistribution,
+  getMinimumCluesPerPlayer,
+  getTrueCluePercentageStates,
+} from "@/lib/room-config";
 import {
   DEFAULT_ROOM_CONFIG,
   setRoomActiveCase,
@@ -536,7 +540,13 @@ Regras específicas:
 	- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
 	- Distribua as pistas para que nenhuma sozinha resolva tudo; pelo menos uma pista deve parecer secundária até ser combinada com outra.
 	- Garanta cobertura completa: para cada pergunta central, deve existir no conjunto de true_clues uma base dedutiva suficiente para chegar à resposta correspondente.
+  - Deve existir exatamente uma solução compatível com todas as true_clues.
+  - Após considerar todas as true_clues, nenhuma solução alternativa pode explicar todos os fatos sem contradizer alguma evidência.
+  - false_clues nunca podem depender de informação arbitrariamente falsa.
+  - Devem ser fatos verdadeiros que sugerem uma conclusão errada OU informações cuja falsidade possa ser demonstrada pelas true_clues.
 	- No Contexto, explique de forma breve como as true_clues permitem responder cada pergunta central.
+  - O Contexto não pode introduzir fatos novos.
+  - Toda informação usada para provar a solução deve aparecer previamente em case_text ou true_clues.
 	- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
 ${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
 `.trim();
@@ -765,7 +775,7 @@ export async function listCaseSummaries(
         jsonb_array_length(false_clues) AS false_count,
         created_at
       FROM cases
-      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) > $2
+      WHERE jsonb_array_length(true_clues) + jsonb_array_length(false_clues) >= $2
       ORDER BY created_at DESC
       LIMIT $1
     `,
@@ -913,4 +923,99 @@ export async function createCaseForRoom(roomCode: string) {
   } finally {
     caseGenerationLocks.delete(roomCode);
   }
+}
+
+export async function createStandaloneCase({
+  clueCount,
+  playerCount,
+  trueCluePercentage,
+}: {
+  clueCount: number;
+  playerCount: number;
+  trueCluePercentage: number;
+}) {
+  const normalizedClueCount = Math.round(clueCount);
+  const normalizedPlayerCount = Math.round(playerCount);
+  const normalizedTrueCluePercentage = Math.round(trueCluePercentage);
+
+  if (
+    !Number.isFinite(normalizedPlayerCount) ||
+    normalizedPlayerCount < 1 ||
+    normalizedPlayerCount > 10
+  ) {
+    throw new Error("Escolha entre 1 e 10 usuários.");
+  }
+
+  if (
+    !Number.isFinite(normalizedClueCount) ||
+    normalizedClueCount < getMinimumCluesPerPlayer(normalizedPlayerCount) ||
+    normalizedClueCount > 10
+  ) {
+    throw new Error(
+      `Escolha ao menos ${getMinimumCluesPerPlayer(normalizedPlayerCount)} dicas por jogador para essa quantidade de usuários.`,
+    );
+  }
+
+  if (
+    !Number.isFinite(normalizedTrueCluePercentage) ||
+    !getTrueCluePercentageStates(
+      normalizedPlayerCount,
+      normalizedClueCount,
+    ).includes(normalizedTrueCluePercentage)
+  ) {
+    throw new Error("Escolha uma quantidade válida de dicas verdadeiras (mínimo de 3).");
+  }
+
+  await ensureCaseSchema();
+
+  const startedAt = Date.now();
+  const generatedCase = await generateCaseWithAi(
+    normalizedPlayerCount,
+    {
+      ...DEFAULT_ROOM_CONFIG,
+      cluesPerPlayer: normalizedClueCount,
+      trueCluesPerPlayer: normalizedTrueCluePercentage,
+    },
+    `contrapista:admin:case-generation:${crypto.randomUUID()}`,
+  );
+  const result = await dbQuery<GameCase>(
+    `
+      INSERT INTO cases (
+        title,
+        case_text,
+        final_answer,
+        true_clues,
+        false_clues
+      )
+      VALUES ($1, $2, $3, $4::jsonb, $5::jsonb)
+      RETURNING
+        id::text AS id,
+        title,
+        case_text,
+        final_answer,
+        true_clues,
+        false_clues,
+        created_at
+    `,
+    [
+      generatedCase.title,
+      generatedCase.case_text,
+      generatedCase.final_answer,
+      JSON.stringify(generatedCase.true_clues),
+      JSON.stringify(generatedCase.false_clues),
+    ],
+  );
+  const createdCase = result.rows[0];
+
+  if (!createdCase?.id) {
+    throw new Error("O banco de dados não retornou o caso criado.");
+  }
+
+  rememberCaseCreationDuration(startedAt);
+
+  return {
+    ...createdCase,
+    true_clues: normalizeClueArray(createdCase.true_clues),
+    false_clues: normalizeClueArray(createdCase.false_clues),
+  };
 }

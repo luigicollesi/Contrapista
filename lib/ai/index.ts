@@ -1,5 +1,6 @@
 import { getAiClient } from "@/lib/ai/client";
 import { getAiConfig } from "@/lib/ai/config";
+import { recordOpenRouterUsage } from "@/lib/ai/usage";
 import {
   AiModelsUnavailableError,
   getErrorMessage,
@@ -419,6 +420,17 @@ async function executeChatCompletion(
       supportsResponseFormat,
       requestId,
     });
+
+    try {
+      await recordOpenRouterUsage({
+        apiKeySlot: Number(apiKeySlot.id),
+        model,
+        requestId,
+        usage: response.usage,
+      });
+    } catch (usageError) {
+      console.warn("[AI][usage] Não foi possível registrar o consumo da requisição.", usageError);
+    }
 
     logAiInfo("model-success", {
       requestId,

@@ -18,6 +18,10 @@ import {
   PLAYER_COLORS,
   type PlayerColor,
 } from "@/lib/player-colors";
+import {
+  getMinimumCluesPerPlayer,
+  getTrueCluePercentageStates,
+} from "@/lib/room-config";
 
 type RoomUser = {
   accountUserId?: string | null;
@@ -168,7 +172,7 @@ const configFields = [
     description: "Quantidade de fragmentos recebidos por cada participante.",
     group: "dossie",
     suffix: "",
-    min: 2,
+    min: 1,
     max: 10,
     step: 1,
   },
@@ -219,14 +223,6 @@ function configsMatch(left: RoomConfig, right: RoomConfig, playerCount = 1) {
   );
 }
 
-function getTrueCluePercentageStates(playerCount: number, cluesPerPlayer: number) {
-  const stepCount = Math.max(1, Math.max(1, playerCount) * Math.max(1, cluesPerPlayer));
-
-  return Array.from({ length: stepCount + 1 }, (_, index) =>
-    Math.round((index * 100) / stepCount),
-  );
-}
-
 function snapToClosestState(value: number, states: number[]) {
   return states.reduce((closest, option) =>
     Math.abs(option - value) < Math.abs(closest - value) ? option : closest,
@@ -244,13 +240,18 @@ function getAdjacentState(value: number, states: number[], direction: -1 | 1) {
 }
 
 function snapRoomConfigToPlayerCount(config: RoomConfig, playerCount: number) {
+  const cluesPerPlayer = Math.max(
+    getMinimumCluesPerPlayer(playerCount),
+    config.cluesPerPlayer,
+  );
   const trueClueStates = getTrueCluePercentageStates(
     playerCount,
-    config.cluesPerPlayer,
+    cluesPerPlayer,
   );
 
   return {
     ...config,
+    cluesPerPlayer,
     trueCluesPerPlayer: snapToClosestState(
       config.trueCluesPerPlayer,
       trueClueStates,
@@ -685,7 +686,11 @@ export default function RoomPage() {
 
     setConfigDraft((current) => {
       const playerCount = Math.max(1, room?.users.length ?? 1);
-      const rawValue = Math.min(field.max, Math.max(field.min, Math.round(numericValue)));
+      const min =
+        key === "cluesPerPlayer"
+          ? getMinimumCluesPerPlayer(playerCount)
+          : field.min;
+      const rawValue = Math.min(field.max, Math.max(min, Math.round(numericValue)));
       const nextCluesPerPlayer =
         key === "cluesPerPlayer" ? rawValue : current.cluesPerPlayer;
       const trueClueStates = getTrueCluePercentageStates(
@@ -1630,12 +1635,19 @@ export default function RoomPage() {
                         const max = field.max;
                         const value = configDraft[field.key];
                         const playerCount = Math.max(1, room?.users.length ?? 1);
+                        const min =
+                          field.key === "cluesPerPlayer"
+                            ? getMinimumCluesPerPlayer(playerCount)
+                            : field.min;
                         const trueClueStates = getTrueCluePercentageStates(
                           playerCount,
                           configDraft.cluesPerPlayer,
                         );
                         const isTrueCluePercentage =
                           field.key === "trueCluesPerPlayer";
+                        const effectiveMin = isTrueCluePercentage
+                          ? trueClueStates[0]
+                          : min;
                         const decrementValue = isTrueCluePercentage
                           ? getAdjacentState(value, trueClueStates, -1)
                           : value - field.step;
@@ -1664,7 +1676,7 @@ export default function RoomPage() {
                                 </p>
                               </div>
                               <span className="shrink-0 rounded-full border border-[#d7b861]/25 bg-[#0f120e] px-3 py-1 text-xs font-bold text-stone-400">
-                                {field.min}-{max}{field.suffix}
+                                {effectiveMin}-{max}{field.suffix}
                               </span>
                             </div>
 
@@ -1672,7 +1684,7 @@ export default function RoomPage() {
                               <button
                                 aria-label={`Diminuir ${field.label}`}
                                 className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-700 bg-[#0f120e] text-lg font-black text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
-                                disabled={!canEditConfig || isSaving || value <= field.min}
+                                disabled={!canEditConfig || isSaving || value <= effectiveMin}
                                 onClick={() =>
                                   updateConfigDraft(field.key, String(decrementValue))
                                 }
@@ -1685,7 +1697,7 @@ export default function RoomPage() {
                                 className="w-full accent-[#d7b861] disabled:opacity-60"
                                 disabled={!canEditConfig || isSaving}
                                 max={max}
-                                min={field.min}
+                                min={effectiveMin}
                                 onChange={(event) =>
                                   updateConfigDraft(field.key, event.target.value)
                                 }
@@ -1717,7 +1729,7 @@ export default function RoomPage() {
                                   disabled={!canEditConfig || isSaving}
                                   id={`config-${field.key}`}
                                   max={max}
-                                  min={field.min}
+                                  min={effectiveMin}
                                   onChange={(event) =>
                                     updateConfigDraft(field.key, event.target.value)
                                   }
