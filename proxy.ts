@@ -1,4 +1,4 @@
-import { AUTH_SECRET } from "@/lib/auth-config";
+import { AUTH_SECRET, AUTH_SESSION_COOKIE_NAME } from "@/lib/auth-config";
 import { logSecurityEvent } from "@/lib/security/audit-log";
 import { validateCsrfRequest } from "@/lib/security/csrf";
 import { validateTrustedBackendHost } from "@/lib/security/trusted-hosts";
@@ -36,9 +36,6 @@ function isProviderCallbackPath(pathname: string) {
   return isProtectedPath(pathname, providerCallbackPrefixes);
 }
 
-const SECURE_AUTH_COOKIE = "__Secure-authjs.session-token";
-const AUTH_COOKIE = "authjs.session-token";
-
 function hasAuthenticatedToken(token: JWT | null) {
   if (!token || typeof token === "string") {
     return false;
@@ -48,31 +45,21 @@ function hasAuthenticatedToken(token: JWT | null) {
 }
 
 async function readAuthToken(request: NextRequest) {
-  const cookieNames = request.cookies.has(SECURE_AUTH_COOKIE)
-    ? [SECURE_AUTH_COOKIE, AUTH_COOKIE]
-    : [AUTH_COOKIE, SECURE_AUTH_COOKIE];
+  try {
+    return await getToken({
+      cookieName: AUTH_SESSION_COOKIE_NAME,
+      req: request,
+      secret: AUTH_SECRET,
+    });
+  } catch (error) {
+    logSecurityEvent("auth-token-read", {
+      action: "ignore-invalid-token",
+      cookieName: AUTH_SESSION_COOKIE_NAME,
+      error: error instanceof Error ? error.name : "UnknownError",
+    });
 
-  for (const cookieName of cookieNames) {
-    try {
-      const token = await getToken({
-        cookieName,
-        req: request,
-        secret: AUTH_SECRET,
-      });
-
-      if (token) {
-        return token;
-      }
-    } catch (error) {
-      logSecurityEvent("auth-token-read", {
-        action: "ignore-invalid-token",
-        cookieName,
-        error: error instanceof Error ? error.name : "UnknownError",
-      });
-    }
+    return null;
   }
-
-  return null;
 }
 
 export async function proxy(request: NextRequest) {

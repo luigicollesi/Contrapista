@@ -11,6 +11,8 @@ import {
 } from "@/lib/auth-users";
 import {
   AUTH_SECRET,
+  AUTH_SESSION_COOKIE_NAME,
+  AUTH_SESSION_COOKIE_OPTIONS,
   AUTH_SESSION_MAX_AGE_SECONDS,
   AUTH_SESSION_UPDATE_AGE_SECONDS,
 } from "@/lib/auth-config";
@@ -56,6 +58,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   jwt: {
     maxAge: AUTH_SESSION_MAX_AGE_SECONDS,
+  },
+  cookies: {
+    sessionToken: {
+      name: AUTH_SESSION_COOKIE_NAME,
+      options: AUTH_SESSION_COOKIE_OPTIONS,
+    },
   },
   pages: {
     error: "/auth/error",
