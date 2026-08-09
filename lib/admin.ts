@@ -2,6 +2,7 @@ import "server-only";
 
 import { auth } from "@/auth";
 import { getAiConfig } from "@/lib/ai/config";
+import { getAiModelStandoffStatus } from "@/lib/ai";
 import { getTodayFreeModelUsage } from "@/lib/ai/usage";
 import { dbQuery } from "@/lib/db";
 
@@ -48,10 +49,19 @@ export type AdminDashboard = {
   ai: {
     availableCredits: number | null;
     freeTier: {
-      dailyLimit: number;
       models: Array<{ model: string; requests: number; totalTokens: number }>;
-      remaining: number;
       usedToday: number;
+    };
+    generation: {
+      availableCombinations: number;
+      status: "available" | "unavailable";
+      standoffs: Array<{
+        apiKeySlot: string;
+        model: string;
+        modelSlot: string;
+        standoffUntil: number;
+      }>;
+      totalCombinations: number;
     };
     activity: {
       models: OpenRouterModelUsage[];
@@ -189,21 +199,29 @@ async function getOpenRouterUsage() {
   const config = getAiConfig();
   const activityApiKey =
     process.env.OPENROUTER_MANAGEMENT_API_KEY?.trim() || config.openRouter.apiKeys[0];
-  const [credits, activity, freeModelRequests] = await Promise.all([
+  const [credits, activity, freeModelRequests, generation] = await Promise.all([
     getOpenRouterCredits(),
     getOpenRouterActivity(activityApiKey, config.openRouter.baseUrl),
     getTodayFreeModelUsage(),
+    getAiModelStandoffStatus(),
   ]);
-  const dailyLimit = (credits.totalCredits ?? 0) >= 10 ? 1000 : 50;
+  const generationStatus: "available" | "unavailable" =
+    generation.totalCount > 0 && generation.availableCount === 0
+      ? "unavailable"
+      : "available";
 
   return {
     ...credits,
     activity,
     freeTier: {
-      dailyLimit,
       models: freeModelRequests.models,
-      remaining: Math.max(0, dailyLimit - freeModelRequests.requests),
       usedToday: freeModelRequests.requests,
+    },
+    generation: {
+      availableCombinations: generation.availableCount,
+      status: generationStatus,
+      standoffs: generation.standoffs,
+      totalCombinations: generation.totalCount,
     },
   };
 }

@@ -1,5 +1,10 @@
 import { getAiClient } from "@/lib/ai/client";
 import { getAiConfig } from "@/lib/ai/config";
+import {
+  listActiveAiModelStandoffs,
+  removeAiModelStandoff,
+  saveAiModelStandoff,
+} from "@/lib/ai/standoffs";
 import { recordOpenRouterUsage } from "@/lib/ai/usage";
 import {
   AiModelsUnavailableError,
@@ -38,6 +43,13 @@ type ApiKeySlot = {
 type RequestSlot = {
   apiKeySlot: ApiKeySlot;
   modelSlot: ModelSlot;
+};
+
+export type AiModelStandoffStatus = {
+  apiKeySlot: string;
+  model: string;
+  modelSlot: string;
+  standoffUntil: number;
 };
 
 type AiLogValue = string | number | boolean | null | undefined;
@@ -145,12 +157,45 @@ export async function getAvailableAiModelCount(): Promise<number> {
   const config = getAiConfig();
   const modelSlots = await getModelSlots(config.models);
   const keySlots = getApiKeySlots(config.openRouter.apiKeys);
+  await syncModelStandoffs(modelSlots, keySlots);
   const now = Date.now();
   const availableCounts = keySlots.map(
     (keySlot) => getAvailableModelSlots(modelSlots, keySlot.id, now).length,
   );
 
   return availableCounts.reduce((total, count) => total + count, 0);
+}
+
+export async function getAiModelStandoffStatus() {
+  const config = getAiConfig();
+  const modelSlots = await getModelSlots(config.models);
+  const keySlots = getApiKeySlots(config.openRouter.apiKeys);
+  await syncModelStandoffs(modelSlots, keySlots);
+  const now = Date.now();
+  const standoffs: AiModelStandoffStatus[] = [];
+
+  for (const apiKeySlot of keySlots) {
+    for (const modelSlot of modelSlots) {
+      const standoffUntil = modelStandoffUntil.get(
+        standoffKey(apiKeySlot.id, modelSlot.id),
+      ) ?? 0;
+
+      if (standoffUntil > now) {
+        standoffs.push({
+          apiKeySlot: apiKeySlot.id,
+          model: modelSlot.model,
+          modelSlot: modelSlot.id,
+          standoffUntil,
+        });
+      }
+    }
+  }
+
+  return {
+    availableCount: keySlots.length * modelSlots.length - standoffs.length,
+    standoffs,
+    totalCount: keySlots.length * modelSlots.length,
+  };
 }
 
 function getApiKeySlots(apiKeys: string[]): ApiKeySlot[] {
@@ -162,6 +207,27 @@ function getApiKeySlots(apiKeys: string[]): ApiKeySlot[] {
 
 function standoffKey(apiKeySlotId: string, modelSlotId: string) {
   return `${apiKeySlotId}:${modelSlotId}`;
+}
+
+async function syncModelStandoffs(slots: ModelSlot[], keySlots: ApiKeySlot[]) {
+  const activeStandoffs = await listActiveAiModelStandoffs();
+  const relevantKeys = new Set(
+    keySlots.flatMap((apiKeySlot) =>
+      slots.map((modelSlot) => standoffKey(apiKeySlot.id, modelSlot.id)),
+    ),
+  );
+
+  for (const key of relevantKeys) {
+    modelStandoffUntil.delete(key);
+  }
+
+  for (const standoff of activeStandoffs) {
+    const key = standoffKey(standoff.apiKeySlot, standoff.modelSlot);
+
+    if (relevantKeys.has(key)) {
+      modelStandoffUntil.set(key, standoff.standoffUntil);
+    }
+  }
 }
 
 function getModelSlotsWithStandoffState(
@@ -220,28 +286,40 @@ function getNextAvailableRequestSlot(
   return null;
 }
 
-function putModelSlotInStandoff(
+async function putModelSlotInStandoff(
   apiKeySlotId: string,
-  modelSlotId: string,
+  modelSlot: ModelSlot,
   now: number,
   duration = MODEL_STANDOFF_MS,
-): void {
-  modelStandoffUntil.set(standoffKey(apiKeySlotId, modelSlotId), now + duration);
+): Promise<void> {
+  const standoffUntil = now + duration;
+  modelStandoffUntil.set(standoffKey(apiKeySlotId, modelSlot.id), standoffUntil);
+  await saveAiModelStandoff({
+    apiKeySlot: apiKeySlotId,
+    model: modelSlot.model,
+    modelSlot: modelSlot.id,
+    standoffUntil,
+  });
 }
 
-function putApiKeyModelsInStandoff(
+async function putApiKeyModelsInStandoff(
   apiKeySlotId: string,
   slots: ModelSlot[],
   now: number,
   duration = MODEL_STANDOFF_MS,
-): void {
-  for (const slot of slots) {
-    putModelSlotInStandoff(apiKeySlotId, slot.id, now, duration);
-  }
+): Promise<void> {
+  await Promise.all(
+    slots.map((slot) => putModelSlotInStandoff(apiKeySlotId, slot, now, duration)),
+  );
+}
+
+export async function clearAiModelStandoff(apiKeySlotId: string, modelSlotId: string) {
+  modelStandoffUntil.delete(standoffKey(apiKeySlotId, modelSlotId));
+  await removeAiModelStandoff(apiKeySlotId, modelSlotId);
 }
 
 function isApiKeyScopedFailure(status: number | undefined, message: string) {
-  if (status === 401 || status === 403) {
+  if (status === 401 || status === 402 || status === 403) {
     return true;
   }
 
@@ -368,6 +446,8 @@ async function executeChatCompletion(
   const requestId = createAiRequestId();
   const now = Date.now();
   const modelSlots = await getModelSlots(config.models);
+  const apiKeySlots = getApiKeySlots(config.openRouter.apiKeys);
+  await syncModelStandoffs(modelSlots, apiKeySlots);
   const requestSlot = getNextAvailableRequestSlot(
     modelSlots,
     config.openRouter.apiKeys,
@@ -462,16 +542,16 @@ async function executeChatCompletion(
       : "standoff-model";
 
     if (apiKeyScopedFailure) {
-      putApiKeyModelsInStandoff(
+      await putApiKeyModelsInStandoff(
         apiKeySlot.id,
         modelSlots,
         failedAt,
         standoffDuration,
       );
     } else {
-      putModelSlotInStandoff(
+      await putModelSlotInStandoff(
         apiKeySlot.id,
-        modelSlotId,
+        modelSlot,
         failedAt,
         standoffDuration,
       );

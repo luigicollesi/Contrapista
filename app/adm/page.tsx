@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { resumeAiModel } from "@/app/adm/actions";
 import { CaseGenerator } from "@/components/admin/case-generator";
 import { getAdminDashboard, getAdminSession } from "@/lib/admin";
 import { createNoIndexMetadata } from "@/lib/site-metadata";
@@ -31,6 +32,19 @@ function formatNumber(value: number | null) {
   return value === null ? "Indisponível" : new Intl.NumberFormat("pt-BR").format(value);
 }
 
+function formatRemainingStandoff(standoffUntil: number) {
+  const remainingMs = Math.max(0, standoffUntil - Date.now());
+  const totalMinutes = Math.ceil(remainingMs / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return `${hours}h${minutes ? ` ${minutes}min` : ""}`;
+  }
+
+  return `${Math.max(1, minutes)} min`;
+}
+
 export default async function AdminPage() {
   const session = await getAdminSession();
 
@@ -61,11 +75,11 @@ export default async function AdminPage() {
             ["Créditos restantes", formatCredits(dashboard.ai.availableCredits)],
             ["Requests hoje", formatNumber(dashboard.ai.activity.requests)],
             ["Tokens hoje", formatNumber(dashboard.ai.activity.tokens)],
+            ["Modelos grátis hoje", dashboard.ai.freeTier.usedToday],
             [
-              "Modelos grátis hoje",
-              `${dashboard.ai.freeTier.usedToday} / ${dashboard.ai.freeTier.dailyLimit}`,
+              "Combinações de IA disponíveis",
+              `${dashboard.ai.generation.availableCombinations} / ${dashboard.ai.generation.totalCombinations}`,
             ],
-            ["Grátis restantes", dashboard.ai.freeTier.remaining],
           ].map(([label, value]) => (
             <article
               className="rounded-sm border border-[#d0a85c]/25 bg-[#171a1a] p-5 shadow-2xl shadow-black/20"
@@ -79,11 +93,63 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        {dashboard.ai.status === "unavailable" ? (
-          <p className="mt-4 text-sm text-amber-200">
-            O OpenRouter não disponibilizou créditos para a chave configurada.
+        {dashboard.ai.generation.status === "unavailable" ? (
+          <p className="mt-4 rounded-sm border border-red-400/35 bg-red-950/30 px-4 py-3 text-sm font-semibold text-red-100" role="alert">
+            Sem IA disponível para gerar casos: todas as combinações de modelo e chave estão em pausa. Reative uma combinação abaixo ou aguarde o término da pausa.
           </p>
         ) : null}
+
+        {dashboard.ai.status === "unavailable" ? (
+          <p className="mt-4 text-sm text-amber-200">
+            Não foi possível consultar os créditos do OpenRouter para a chave configurada.
+          </p>
+        ) : null}
+
+        <section className="mt-10 overflow-hidden rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]">
+          <div className="border-b border-[#d0a85c]/20 px-5 py-4">
+            <h2 className="font-serif text-2xl font-bold text-[#f2e6c8]">
+              Pausas de IA
+            </h2>
+            <p className="mt-1 text-sm text-stone-400">
+              Pausas são criadas após falhas da API. Reativar libera imediatamente a combinação selecionada para uma nova tentativa.
+            </p>
+          </div>
+          {dashboard.ai.generation.standoffs.length ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-[#d0a85c]/20 text-xs uppercase tracking-[0.16em] text-[#d0a85c]">
+                  <tr>
+                    <th className="px-5 py-4">Chave API</th>
+                    <th className="px-5 py-4">Modelo</th>
+                    <th className="px-5 py-4">Tempo restante</th>
+                    <th className="px-5 py-4"><span className="sr-only">Ação</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#d0a85c]/10 text-stone-200">
+                  {dashboard.ai.generation.standoffs.map((standoff) => (
+                    <tr key={`${standoff.apiKeySlot}:${standoff.modelSlot}`}>
+                      <td className="px-5 py-4 font-semibold">Chave #{standoff.apiKeySlot}</td>
+                      <td className="px-5 py-4 font-mono text-xs">{standoff.model}</td>
+                      <td className="px-5 py-4">{formatRemainingStandoff(standoff.standoffUntil)}</td>
+                      <td className="px-5 py-4 text-right">
+                        <form action={resumeAiModel.bind(null, standoff.apiKeySlot, standoff.modelSlot)}>
+                          <button
+                            className="rounded-sm border border-[#d0a85c]/45 px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#f5e7bd] transition hover:bg-[#d0a85c]/10"
+                            type="submit"
+                          >
+                            Tirar da pausa
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="px-5 py-5 text-sm text-stone-400">Nenhuma combinação está em pausa.</p>
+          )}
+        </section>
 
         <section className="mt-10 overflow-hidden rounded-sm border border-[#d0a85c]/25 bg-[#171a1a]">
           <div className="border-b border-[#d0a85c]/20 px-5 py-4">
@@ -91,7 +157,7 @@ export default async function AdminPage() {
               Modelos gratuitos
             </h2>
             <p className="mt-1 text-sm text-stone-400">
-              {dashboard.ai.freeTier.usedToday} usados hoje / {dashboard.ai.freeTier.dailyLimit} por dia / {dashboard.ai.freeTier.remaining} restantes.
+              {dashboard.ai.freeTier.usedToday} chamadas bem-sucedidas registradas hoje, sem limite diário aplicado pelo painel.
             </p>
           </div>
           <div className="overflow-x-auto">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthenticatedAccessRetry } from "@/components/public/authenticated-access-retry";
 import { createNoIndexMetadata } from "@/lib/site-metadata";
 
 export const metadata = createNoIndexMetadata(
@@ -26,6 +27,7 @@ export default async function SignInPage({ searchParams }: SignInPageProps) {
 
   return (
     <main className="sy-theme public-red-details min-h-screen bg-[#0e1111] px-4 py-16 text-stone-50 sm:px-6 lg:px-8">
+      <AuthenticatedAccessRetry callbackUrl={callbackUrl} />
       <section className="mx-auto max-w-4xl border-y border-[#d0a85c]/25 py-12">
         <p className="text-sm font-black uppercase tracking-[0.32em] text-[#d0a85c]">
           Acesso necessário

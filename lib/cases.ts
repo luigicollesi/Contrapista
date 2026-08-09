@@ -466,42 +466,84 @@ function roomCaseGenerationSessionId(roomCode: string) {
 }
 
 const CASE_GENERATION_SYSTEM_PROMPT = `
-Você gera casos originais em português para Contrapista, um jogo dedutivo familiar.
-Saída obrigatória: um único objeto JSON válido. O primeiro caractere deve ser "{" e o último deve ser "}". Não use markdown, cerca de código, análise, comentários nem texto antes/depois do JSON.
+Você cria casos originais em português para Contrapista, um jogo familiar de investigação e dedução.
 
 Contrato:
-- Chaves exatas e nesta ordem: title, case_text, true_clues, false_clues, final_answer.
-- title: começa com "O CASO DO" ou "O CASO DA" e termina com elemento concreto.
-- case_text: 2 ou 3 parágrafos; incidente claro; 3 ou 4 suspeitos; álibis, horários (pode ser vagos (ex: "de tarde") ou expecificos (ex: "às 10h")), objetos físicos e despiste.
-- O último parágrafo de case_text termina com a seção exata "Perguntas centrais do caso:" e 2 a 3 perguntas numeradas "1.", "2.", "3.".
-- final_answer deve ter este formato exato: começa com "Resposta:", depois linhas numeradas "1. ...", "2. ..." respondendo as perguntas na mesma ordem, depois uma linha "Contexto:" explicando dedução e pistas falsas.
-- true_clues e false_clues são arrays de strings curtas, concretas e independentes, no máximo 120 caracteres.
-- O conjunto de true_clues precisa conter informação suficiente para responder todas as perguntas centrais sem depender de sorte, conhecimento externo ou suposição não indicada.
-- Use aspas duplas JSON. Escape quebras de linha dentro das strings como "\\n"; não escreva quebras literais dentro de strings.
-- Não use placeholders, reticências, blocos de código, aspas simples JSON, chaves extras nem comentários.
-- Não escreva "verdadeira", "falsa", "mentira" ou "correta" dentro das pistas.
+- title começa com "O CASO DO" ou "O CASO DA".
+- case_text: 2 ou 3 parágrafos, incidente claro, 3 ou 4 suspeitos, álibis, horários, objetos e detalhes investigativos.
+- Termine case_text com "Perguntas centrais do caso:" e 2 ou 3 perguntas numeradas.
+- true_clues e false_clues são pistas curtas, concretas e independentes, com no máximo 160 caracteres.
+- final_answer começa com "Resposta:", responde cada pergunta numerada na mesma ordem e termina com "Contexto:".
+- Não rotule pistas como verdadeiras, falsas, corretas ou mentiras.
 
-Modelo de final_answer:
-"Resposta:\\n1. Culpado/resposta da pergunta 1.\\n2. Método/resposta da pergunta 2.\\nContexto: Explique em poucas frases como as pistas sustentam o gabarito e por que os desvios eram plausíveis."
+Dedução:
+- Deve existir exatamente uma solução compatível com todas as true_clues.
+- A solução deve ser dedutível apenas por case_text + true_clues, sem conhecimento externo.
+- O Contexto não pode introduzir fatos novos.
+- Nenhuma pista sozinha deve revelar toda a solução.
+- Pelo menos uma conclusão deve exigir combinar duas ou mais true_clues.
+- Algumas pistas devem eliminar hipóteses, não apenas apontar para o culpado.
+- Pelo menos dois suspeitos devem parecer plausíveis antes da dedução completa.
 
-	Qualidade:
-	- A solução depende de cruzar várias pistas, não de uma pista óbvia.
-	- Cada resposta numerada precisa ser sustentada por pelo menos uma pista confiável; algumas respostas podem exigir cruzar duas ou mais pistas.
-	- Inclua pistas físicas, testemunhais, temporais e alguns jogos de linguagem simples.
-	- Pistas falsas devem ser plausíveis e úteis para discussão, mas desviam sem o conjunto completo.
-	- Evite pistas genéricas como "parece suspeito" ou "alguém viu algo estranho".
-	- Varie o núcleo do mistério: crime, roubo, fraude, desaparecimento, chantagem, troca de identidade, objeto disfarçado ou álibi impossível.
-	- Use cenários concretos variados de investigação.
-	- Faça algumas pistas funcionarem como cadeia: uma indica local, outra revela motivo, outra desmonta um álibi e outra redefine o objeto ou método.
-	- Pistas engenhosas podem envolver profissão, hábito, clima, transporte, dívida, procedência de objeto, detalhe de linguagem, horário ou vestígio físico discreto.
-	`.trim();
+Pistas:
+- Misture pistas físicas, temporais, testemunhais, espaciais, comportamentais e documentais.
+- Explore profissão, hábito, transporte, clima, procedência de objetos, quantidade, linguagem, som, cheiro, rota ou detalhe visual.
+- Algumas pistas devem parecer secundárias isoladamente e ganhar importância quando combinadas.
+- Evite pistas genéricas ou que simplesmente entreguem culpado, método ou motivo.
+
+Enigmas e jogos de palavras:
+- Use ocasionalmente pistas que o jogador precise decifrar em vez de receber a informação pronta.
+- Varie o mecanismo; não use sempre o mesmo tipo de enigma.
+- Possibilidades incluem:
+  - rimas ou semelhanças sonoras;
+  - palavras com duplo sentido;
+  - descrição indireta de um objeto;
+  - palavra dividida, incompleta ou escondida;
+  - iniciais ou últimas letras formando uma palavra;
+  - texto invertido;
+  - leitura de letras alternadas;
+  - relação entre duas palavras;
+  - frase cujo significado literal esconde outra interpretação;
+  - título, placa, anúncio ou frase do cenário funcionando como associação;
+  - duas pistas incompletas que somente juntas revelam a informação.
+- Uma pista pode fornecer o enigma e outra fornecer discretamente a regra para interpretá-lo.
+- Exemplos de estrutura: uma pista sugere "partida, não inteira" enquanto outra ajuda a identificar qual objeto poderia estar quebrado; outra pode dizer que a resposta "rima com..." sem revelar a palavra.
+- Jogos de palavras devem ser solucionáveis em português e não depender de cultura obscura.
+- Não faça enigmas arbitrários com várias respostas igualmente plausíveis.
+- A informação obtida ao resolver o enigma deve contribuir para a investigação.
+- Não transforme todas as pistas em charadas: combine enigmas com evidências concretas.
+- No Contexto, explique brevemente como os enigmas relevantes eram interpretados.
+
+false_clues:
+- São despistes plausíveis, não mentiras arbitrárias.
+- Preferencialmente são fatos verdadeiros que levam a uma interpretação errada.
+- Também podem ser depoimentos incorretos se sua inconsistência puder ser demonstrada.
+- Podem conter enigmas cuja interpretação mais óbvia leve a uma hipótese errada, desde que outra evidência permita perceber o verdadeiro significado.
+- Não faça todas apontarem para o mesmo suspeito.
+- Nunca podem deixar duas soluções igualmente possíveis.
+
+Variedade:
+- Varie entre roubo, fraude, desaparecimento, sabotagem, chantagem, falsificação, troca de identidade, objeto disfarçado, encenação, álibi impossível, cúmplice ou rota incompatível.
+- Varie cenário, motivo, mecanismo, objeto central e tipo de dedução.
+- Evite repetir "objeto sumiu + suspeitos deram álibis + horário revela culpado".
+- Evite soluções baseadas apenas em câmera, GPS, DNA, impressão digital, confissão ou mensagem explícita.
+- Prefira pequenas viradas lógicas: algo apresentado com um significado revela outro quando as pistas são combinadas.
+
+Construa silenciosamente:
+solução -> acontecimentos -> vestígios -> pistas -> enigmas/despistes -> narrativa.
+
+Antes da saída, confirme:
+1. Há exatamente uma solução.
+2. Todas as respostas podem ser provadas.
+3. Pelo menos uma dedução combina várias pistas.
+4. Nenhum fato necessário aparece somente no Contexto.
+5. Os despistes são plausíveis e refutáveis.
+6. Os enigmas têm interpretação justificável e útil.
+`.trim();
 
 function casePrompt({
-  playerCount,
   requiredTrueClues,
   requiredFalseClues,
-  trueCluePercentage,
-  cluesPerPlayer,
   previousError,
 }: {
   playerCount: number;
@@ -511,44 +553,26 @@ function casePrompt({
   cluesPerPlayer: number;
   previousError?: string;
 }) {
-  const trueClueNarrativeRules =
-    requiredTrueClues >= 2
-      ? "Inclua pelo menos duas pistas confiáveis que inocentem suspeitos."
-      : requiredTrueClues === 1
-        ? "A pista confiável deve sustentar uma dedução objetiva importante."
-        : "Não crie pistas confiáveis; a solução deve ser deduzida pelo contraste entre caso e pistas falsas.";
-  const falseClueNarrativeRules =
+  if (requiredTrueClues < 3) {
+    throw new Error("São necessárias pelo menos 3 true_clues.");
+  }
+
+  const falseClueRule =
     requiredFalseClues >= 2
-      ? "Inclua pelo menos duas pistas falsas que incriminem alguém errado; explique no Contexto por que desviavam."
+      ? "Os despistes devem sustentar hipóteses diferentes; não faça todos apontarem para a mesma pessoa."
       : requiredFalseClues === 1
-        ? "A pista falsa deve parecer útil; explique no Contexto por que desviava."
-        : "Não crie pistas falsas; todos os indícios distribuídos sustentam a solução.";
+        ? "Crie um despiste convincente, mas logicamente refutável."
+        : "Não crie despistes.";
 
   return `
-Configuração da partida:
-- jogadores: ${playerCount}
-- pistas por jogador: ${cluesPerPlayer}
-- proporção desejada de pistas confiáveis: ${trueCluePercentage}%
-- total true_clues: ${requiredTrueClues}
-- total false_clues: ${requiredFalseClues}
-
-Regras específicas:
-- true_clues deve ter exatamente ${requiredTrueClues} string(s).
-- false_clues deve ter exatamente ${requiredFalseClues} string(s).
-	- ${trueClueNarrativeRules}
-	- ${falseClueNarrativeRules}
-	- As perguntas centrais devem pedir culpado, método, motivo, local, objeto, cúmplice, rota ou contradição decisiva.
-	- Distribua as pistas para que nenhuma sozinha resolva tudo; pelo menos uma pista deve parecer secundária até ser combinada com outra.
-	- Garanta cobertura completa: para cada pergunta central, deve existir no conjunto de true_clues uma base dedutiva suficiente para chegar à resposta correspondente.
-  - Deve existir exatamente uma solução compatível com todas as true_clues.
-  - Após considerar todas as true_clues, nenhuma solução alternativa pode explicar todos os fatos sem contradizer alguma evidência.
-  - false_clues nunca podem depender de informação arbitrariamente falsa.
-  - Devem ser fatos verdadeiros que sugerem uma conclusão errada OU informações cuja falsidade possa ser demonstrada pelas true_clues.
-	- No Contexto, explique de forma breve como as true_clues permitem responder cada pergunta central.
-  - O Contexto não pode introduzir fatos novos.
-  - Toda informação usada para provar a solução deve aparecer previamente em case_text ou true_clues.
-	- Antes de responder, verifique internamente: JSON parseável, arrays com tamanho exato, final_answer com "Resposta:", linhas "1.", "2." e "Contexto:".
-${previousError ? `\nCorrija a falha anterior nesta nova saída JSON: ${previousError}` : ""}
+- true_clues: exatamente ${requiredTrueClues}.
+- false_clues: exatamente ${requiredFalseClues}.
+- ${falseClueRule}
+- Distribua as true_clues entre confirmação da solução e eliminação de hipóteses.
+- Para cada pergunta central deve existir evidência suficiente em case_text + true_clues.
+- Pelo menos uma resposta deve exigir combinar duas ou mais true_clues.
+- Nenhuma true_clue isolada pode resolver todo o caso.
+${previousError ? `- Corrija esta falha da tentativa anterior: ${previousError}` : ""}
 `.trim();
 }
 
@@ -572,37 +596,35 @@ function caseResponseFormat({
           title: {
             type: "string",
             description:
-              'Título curto em português, começando com "O CASO DO" ou "O CASO DA".',
+              'Título começando com "O CASO DO" ou "O CASO DA".',
             minLength: 12,
+            maxLength: 100,
           },
           case_text: {
             type: "string",
             description:
-              'Narrativa do caso em 2 ou 3 parágrafos; termina com "Perguntas centrais do caso:" e perguntas numeradas.',
+              'Caso em 2 ou 3 parágrafos, terminando com "Perguntas centrais do caso:" e 2 ou 3 perguntas numeradas.',
             minLength: 240,
+            maxLength: 3000,
           },
           true_clues: {
             type: "array",
-            description:
-              "Lista com exatamente a quantidade pedida de pistas confiáveis, sem rotular como verdadeiras.",
             minItems: requiredTrueClues,
             maxItems: requiredTrueClues,
             items: {
               type: "string",
-              description: "Pista curta, concreta e independente.",
+              description: "Pista concreta com função dedutiva.",
               minLength: 12,
               maxLength: 160,
             },
           },
           false_clues: {
             type: "array",
-            description:
-              "Lista com exatamente a quantidade pedida de pistas plausíveis de desvio, sem rotular como falsas.",
             minItems: requiredFalseClues,
             maxItems: requiredFalseClues,
             items: {
               type: "string",
-              description: "Pista curta, concreta, plausível e independente.",
+              description: "Despiste plausível e logicamente refutável.",
               minLength: 12,
               maxLength: 160,
             },
@@ -610,8 +632,9 @@ function caseResponseFormat({
           final_answer: {
             type: "string",
             description:
-              'Gabarito em português. Começa com "Resposta:", contém linhas numeradas "1.", "2." e depois "Contexto:".',
+              'Começa com "Resposta:", responde as perguntas e termina com "Contexto:".',
             minLength: 180,
+            maxLength: 2400,
           },
         },
       },
