@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/auth";
 import { DailyProblem } from "@/components/public/daily-problem";
 import { createNoIndexMetadata } from "@/lib/site-metadata";
 
@@ -8,6 +10,12 @@ export const metadata = createNoIndexMetadata(
   "Desafio diário individual do Contrapista.",
 );
 
-export default function DailyProblemPage() {
+export default async function DailyProblemPage() {
+  const session = await auth();
+
+  if (!session?.user?.id) {
+    redirect("/auth/entrar?callbackUrl=/jogar/diario");
+  }
+
   return <DailyProblem />;
 }
