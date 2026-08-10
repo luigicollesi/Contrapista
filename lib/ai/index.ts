@@ -2,7 +2,9 @@ import { getAiClient } from "@/lib/ai/client";
 import { getAiConfig } from "@/lib/ai/config";
 import {
   listActiveAiModelStandoffs,
+  removeAiKeyStandoff,
   removeAiModelStandoff,
+  saveAiKeyStandoff,
   saveAiModelStandoff,
 } from "@/lib/ai/standoffs";
 import { recordOpenRouterUsage } from "@/lib/ai/usage";
@@ -21,6 +23,7 @@ const MODEL_STANDOFF_MS = 24 * 60 * 60 * 1000;
 const INVALID_RESPONSE_STANDOFF_MS = 5 * 60 * 1000;
 const MODEL_INFO_CACHE_TTL_MS = 15 * 60 * 1000;
 const modelStandoffUntil = new Map<string, number>();
+const apiKeyStandoffUntil = new Map<string, number>();
 const sessionQueues = new Map<string, Promise<void>>();
 let modelInfoCache:
   | {
@@ -47,9 +50,10 @@ type RequestSlot = {
 
 export type AiModelStandoffStatus = {
   apiKeySlot: string;
-  model: string;
-  modelSlot: string;
-  standoffUntil: number;
+  model?: string;
+  modelSlot?: string;
+  scope: "key" | "model";
+  standoffUntil: number | null;
 };
 
 type AiLogValue = string | number | boolean | null | undefined;
@@ -148,6 +152,10 @@ function getAvailableModelSlots(
   apiKeySlotId: string,
   now: number,
 ): ModelSlot[] {
+  if ((apiKeyStandoffUntil.get(apiKeySlotId) ?? 0) > now) {
+    return [];
+  }
+
   return slots.filter(
     (slot) => (modelStandoffUntil.get(standoffKey(apiKeySlotId, slot.id)) ?? 0) <= now,
   );
@@ -173,26 +181,78 @@ export async function getAiModelStandoffStatus() {
   await syncModelStandoffs(modelSlots, keySlots);
   const now = Date.now();
   const standoffs: AiModelStandoffStatus[] = [];
+  const keys: Array<{
+    apiKeySlot: string;
+    paused: boolean;
+    standoffUntil: number | null;
+  }> = [];
+  const combinations: Array<{
+    apiKeySlot: string;
+    model: string;
+    modelSlot: string;
+    paused: boolean;
+    standoffUntil: number | null;
+  }> = [];
 
   for (const apiKeySlot of keySlots) {
+    const keyStandoffUntil = apiKeyStandoffUntil.get(apiKeySlot.id) ?? 0;
+    const normalizedKeyStandoffUntil = keyStandoffUntil > now
+      ? Number.isFinite(keyStandoffUntil) ? keyStandoffUntil : null
+      : null;
+
+    keys.push({
+      apiKeySlot: apiKeySlot.id,
+      paused: keyStandoffUntil > now,
+      standoffUntil: normalizedKeyStandoffUntil,
+    });
+
+    if (keyStandoffUntil > now) {
+      standoffs.push({
+        apiKeySlot: apiKeySlot.id,
+        scope: "key",
+        standoffUntil: normalizedKeyStandoffUntil,
+      });
+    }
+
     for (const modelSlot of modelSlots) {
       const standoffUntil = modelStandoffUntil.get(
         standoffKey(apiKeySlot.id, modelSlot.id),
       ) ?? 0;
+      const normalizedStandoffUntil = standoffUntil > now
+        ? Number.isFinite(standoffUntil) ? standoffUntil : null
+        : null;
 
-      if (standoffUntil > now) {
+      combinations.push({
+        apiKeySlot: apiKeySlot.id,
+        model: modelSlot.model,
+        modelSlot: modelSlot.id,
+        paused: standoffUntil > now,
+        standoffUntil: normalizedStandoffUntil,
+      });
+
+      if (standoffUntil > now && keyStandoffUntil <= now) {
         standoffs.push({
           apiKeySlot: apiKeySlot.id,
           model: modelSlot.model,
           modelSlot: modelSlot.id,
-          standoffUntil,
+          scope: "model",
+          standoffUntil: normalizedStandoffUntil,
         });
       }
     }
   }
 
+  const availableCount = combinations.filter(
+    (combination) =>
+      !combination.paused &&
+      keys.find((key) => key.apiKeySlot === combination.apiKeySlot)
+        ?.paused === false,
+  ).length;
+
   return {
-    availableCount: keySlots.length * modelSlots.length - standoffs.length,
+    availableCount,
+    combinations,
+    keys,
     standoffs,
     totalCount: keySlots.length * modelSlots.length,
   };
@@ -221,11 +281,24 @@ async function syncModelStandoffs(slots: ModelSlot[], keySlots: ApiKeySlot[]) {
     modelStandoffUntil.delete(key);
   }
 
+  for (const keySlot of keySlots) {
+    apiKeyStandoffUntil.delete(keySlot.id);
+  }
+
   for (const standoff of activeStandoffs) {
+    const standoffUntil = standoff.standoffUntil ?? Number.POSITIVE_INFINITY;
+
+    if (standoff.scope === "key" || standoff.modelSlot === "0") {
+      if (keySlots.some((keySlot) => keySlot.id === standoff.apiKeySlot)) {
+        apiKeyStandoffUntil.set(standoff.apiKeySlot, standoffUntil);
+      }
+      continue;
+    }
+
     const key = standoffKey(standoff.apiKeySlot, standoff.modelSlot);
 
     if (relevantKeys.has(key)) {
-      modelStandoffUntil.set(key, standoff.standoffUntil);
+      modelStandoffUntil.set(key, standoffUntil);
     }
   }
 }
@@ -235,6 +308,10 @@ function getModelSlotsWithStandoffState(
   apiKeySlotId: string,
   now: number,
 ) {
+  if ((apiKeyStandoffUntil.get(apiKeySlotId) ?? 0) > now) {
+    return [];
+  }
+
   return slots.map((slot) => {
     const standoffUntil = modelStandoffUntil.get(
       standoffKey(apiKeySlotId, slot.id),
@@ -316,6 +393,19 @@ async function putApiKeyModelsInStandoff(
 export async function clearAiModelStandoff(apiKeySlotId: string, modelSlotId: string) {
   modelStandoffUntil.delete(standoffKey(apiKeySlotId, modelSlotId));
   await removeAiModelStandoff(apiKeySlotId, modelSlotId);
+}
+
+export async function clearAiKeyStandoff(apiKeySlotId: string) {
+  apiKeyStandoffUntil.delete(apiKeySlotId);
+  await removeAiKeyStandoff(apiKeySlotId);
+}
+
+export async function setAiKeyStandoff(
+  apiKeySlotId: string,
+  standoffUntil: number | null,
+) {
+  apiKeyStandoffUntil.set(apiKeySlotId, standoffUntil ?? Number.POSITIVE_INFINITY);
+  await saveAiKeyStandoff(apiKeySlotId, standoffUntil);
 }
 
 function isApiKeyScopedFailure(status: number | undefined, message: string) {
