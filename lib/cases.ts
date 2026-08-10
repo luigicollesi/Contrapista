@@ -33,6 +33,8 @@ export type CaseSummary = {
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
 const MIN_CASE_GENERATION_ATTEMPTS = 3;
+const MIN_CASE_GENERATION_TOKENS = 4_600;
+const MAX_CASE_GENERATION_TOKENS = 7_000;
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
 const CASE_JSON_KEYS = [
   "title",
@@ -674,6 +676,10 @@ async function generateCaseWithAi(
     (totalClues * distribution.trueCluePercentage) / 100,
   );
   const requiredFalseClues = totalClues - requiredTrueClues;
+  const maxTokens = Math.min(
+    MAX_CASE_GENERATION_TOKENS,
+    Math.max(MIN_CASE_GENERATION_TOKENS, 3_000 + totalClues * 40),
+  );
   const maxAttempts = Math.max(
     MIN_CASE_GENERATION_ATTEMPTS,
     await getAvailableAiModelCount(),
@@ -687,7 +693,7 @@ async function generateCaseWithAi(
 
       const chat = await chatCompletion({
         temperature: attempt === 0 ? 0.35 : 0.1,
-        maxTokens: 4600,
+        maxTokens,
         sessionId,
         responseFormat: caseResponseFormat({
           requiredTrueClues,

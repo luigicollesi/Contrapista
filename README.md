@@ -72,9 +72,6 @@ GOOGLE_GMAIL_REFRESH_TOKEN=...
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 AUTH_GITHUB_ID=...
 AUTH_GITHUB_SECRET=...
-ADM_EMAIL=admin@exemplo.com,outro-admin@exemplo.com
-OPENROUTER_MANAGEMENT_API_KEY=... # opcional; necessário para os dados de /activity no /adm
-
 LLM_PROVIDER=openrouter
 LLM_OPENROUTER_API_KEY=key_1,key_2,key_3
 LLM_OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
@@ -131,9 +128,9 @@ LLM_OPENROUTER_IGNORE=...
 
 O projeto usa os modelos na ordem de `LLM_MODELS`, separados por vírgula. Cada chamada à IA usa somente o primeiro modelo disponível da lista; os demais ficam ignorados até serem necessários. Se esse modelo falhar por erro de API, ele entra em espera por 24 horas no processo atual. Se retornar uma resposta inválida pela validação local, entra em espera por 5 minutos. A próxima chamada passa para o próximo modelo disponível da lista.
 
-`LLM_OPENROUTER_API_KEY` também aceita uma lista separada por vírgula. A fila percorre primeiro todos os modelos elegíveis com a primeira chave; quando todos os modelos dessa chave estiverem em espera, passa para a segunda chave e recomeça a ordem de modelos. Falhas específicas de modelo entram em espera por combinação `chave + modelo`. Falhas de escopo da chave, como `401`, `403` ou `429` de cota/rate limit do OpenRouter, colocam todos os modelos daquela chave em espera e avançam diretamente para a próxima chave. O painel `/adm` consulta os limites de cada chave individualmente, sem enviar os tokens ao navegador. Os valores reais das chaves não são registrados nem expostos nos logs.
+`LLM_OPENROUTER_API_KEY` também aceita uma lista separada por vírgula. A fila percorre primeiro todos os modelos elegíveis com a primeira chave; quando todos os modelos dessa chave estiverem em espera, passa para a segunda chave e recomeça a ordem de modelos. Falhas específicas de modelo entram em espera por combinação `chave + modelo`. Falhas de escopo da chave, como `401`, `403` ou `429` de cota/rate limit do OpenRouter, colocam todos os modelos daquela chave em espera e avançam diretamente para a próxima chave. Os valores reais das chaves não são registrados nem expostos nos logs.
 
-Cada resposta bem-sucedida do OpenRouter é registrada em `public.openrouter_request_usage`, com o slot da chave (1–7), modelo e tokens de uso. A tabela não guarda a API key e alimenta o controle persistente de uso diário dos modelos `:free` no painel `/adm`. Para criar a tabela manualmente antes do primeiro uso, rode `psql "$DATABASE" -v ON_ERROR_STOP=1 -f scripts/migrate-openrouter-usage.sql`.
+Cada resposta bem-sucedida do OpenRouter é registrada em `public.openrouter_request_usage`, com o slot da chave (1–7), modelo e tokens de uso. A tabela não guarda a API key e alimenta o painel administrativo no projeto separado `adm-contrapista`. Para criar a tabela manualmente antes do primeiro uso, rode `psql "$DATABASE" -v ON_ERROR_STOP=1 -f scripts/migrate-openrouter-usage.sql`.
 
 Na geração de caso, o backend continua tentando os modelos fora de espera antes de retornar erro. Requisições com JSON estruturado usam `provider.require_parameters` para evitar provedores incompatíveis com os parâmetros enviados. Quando um modelo rejeita `response_format` com HTTP 400 ou 404 de incompatibilidade de parâmetros, a mesma chamada é repetida uma vez sem `response_format`, mantendo a validação local do JSON. Erros HTTP 400/404 de parâmetros e respostas inválidas entram em espera curta de 5 minutos. Se nenhum modelo conseguir gerar um caso válido, a sala é resetada para a ante-sala e a UI informa que os modelos de IA estão indisponíveis.
 
