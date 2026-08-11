@@ -471,6 +471,10 @@ const CASE_GENERATION_SYSTEM_PROMPT = `
 Você cria casos originais em português para Contrapista, um jogo familiar de investigação e dedução.
 
 Contrato:
+- A resposta deve ser somente um objeto JSON: o primeiro caractere deve ser "{" e o último deve ser "}".
+- Não use markdown, cerca de código ou qualquer texto fora do objeto JSON.
+- Use exclusivamente aspas duplas válidas de JSON; não use aspas simples como delimitadores JSON.
+- Retorne somente as chaves exigidas pelo esquema, sem chaves extras.
 - title começa com "O CASO DO" ou "O CASO DA".
 - case_text: 2 ou 3 parágrafos, incidente claro, 3 ou 4 suspeitos, álibis, horários, objetos e detalhes investigativos.
 - Termine case_text com "Perguntas centrais do caso:" e 2 ou 3 perguntas numeradas.
