@@ -16,6 +16,7 @@ import {
 import type {
   AiChatCompletionParams,
   AiChatCompletionResult,
+  AiProviderChatCompletionParams,
   AiProviderModelInfo,
 } from "@/lib/ai/types";
 
@@ -329,6 +330,7 @@ function getNextAvailableRequestSlot(
   modelSlots: ModelSlot[],
   apiKeys: string[],
   now: number,
+  excludedCombinations = new Set<string>(),
 ): RequestSlot | null {
   for (const apiKeySlot of getApiKeySlots(apiKeys)) {
     const slots = getModelSlotsWithStandoffState(
@@ -336,7 +338,11 @@ function getNextAvailableRequestSlot(
       apiKeySlot.id,
       now,
     );
-    const modelSlot = slots.find((slot) => slot.available);
+    const modelSlot = slots.find(
+      (slot) =>
+        slot.available &&
+        !excludedCombinations.has(standoffKey(apiKeySlot.id, slot.id)),
+    );
 
     for (const skippedSlot of slots.filter((slot) => !slot.available)) {
       logAiInfo("skip-model", {
@@ -422,8 +428,12 @@ function isApiKeyScopedFailure(status: number | undefined, message: string) {
   );
 }
 
-function getModelStandoffDuration(status?: number): number {
-  return status === 400 || status === 404 || status === 422
+function getModelStandoffDuration(status?: number, message = ""): number {
+  if (status === 404 && /unavailable for free/i.test(message)) {
+    return MODEL_STANDOFF_MS;
+  }
+
+  return status === 400 || status === 404 || status === 408 || status === 422 || status === 504
     ? INVALID_RESPONSE_STANDOFF_MS
     : MODEL_STANDOFF_MS;
 }
@@ -461,18 +471,29 @@ async function runExclusiveForSession<T>(
 async function requestModelCompletion({
   params,
   apiKey,
+  apiKeySlot,
   model,
+  modelSlot,
   supportsResponseFormat,
   requestId,
 }: {
   params: AiChatCompletionParams;
   apiKey: string;
+  apiKeySlot: string;
   model: string;
+  modelSlot: string;
   supportsResponseFormat?: boolean;
   requestId: string;
 }): Promise<AiChatCompletionResult> {
   const client = getAiClient();
-  const { validateText, ...providerParams } = params;
+  const { validateText } = params;
+  const providerParams: Omit<AiProviderChatCompletionParams, "apiKey" | "model"> = {
+    maxTokens: params.maxTokens,
+    messages: params.messages,
+    responseFormat: params.responseFormat,
+    sessionId: params.sessionId,
+    temperature: params.temperature,
+  };
   const initialResponseFormat =
     supportsResponseFormat === false ? undefined : providerParams.responseFormat;
 
@@ -484,12 +505,24 @@ async function requestModelCompletion({
       responseFormat: responseFormat ? "enabled" : "none",
       sessionId: params.sessionId ?? "none",
     });
+    await params.onProgress?.({
+      type: "request_sent",
+      apiKeySlot,
+      model,
+      modelSlot,
+    });
 
     const response = await client.chatCompletion({
       ...providerParams,
       apiKey,
       responseFormat,
       model,
+    });
+    await params.onProgress?.({
+      type: "response_received",
+      apiKeySlot,
+      model,
+      modelSlot,
     });
 
     try {
@@ -507,12 +540,21 @@ async function requestModelCompletion({
   } catch (error) {
     const status = getErrorStatus(error);
 
-    if ((status === 400 || status === 404) && providerParams.responseFormat) {
+    if (
+      (status === 400 || status === 404) &&
+      providerParams.responseFormat?.type === "json_schema"
+    ) {
       logAiWarn("provider-retry", {
         requestId,
         action: "retry-without-response-format",
         reason: `http-${status}`,
         model,
+      });
+      await params.onProgress?.({
+        type: "provider_retry",
+        apiKeySlot,
+        model,
+        modelSlot,
       });
       return request(undefined);
     }
@@ -542,6 +584,7 @@ async function executeChatCompletion(
     modelSlots,
     config.openRouter.apiKeys,
     now,
+    new Set(params.excludedCombinations),
   );
 
   if (!requestSlot) {
@@ -574,6 +617,12 @@ async function executeChatCompletion(
           : "none",
     sessionId: params.sessionId ?? "none",
   });
+  await params.onProgress?.({
+    type: "model_selected",
+    apiKeySlot: apiKeySlot.id,
+    model,
+    modelSlot: modelSlotId,
+  });
 
   if (config.debug) {
     console.debug(
@@ -586,7 +635,9 @@ async function executeChatCompletion(
     const response = await requestModelCompletion({
       params,
       apiKey: apiKeySlot.apiKey,
+      apiKeySlot: apiKeySlot.id,
       model,
+      modelSlot: modelSlotId,
       supportsResponseFormat,
       requestId,
     });
@@ -598,8 +649,21 @@ async function executeChatCompletion(
         requestId,
         usage: response.usage,
       });
+      await params.onProgress?.({
+        type: "usage_recorded",
+        apiKeySlot: apiKeySlot.id,
+        model,
+        modelSlot: modelSlotId,
+        usage: response.usage,
+      });
     } catch (usageError) {
       console.warn("[AI][usage] Não foi possível registrar o consumo da requisição.", usageError);
+      await params.onProgress?.({
+        type: "usage_record_failed",
+        apiKeySlot: apiKeySlot.id,
+        model,
+        modelSlot: modelSlotId,
+      });
     }
 
     logAiInfo("model-success", {
@@ -623,7 +687,7 @@ async function executeChatCompletion(
     const failedAt = Date.now();
     const status = getErrorStatus(error);
     const message = getErrorMessage(error);
-    const standoffDuration = getModelStandoffDuration(status);
+    const standoffDuration = getModelStandoffDuration(status, message);
     const apiKeyScopedFailure = isApiKeyScopedFailure(status, message);
     const failureSource = status === 422 ? "local-validation" : "provider";
     const standoffUntil = new Date(failedAt + standoffDuration).toISOString();
@@ -659,6 +723,12 @@ async function executeChatCompletion(
       standoffDurationMs: standoffDuration,
       standoffUntil,
       reason: message.slice(0, 220).replace(/\s+/g, " "),
+    });
+    await params.onProgress?.({
+      type: "provider_failure",
+      apiKeySlot: apiKeySlot.id,
+      model,
+      modelSlot: modelSlotId,
     });
 
     if (config.debug) {

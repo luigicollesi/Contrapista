@@ -32,7 +32,7 @@ export type CaseSummary = {
 
 type GeneratedCase = Omit<GameCase, "id" | "created_at">;
 
-const MIN_CASE_GENERATION_ATTEMPTS = 3;
+const MAX_CASE_GENERATION_ATTEMPTS = 3;
 const MIN_CASE_GENERATION_TOKENS = 4_600;
 const MAX_CASE_GENERATION_TOKENS = 7_000;
 const caseGenerationLocks = new Map<string, Promise<GameCase>>();
@@ -43,6 +43,13 @@ const CASE_JSON_KEYS = [
   "false_clues",
   "final_answer",
 ] as const;
+
+function distributeCluesAcrossQuestions(total: number) {
+  const base = Math.floor(total / 3);
+  const remainder = total % 3;
+
+  return [0, 1, 2].map((index) => base + (index < remainder ? 1 : 0));
+}
 
 let lastCaseCreationDurationSeconds: number | null = null;
 
@@ -348,13 +355,24 @@ function assertGeneratedCase(
   requiredTrueClues: number,
   requiredFalseClues: number,
 ): GeneratedCase {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("A resposta precisa ser um objeto JSON.");
+  }
+
   const data = value as Partial<Record<keyof GeneratedCase, unknown>>;
+  const receivedKeys = Object.keys(value);
   const trueClues = normalizeClueArray(data.true_clues);
   const falseClues = normalizeClueArray(data.false_clues);
 
   for (const key of ["title", "case_text", "final_answer"] as const) {
+    if (!(key in value)) {
+      throw new Error(
+        `Campo obrigatório ausente: ${key}. Chaves recebidas: ${receivedKeys.join(", ") || "nenhuma"}.`,
+      );
+    }
+
     if (typeof data[key] !== "string" || !data[key]?.trim()) {
-      throw new Error(`Resposta da IA sem campo válido: ${key}`);
+      throw new Error(`Campo obrigatório vazio ou inválido: ${key}.`);
     }
   }
 
@@ -378,22 +396,29 @@ function assertGeneratedCase(
   assertNoPlaceholders("pistas verdadeiras", trueClues);
   assertNoPlaceholders("pistas falsas", falseClues);
 
-  const questionCount = (caseText.match(/\?/g) ?? []).length;
+  const questionSection = caseText.match(
+    /Perguntas centrais do caso:\s*([\s\S]+)$/i,
+  )?.[1];
+  const numberedQuestions = questionSection
+    ? [...questionSection.matchAll(/(?:^|\n)\s*([1-3])[.)]\s*[^?\n]+\?/g)].map(
+        (match) => Number(match[1]),
+      )
+    : [];
 
-  if (questionCount < 2) {
-    throw new Error("O caso precisa trazer pelo menos duas perguntas claras para responder.");
+  if (numberedQuestions.join(",") !== "1,2,3") {
+    throw new Error(
+      "O caso precisa terminar com exatamente três perguntas diretas numeradas de 1 a 3.",
+    );
   }
 
-  if (!/perguntas?\s+(?:centrais|que precisam ser respondidas|do caso)/i.test(caseText)) {
-    throw new Error('O caso precisa ter uma seção explícita de perguntas.');
-  }
+  const numberedAnswers = [
+    ...finalAnswer.matchAll(/(?:^|\n)\s*([1-3])[.)]\s*\S/g),
+  ].map((match) => Number(match[1]));
 
-  if (!/^Resposta:/i.test(finalAnswer.trim()) || !/\bContexto:/i.test(finalAnswer)) {
-    throw new Error('A resposta final precisa começar com "Resposta:" e conter "Contexto:".');
-  }
-
-  if (!/(?:^|\n)\s*(?:(?:1|a)\s*[).:-]|(?:culpado|método|metodo|motivo|local|objeto|cúmplice|cumplice|rota|contradição|contradicao)\s*:)/i.test(finalAnswer)) {
-    throw new Error("A resposta final precisa trazer um gabarito numerado ou letrado.");
+  if (numberedAnswers.join(",") !== "1,2,3") {
+    throw new Error(
+      "A resposta final precisa conter exatamente três respostas numeradas de 1 a 3.",
+    );
   }
 
   return {
@@ -411,38 +436,50 @@ function parseGeneratedJson(text: string) {
   return JSON.parse(jsonText) as unknown;
 }
 
-async function repairGeneratedJson(
+async function repairGeneratedCase(
   text: string,
-  parseError: unknown,
+  validationError: unknown,
+  requiredTrueClues: number,
+  requiredFalseClues: number,
   sessionId: string,
+  excludedCombinations: Set<string>,
   beforeRequest?: () => Promise<void>,
 ) {
-  const jsonText = extractJson(text);
   const errorMessage =
-    parseError instanceof Error ? parseError.message : "erro desconhecido";
+    validationError instanceof Error
+      ? validationError.message
+      : "estrutura de caso inválida";
+  const trueGroups = distributeCluesAcrossQuestions(requiredTrueClues);
+  const falseGroups = distributeCluesAcrossQuestions(requiredFalseClues);
 
   await beforeRequest?.();
 
   const repair = await chatCompletion({
     temperature: 0,
-    maxTokens: 4200,
+    maxTokens: 4600,
     sessionId,
-    responseFormat: { type: "json_object" },
+    onProgress: async (progress) => {
+      if (progress.type === "model_selected") {
+        excludedCombinations.add(`${progress.apiKeySlot}:${progress.modelSlot}`);
+      }
+    },
+    responseFormat: CASE_RESPONSE_FORMAT,
     messages: [
       {
         role: "system",
         content:
-          'Você corrige respostas para JSON válido. Não invente conteúdo novo. Preserve todos os campos, textos e valores recebidos. Responda somente um objeto JSON válido. O primeiro caractere deve ser "{". Não escreva análise, markdown ou explicações.',
+          "Você corrige um caso para cumprir exatamente o JSON solicitado. Corrija tanto sintaxe JSON quanto campos ou conteúdo inválidos. Responda somente um objeto JSON completo, com as chaves title, case_text, true_clues, false_clues e final_answer. Preserve a história quando possível. Cada pista deve ser uma charada, enigma, ditado adaptado ou jogo de palavras ligado a somente uma das três perguntas, sem declarar sua resposta. Distribua ao menos uma true_clue por pergunta. Não escreva markdown, explicações ou chaves extras.",
       },
       {
         role: "user",
         content: `
-O JSON abaixo falhou com este erro: ${errorMessage}
+O resultado abaixo falhou nesta validação: ${errorMessage}
 
-Repare apenas a sintaxe JSON: aspas internas, quebras de linha, vírgulas, barras invertidas e caracteres que precisem de escape. Não mude a história, as pistas ou a solução.
+Reescreva-o como um caso completo e válido. Mantenha exatamente ${requiredTrueClues} true_clues e ${requiredFalseClues} false_clues.
+Distribua internamente true_clues entre as perguntas 1–3 em ${trueGroups.join("/")} pistas e false_clues em ${falseGroups.join("/")}. Pistas do mesmo conjunto se complementam. Não revele os conjuntos nem identifique a pergunta na pista.
 
-JSON com problema:
-${jsonText}
+Resultado recebido:
+${text}
 `.trim(),
       },
     ],
@@ -451,100 +488,41 @@ ${jsonText}
   return parseGeneratedJson(repair.text);
 }
 
-async function parseCaseResponse(
-  text: string,
-  sessionId: string,
-  beforeRequest?: () => Promise<void>,
-) {
-  try {
-    return parseGeneratedJson(text);
-  } catch (parseError) {
-    return repairGeneratedJson(text, parseError, sessionId, beforeRequest);
-  }
-}
-
 function roomCaseGenerationSessionId(roomCode: string) {
   return `contrapista:room:${roomCode}:case-generation:v2`;
 }
 
 const CASE_GENERATION_SYSTEM_PROMPT = `
-Você cria casos originais em português para Contrapista, um jogo familiar de investigação e dedução.
+Crie um caso original em pt-BR para o jogo de dedução Contrapista.
+Retorne somente este JSON:
+{"title":"...","case_text":"...","true_clues":[],"false_clues":[],"final_answer":"..."}
 
-Contrato:
-- A resposta deve ser somente um objeto JSON: o primeiro caractere deve ser "{" e o último deve ser "}".
-- Não use markdown, cerca de código ou qualquer texto fora do objeto JSON.
-- Use exclusivamente aspas duplas válidas de JSON; não use aspas simples como delimitadores JSON.
-- Retorne somente as chaves exigidas pelo esquema, sem chaves extras.
-- title começa com "O CASO DO" ou "O CASO DA".
-- case_text: 2 ou 3 parágrafos, incidente claro, 3 ou 4 suspeitos, álibis, horários, objetos e detalhes investigativos.
-- Termine case_text com "Perguntas centrais do caso:" e 2 ou 3 perguntas numeradas.
-- true_clues e false_clues são pistas curtas, concretas e independentes, com no máximo 160 caracteres.
-- final_answer começa com "Resposta:", responde cada pergunta numerada na mesma ordem e termina com "Contexto:".
-- Não rotule pistas como verdadeiras, falsas, corretas ou mentiras.
+Use exatamente essas 5 chaves e essa ordem. Primeiro caractere: "{". Último: "}". Use aspas duplas JSON. Sem markdown, cerca de código, chaves extras, comentários, planejamento ou texto externo.
 
-Dedução:
-- Deve existir exatamente uma solução compatível com todas as true_clues.
-- A solução deve ser dedutível apenas por case_text + true_clues, sem conhecimento externo.
-- O Contexto não pode introduzir fatos novos.
-- Nenhuma pista sozinha deve revelar toda a solução.
-- Pelo menos uma conclusão deve exigir combinar duas ou mais true_clues.
-- Algumas pistas devem eliminar hipóteses, não apenas apontar para o culpado.
-- Pelo menos dois suspeitos devem parecer plausíveis antes da dedução completa.
+Construa silenciosamente de trás para frente:
+1. Crie primeiro três respostas diretas, compatíveis entre si, numeradas de 1 a 3; elas formam a solução e a cronologia real.
+2. A partir dessas respostas, crie exatamente três perguntas diretas e simples, numeradas de 1 a 3 na mesma ordem.
+3. Para cada pergunta, crie uma rota enigmática até a resposta correta; crie também rotas para respostas erradas plausíveis conforme a quantidade de false_clues.
+4. Transforme as rotas corretas em true_clues e as rotas erradas em false_clues.
+5. Molde case_text em torno das três respostas e termine com as três perguntas. Não exponha o planejamento.
 
-Pistas:
-- Misture pistas físicas, temporais, testemunhais, espaciais, comportamentais e documentais.
-- Explore profissão, hábito, transporte, clima, procedência de objetos, quantidade, linguagem, som, cheiro, rota ou detalhe visual.
-- Algumas pistas devem parecer secundárias isoladamente e ganhar importância quando combinadas.
-- Evite pistas genéricas ou que simplesmente entreguem culpado, método ou motivo.
+Campos:
+- title: começa com "O CASO DO" ou "O CASO DA".
+- case_text: 2–3 parágrafos com incidente, 3–4 suspeitos, álibis, horários (opcional), objetos e vestígios; termina com "Perguntas centrais do caso:" e exatamente três perguntas curtas nas linhas "1.", "2." e "3.".
+- true_clues e false_clues: pistas curtas, complementares e sem rótulos. Nenhuma pista listada nesses arrays pode aparecer ou ser parafraseada em case_text.
+- final_answer: exatamente três respostas nas linhas "1.", "2." e "3.", correspondendo às perguntas na mesma ordem; pode explicar brevemente a dedução sem introduzir fatos necessários novos.
 
-Enigmas e jogos de palavras:
-- Use ocasionalmente pistas que o jogador precise decifrar em vez de receber a informação pronta.
-- Varie o mecanismo; não use sempre o mesmo tipo de enigma.
-- Possibilidades incluem:
-  - rimas ou semelhanças sonoras;
-  - palavras com duplo sentido;
-  - descrição indireta de um objeto;
-  - palavra dividida, incompleta ou escondida;
-  - iniciais ou últimas letras formando uma palavra;
-  - texto invertido;
-  - leitura de letras alternadas;
-  - relação entre duas palavras;
-  - frase cujo significado literal esconde outra interpretação;
-  - título, placa, anúncio ou frase do cenário funcionando como associação;
-  - duas pistas incompletas que somente juntas revelam a informação.
-- Uma pista pode fornecer o enigma e outra fornecer discretamente a regra para interpretá-lo.
-- Exemplos de estrutura: uma pista sugere "partida, não inteira" enquanto outra ajuda a identificar qual objeto poderia estar quebrado; outra pode dizer que a resposta "rima com..." sem revelar a palavra.
-- Jogos de palavras devem ser solucionáveis em português e não depender de cultura obscura.
-- Não faça enigmas arbitrários com várias respostas igualmente plausíveis.
-- A informação obtida ao resolver o enigma deve contribuir para a investigação.
-- Não transforme todas as pistas em charadas: combine enigmas com evidências concretas.
-- No Contexto, explique brevemente como os enigmas relevantes eram interpretados.
+Regras de dedução:
+- case_text + true_clues provam uma única solução sem conhecimento externo.
+- Organize cada tipo de pista em até três conjuntos internos, um por pergunta. Cada pista pertence a somente um conjunto. Não revele, rotule nem agrupe esses conjuntos no JSON.
+- Em conjuntos com várias pistas, cada pista fornece apenas uma parte e elas precisam ser combinadas para revelar a conclusão. Em conjuntos com uma pista, sua charada exige interpretação e não declara a resposta.
+- true_clues conduzem da pergunta à resposta correta; false_clues conduzem da pergunta a uma resposta errada plausível, mas refutável. Nenhuma false_clue pode sustentar outra solução completa.
+- Nenhuma pista pode responder diretamente à pergunta, citar literalmente sua resposta ou entregar sozinha culpado, objeto, método, motivo ou local.
+- Toda true_clue e false_clue deve ser enigmática por si e exigir interpretação. Prefira charadas curtas, ditados populares adaptados, metáforas e jogos de palavras que codifiquem um passo da dedução.
+- Varie também descrição indireta, duplo sentido, rima, palavra oculta, iniciais, inversão, letras alternadas, associação e pistas complementares. Não repita o mesmo mecanismo em sequência. Cada enigma deve ser claro e solucionável em pt-BR.
+- Evite pistas vagas, explícitas demais ou repetitivas. Varie crime, cenário, motivo, método, objeto e lógica.
 
-false_clues:
-- São despistes plausíveis, não mentiras arbitrárias.
-- Preferencialmente são fatos verdadeiros que levam a uma interpretação errada.
-- Também podem ser depoimentos incorretos se sua inconsistência puder ser demonstrada.
-- Podem conter enigmas cuja interpretação mais óbvia leve a uma hipótese errada, desde que outra evidência permita perceber o verdadeiro significado.
-- Não faça todas apontarem para o mesmo suspeito.
-- Nunca podem deixar duas soluções igualmente possíveis.
-
-Variedade:
-- Varie entre roubo, fraude, desaparecimento, sabotagem, chantagem, falsificação, troca de identidade, objeto disfarçado, encenação, álibi impossível, cúmplice ou rota incompatível.
-- Varie cenário, motivo, mecanismo, objeto central e tipo de dedução.
-- Evite repetir "objeto sumiu + suspeitos deram álibis + horário revela culpado".
-- Evite soluções baseadas apenas em câmera, GPS, DNA, impressão digital, confissão ou mensagem explícita.
-- Prefira pequenas viradas lógicas: algo apresentado com um significado revela outro quando as pistas são combinadas.
-
-Construa silenciosamente:
-solução -> acontecimentos -> vestígios -> pistas -> enigmas/despistes -> narrativa.
-
-Antes da saída, confirme:
-1. Há exatamente uma solução.
-2. Todas as respostas podem ser provadas.
-3. Pelo menos uma dedução combina várias pistas.
-4. Nenhum fato necessário aparece somente no Contexto.
-5. Os despistes são plausíveis e refutáveis.
-6. Os enigmas têm interpretação justificável e útil.
+Não baseie a solução apenas em câmera, GPS, DNA, registro digital, confissão ou mensagem explícita.
 `.trim();
 
 function casePrompt({
@@ -563,90 +541,22 @@ function casePrompt({
     throw new Error("São necessárias pelo menos 3 true_clues.");
   }
 
-  const falseClueRule =
-    requiredFalseClues >= 2
-      ? "Os despistes devem sustentar hipóteses diferentes; não faça todos apontarem para a mesma pessoa."
-      : requiredFalseClues === 1
-        ? "Crie um despiste convincente, mas logicamente refutável."
-        : "Não crie despistes.";
+  const trueGroups = distributeCluesAcrossQuestions(requiredTrueClues);
+  const falseGroups = distributeCluesAcrossQuestions(requiredFalseClues);
 
   return `
-- true_clues: exatamente ${requiredTrueClues}.
-- false_clues: exatamente ${requiredFalseClues}.
-- ${falseClueRule}
-- Distribua as true_clues entre confirmação da solução e eliminação de hipóteses.
-- Para cada pergunta central deve existir evidência suficiente em case_text + true_clues.
-- Pelo menos uma resposta deve exigir combinar duas ou mais true_clues.
-- Nenhuma true_clue isolada pode resolver todo o caso.
-${previousError ? `- Corrija esta falha da tentativa anterior: ${previousError}` : ""}
+- true_clues: exatamente ${requiredTrueClues} itens.
+- false_clues: exatamente ${requiredFalseClues} itens.
+- Separe internamente true_clues em três conjuntos: ${trueGroups[0]} para a pergunta 1, ${trueGroups[1]} para a pergunta 2 e ${trueGroups[2]} para a pergunta 3.
+- Separe internamente false_clues em três conjuntos: ${falseGroups[0]} para a pergunta 1, ${falseGroups[1]} para a pergunta 2 e ${falseGroups[2]} para a pergunta 3.
+- Dentro de cada conjunto, as pistas devem se complementar sem repetir informação: juntas levam à resposta correta ou, no conjunto falso, a uma resposta errada plausível.
+- Mantenha os arrays simples e misture a ordem das pistas; não use número da pergunta, rótulo de conjunto ou campos extras.
+- Antes de responder, valide que title, case_text, true_clues, false_clues e final_answer existem, estão preenchidos e são as únicas chaves do JSON.
+${previousError ? `- Corrija: ${previousError}` : ""}
 `.trim();
 }
 
-function caseResponseFormat({
-  requiredTrueClues,
-  requiredFalseClues,
-}: {
-  requiredTrueClues: number;
-  requiredFalseClues: number;
-}) {
-  return {
-    type: "json_schema" as const,
-    json_schema: {
-      name: "contrapista_case",
-      strict: true,
-      schema: {
-        type: "object",
-        additionalProperties: false,
-        required: CASE_JSON_KEYS,
-        properties: {
-          title: {
-            type: "string",
-            description:
-              'Título começando com "O CASO DO" ou "O CASO DA".',
-            minLength: 12,
-            maxLength: 100,
-          },
-          case_text: {
-            type: "string",
-            description:
-              'Caso em 2 ou 3 parágrafos, terminando com "Perguntas centrais do caso:" e 2 ou 3 perguntas numeradas.',
-            minLength: 240,
-            maxLength: 3000,
-          },
-          true_clues: {
-            type: "array",
-            minItems: requiredTrueClues,
-            maxItems: requiredTrueClues,
-            items: {
-              type: "string",
-              description: "Pista concreta com função dedutiva.",
-              minLength: 12,
-              maxLength: 160,
-            },
-          },
-          false_clues: {
-            type: "array",
-            minItems: requiredFalseClues,
-            maxItems: requiredFalseClues,
-            items: {
-              type: "string",
-              description: "Despiste plausível e logicamente refutável.",
-              minLength: 12,
-              maxLength: 160,
-            },
-          },
-          final_answer: {
-            type: "string",
-            description:
-              'Começa com "Resposta:", responde as perguntas e termina com "Contexto:".',
-            minLength: 180,
-            maxLength: 2400,
-          },
-        },
-      },
-    },
-  };
-}
+const CASE_RESPONSE_FORMAT = { type: "json_object" } as const;
 
 async function ensureCaseSchema() {
   await dbQuery(`
@@ -684,12 +594,22 @@ async function generateCaseWithAi(
     MAX_CASE_GENERATION_TOKENS,
     Math.max(MIN_CASE_GENERATION_TOKENS, 3_000 + totalClues * 40),
   );
-  const maxAttempts = Math.max(
-    MIN_CASE_GENERATION_ATTEMPTS,
-    await getAvailableAiModelCount(),
+  const availableCombinations = await getAvailableAiModelCount();
+  const maxAttempts = Math.min(
+    MAX_CASE_GENERATION_ATTEMPTS,
+    availableCombinations,
   );
+
+  if (maxAttempts === 0) {
+    throw new AiModelsUnavailableError(
+      "Nenhuma combinação de chave e modelo está disponível para gerar o caso.",
+    );
+  }
+
   const errors: string[] = [];
+  const excludedCombinations = new Set<string>();
   let previousError: string | undefined;
+  let correctionUsed = false;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     try {
@@ -699,17 +619,15 @@ async function generateCaseWithAi(
         temperature: attempt === 0 ? 0.35 : 0.1,
         maxTokens,
         sessionId,
-        responseFormat: caseResponseFormat({
-          requiredTrueClues,
-          requiredFalseClues,
-        }),
-        validateText: (text) => {
-          assertGeneratedCase(
-            parseGeneratedJson(text),
-            requiredTrueClues,
-            requiredFalseClues,
-          );
+        excludedCombinations: [...excludedCombinations],
+        onProgress: async (progress) => {
+          if (progress.type === "model_selected") {
+            excludedCombinations.add(
+              `${progress.apiKeySlot}:${progress.modelSlot}`,
+            );
+          }
         },
+        responseFormat: CASE_RESPONSE_FORMAT,
         messages: [
           {
             role: "system",
@@ -729,11 +647,32 @@ async function generateCaseWithAi(
         ],
       });
 
-      return assertGeneratedCase(
-        await parseCaseResponse(chat.text, sessionId, beforeRequest),
-        requiredTrueClues,
-        requiredFalseClues,
-      );
+      try {
+        return assertGeneratedCase(
+          parseGeneratedJson(chat.text),
+          requiredTrueClues,
+          requiredFalseClues,
+        );
+      } catch (validationError) {
+        if (correctionUsed) {
+          throw validationError;
+        }
+
+        correctionUsed = true;
+        return assertGeneratedCase(
+          await repairGeneratedCase(
+            chat.text,
+            validationError,
+            requiredTrueClues,
+            requiredFalseClues,
+            sessionId,
+            excludedCombinations,
+            beforeRequest,
+          ),
+          requiredTrueClues,
+          requiredFalseClues,
+        );
+      }
     } catch (error) {
       if (isCaseCreationStateError(error)) {
         throw error;
@@ -751,8 +690,9 @@ async function generateCaseWithAi(
     }
   }
 
+  console.warn("[case-generation] Todas as tentativas falharam.", errors);
   throw new Error(
-    `Não foi possível gerar um caso em JSON válido após ${errors.length} tentativa(s): ${errors.join(" | ")}`,
+    `Não foi possível gerar um caso válido após ${errors.length} tentativa(s).`,
   );
 }
 

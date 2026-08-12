@@ -7,11 +7,28 @@ export type AiChatMessage = {
   content: string;
 };
 
+export type AiGenerationProgress = {
+  type:
+    | "model_selected"
+    | "request_sent"
+    | "response_received"
+    | "usage_recorded"
+    | "usage_record_failed"
+    | "provider_retry"
+    | "provider_failure";
+  apiKeySlot: string;
+  model: string;
+  modelSlot: string;
+  usage?: AiChatCompletionResult["usage"];
+};
+
 export type AiChatCompletionParams = {
   messages: AiChatMessage[];
   temperature?: number;
   maxTokens?: number;
   sessionId?: string;
+  excludedCombinations?: string[];
+  onProgress?: (progress: AiGenerationProgress) => void | Promise<void>;
   validateText?: (text: string) => void;
   responseFormat?:
     | {
@@ -29,7 +46,7 @@ export type AiChatCompletionParams = {
 
 export type AiProviderChatCompletionParams = Omit<
   AiChatCompletionParams,
-  "validateText"
+  "excludedCombinations" | "onProgress" | "validateText"
 > & {
   apiKey: string;
   model: string;
