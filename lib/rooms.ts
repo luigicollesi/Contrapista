@@ -2846,7 +2846,7 @@ async function recordEndedMatch({
   });
 }
 
-const MIN_FINAL_GUESS_JUDGE_ATTEMPTS = 3;
+const MAX_FINAL_GUESS_JUDGE_ATTEMPTS = 3;
 
 function parseAiBoolean(text: string): boolean | null {
   const normalized = text.trim().toLowerCase();
@@ -2913,11 +2913,13 @@ async function requestFinalGuessJudgement({
   normalizedGuess,
   finalAnswer,
   attempt,
+  excludedCombinations,
 }: {
   roomCode: string;
   normalizedGuess: string;
   finalAnswer: string;
   attempt: number;
+  excludedCombinations: Set<string>;
 }) {
   console.info(
     `[AI][final-judge-attempt] room=${roomCode} attempt=${attempt} action=try`,
@@ -2927,35 +2929,18 @@ async function requestFinalGuessJudgement({
     temperature: 0,
     maxTokens: 120,
     sessionId: `contrapista:room:${roomCode}:final-guess-judge:v1`,
-    responseFormat: {
-      type: "json_schema",
-      json_schema: {
-        name: "contrapista_final_guess_judgement",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["correct"],
-          properties: {
-            correct: {
-              type: "boolean",
-              description:
-                "true se o palpite do jogador resolve as mesmas ideias centrais da resposta oficial; false caso contrário.",
-            },
-          },
-        },
-      },
-    },
-    validateText: (text) => {
-      if (parseAiBoolean(text) === null) {
-        throw new Error(`A IA respondeu avaliação inválida: ${text.slice(0, 80)}`);
+    excludedCombinations: [...excludedCombinations],
+    onProgress: async (progress) => {
+      if (progress.type === "model_selected") {
+        excludedCombinations.add(`${progress.apiKeySlot}:${progress.modelSlot}`);
       }
     },
+    responseFormat: { type: "json_object" },
     messages: [
       {
         role: "system",
         content:
-          'Você é um juiz de equivalência semântica de respostas de jogo investigativo. Responda somente JSON válido no formato {"correct":true} ou {"correct":false}. Use true quando o palpite tiver a mesma ideia central da resposta oficial, mesmo com sinônimos, ordem diferente, erros ortográficos ou texto incompleto. Use false quando faltar culpado, método, motivo ou contradição central exigida pela resposta oficial. Não explique.',
+          'Você julga respostas de um jogo investigativo. Retorne somente {"correct":true} ou {"correct":false}, com aspas duplas. Marque true somente se o palpite resolve todas as três respostas numeradas oficiais. Aceite sinônimos, ordem diferente e erros ortográficos que preservem o sentido. Marque false se faltar, contradizer ou trocar qualquer resposta central. Não explique nem revele raciocínio.',
       },
       {
         role: "user",
@@ -2999,11 +2984,19 @@ async function evaluateFinalGuess({
     return false;
   }
 
-  const maxAttempts = Math.max(
-    MIN_FINAL_GUESS_JUDGE_ATTEMPTS,
+  const maxAttempts = Math.min(
+    MAX_FINAL_GUESS_JUDGE_ATTEMPTS,
     await getAvailableAiModelCount(),
   );
+
+  if (maxAttempts === 0) {
+    throw new AiModelsUnavailableError(
+      "Nenhuma combinação de chave e modelo está disponível para analisar o palpite.",
+    );
+  }
+
   const errors: string[] = [];
+  const excludedCombinations = new Set<string>();
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -3012,6 +3005,7 @@ async function evaluateFinalGuess({
         normalizedGuess,
         finalAnswer,
         attempt,
+        excludedCombinations,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
