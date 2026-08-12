@@ -2940,7 +2940,7 @@ async function requestFinalGuessJudgement({
       {
         role: "system",
         content:
-          'Você julga respostas de um jogo investigativo. Retorne somente {"correct":true} ou {"correct":false}, com aspas duplas. Marque true somente se o palpite resolve todas as três respostas numeradas oficiais. Aceite sinônimos, ordem diferente e erros ortográficos que preservem o sentido. Marque false se faltar, contradizer ou trocar qualquer resposta central. Não explique nem revele raciocínio.',
+          'Você julga respostas de um jogo investigativo. Retorne somente {"correct":true} ou {"correct":false}, com aspas duplas. Marque true se o palpite segue a linha central da solução oficial, mesmo resumido, incompleto, sem todos os detalhes, com sinônimos, ordem diferente ou erros ortográficos. Não exija que cubra as três respostas numeradas nem todos os pormenores. Marque false apenas se o palpite aponta para um cenário incompatível: outro culpado, método, motivo, local, objeto, cronologia ou explicação que contradiga a solução. Omissão de detalhe, por si só, não é erro. Não explique nem revele raciocínio.',
       },
       {
         role: "user",
