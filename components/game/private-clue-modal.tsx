@@ -18,7 +18,7 @@ export function PrivateClueModal({
 }: PrivateClueModalProps) {
   return (
     <RoomModal>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 border-b border-[#d7b861]/20 pb-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
             Fragmento {String(clue.number).padStart(2, "0")}
@@ -29,19 +29,19 @@ export function PrivateClueModal({
         </div>
         <button
           aria-label="Fechar"
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-stone-800 text-lg font-bold text-stone-100 transition hover:bg-stone-700"
+          className="flex h-10 w-10 touch-manipulation items-center justify-center border border-stone-700 text-xl font-bold text-stone-100 transition-colors duration-150 hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
           onClick={onClose}
           type="button"
         >
-          X
+          ×
         </button>
       </div>
-      <p className="mt-4 whitespace-pre-line text-lg leading-8 text-stone-200 sm:mt-5 sm:text-xl sm:leading-9">
+      <p className="mt-6 text-pretty whitespace-pre-line font-serif text-xl leading-9 text-stone-100 sm:text-2xl sm:leading-10">
         {clue.text}
       </p>
       <div className="mt-5 flex justify-stretch sm:mt-6 sm:justify-end">
         <button
-          className="h-12 w-full rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-45 sm:h-11 sm:w-auto"
+          className="min-h-12 w-full touch-manipulation bg-[#d7b861] px-5 font-bold text-[#17130d] transition-colors duration-150 hover:bg-[#f3dfaa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff3cf] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
           disabled={!canShare}
           onClick={onShare}
           type="button"

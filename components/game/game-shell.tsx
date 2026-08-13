@@ -21,7 +21,7 @@ export function MissingGameScreen({ code }: { code: string }) {
           O dossiê saiu da mesa.
         </p>
         <Link
-          className="mt-7 inline-flex h-12 items-center justify-center rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition hover:bg-[#f3dfaa]"
+          className="mt-7 inline-flex h-12 items-center justify-center rounded-lg bg-[#d7b861] px-6 font-bold text-[#17130d] transition-colors duration-150 hover:bg-[#f3dfaa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff3cf]"
           href="/"
         >
           Voltar ao início
@@ -33,7 +33,7 @@ export function MissingGameScreen({ code }: { code: string }) {
 
 export function GameShell({ children }: { children: ReactNode }) {
   return (
-    <main className="sy-theme relative min-h-screen overflow-hidden bg-[#10130f] px-3 pb-28 pt-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
+    <main className="sy-theme relative min-h-screen overflow-x-hidden bg-[#10130f] px-3 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-4 text-stone-50 sm:px-6 sm:pt-6 lg:px-8 lg:pb-10">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
@@ -50,14 +50,19 @@ type GameHeaderProps = {
 
 export function GameHeader({ code, isLeaving, onLeave }: GameHeaderProps) {
   return (
-    <header className="flex items-end justify-between gap-3 border-b border-[#d7b861]/25 pb-4 sm:gap-5 sm:pb-6">
+    <header className="flex items-end justify-between gap-3 border-b border-[#d7b861]/25 pb-4 sm:gap-5">
       <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#c8a24a] sm:text-sm sm:tracking-[0.28em]">
-          Investigação ativa
+          Mesa viva · investigação ativa
         </p>
-        <h1 className="mt-1 truncate font-serif text-3xl font-bold text-[#fff3cf] sm:mt-2 sm:text-5xl">
-          Sala {code}
-        </h1>
+        <div className="mt-1 flex min-w-0 items-baseline gap-3 sm:mt-2">
+          <h1 className="truncate text-balance font-serif text-3xl font-bold text-[#fff3cf] sm:text-4xl">
+            Arquivo em curso
+          </h1>
+          <span className="hidden shrink-0 font-mono text-sm font-bold tracking-[0.18em] text-stone-500 sm:inline" translate="no">
+            {code}
+          </span>
+        </div>
       </div>
       <LeaveRoomButton isLeaving={isLeaving} onClick={onLeave} />
     </header>
@@ -66,8 +71,9 @@ export function GameHeader({ code, isLeaving, onLeave }: GameHeaderProps) {
 
 export function LoadingDossierMessage() {
   return (
-    <p className="mt-8 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-6 text-stone-300 shadow-2xl shadow-black/20">
-      Abrindo dossiê...
-    </p>
+    <div className="mx-auto mt-16 max-w-xl border-y border-[#d7b861]/30 py-10 text-center" aria-live="polite">
+      <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#d7b861]">Arquivo da mesa</p>
+      <p className="mt-3 font-serif text-2xl text-[#fff3cf]">Abrindo dossiê…</p>
+    </div>
   );
 }

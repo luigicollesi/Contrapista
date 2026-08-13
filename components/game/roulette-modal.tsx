@@ -45,16 +45,16 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
   const targetRotation = 1440 - (selectedIndex * segmentAngle + segmentAngle / 2);
 
   return (
-    <RoomModal>
+    <RoomModal variant="event">
       <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#d7b861]">
         Ordem da mesa
       </p>
       <h2 className="mt-2 font-serif text-2xl font-bold leading-tight text-[#fff3cf] sm:text-3xl">
         Definindo a vez
       </h2>
-      <div className="mt-5 flex flex-col items-center gap-5 sm:mt-6 sm:gap-6">
+      <div className="mt-6 flex flex-col items-center gap-6 sm:mt-8">
         <div
-          className="relative h-64 w-64 rounded-full border-4 border-[#d7b861] bg-[#0f120e] shadow-[0_0_34px_rgba(215,184,97,.28)] sm:h-72 sm:w-72"
+          className="relative h-64 w-64 rounded-full border-2 border-[#d7b861] bg-[#0f120e] sm:h-72 sm:w-72"
           key={rouletteSpinKey}
           style={{ "--target-rotation": `${targetRotation}deg` } as CSSProperties}
         >
@@ -68,11 +68,11 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
           <div className="absolute inset-16 rounded-full border border-[#d7b861]/50 bg-[#171b16] shadow-inner" />
           <div className="absolute inset-0 flex items-center justify-center px-12 text-center">
             <p className="font-serif text-xl font-bold text-[#fff3cf] sm:text-2xl">
-              {selectedPlayer ? getPlayerName(selectedPlayer) : "Sorteando..."}
+              {selectedPlayer ? getPlayerName(selectedPlayer) : "Sorteando…"}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap justify-center gap-2">
+        <ol className="flex flex-wrap justify-center gap-x-2 gap-y-1 border-y border-[#d7b861]/20 py-3" aria-label="Ordem sendo formada">
           {pool.map((playerId) => {
             const player = room?.users.find((user) => user.id === playerId);
             const isSelected =
@@ -80,19 +80,21 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
               playerId === gameState.rouletteSelectedId;
 
             return (
-              <span
-                className={`rounded-full border px-3 py-1 text-sm font-bold ${
+              <li
+                className={`text-sm font-bold ${
                   isSelected
-                    ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
-                    : "border-stone-700 bg-[#0f120e] text-stone-300"
+                    ? "text-[#fff3cf]"
+                    : "text-stone-500"
                 }`}
                 key={playerId}
               >
                 {getPlayerName(player)}
-              </span>
+                {isSelected ? <span className="ml-1 text-[9px] uppercase tracking-[0.1em] text-[#d7b861]">Selecionado</span> : null}
+                <span aria-hidden="true" className="ml-2 text-stone-700">→</span>
+              </li>
             );
           })}
-        </div>
+        </ol>
       </div>
       <style jsx>{`
         @keyframes roulette-spin {
@@ -107,6 +109,13 @@ export function RouletteModal({ gameState, room }: RouletteModalProps) {
         .roulette-wheel {
           animation: roulette-spin 3s cubic-bezier(0.12, 0.78, 0.22, 1) both;
           will-change: transform;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .roulette-wheel {
+            animation-duration: 1ms;
+            will-change: auto;
+          }
         }
       `}</style>
     </RoomModal>

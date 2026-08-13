@@ -26,28 +26,24 @@ export function FixedPhaseActions({
   const hasTimer = timerEndsAt !== null;
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[90] flex max-w-[calc(100vw-1.5rem)] items-center justify-end gap-2 sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-4 sm:max-w-[calc(100vw-2rem)]">
-      <div className="rounded-full border border-[#d7b861]/45 bg-[#171b16]/95 px-3 py-2 text-right shadow-2xl shadow-black/35 backdrop-blur sm:px-4">
-        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#c8a24a] sm:text-[10px] sm:tracking-[0.22em]">
+    <div className="fixed inset-x-3 bottom-[calc(.75rem+env(safe-area-inset-bottom))] z-[90] flex items-center justify-end gap-2 border border-[#d7b861]/35 bg-[#10130f] px-3 py-2 shadow-[0_8px_24px_rgba(0,0,0,.35)] lg:static lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
+      <div className="min-w-20 text-right">
+        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#c8a24a]">
           {timerLabel}
         </p>
-        <p className="mt-0.5 font-mono text-xl font-black leading-none text-[#fff3cf] sm:text-2xl">
+        <p className="mt-0.5 font-mono text-xl font-black tabular-nums leading-none text-[#fff3cf]">
           {hasTimer ? formatTimer(timerSeconds) : "Sem timer"}
         </p>
       </div>
       {canSkipPhase ? (
         <button
-          className="flex h-11 items-center gap-1.5 rounded-full border border-[#d7b861]/50 bg-[#d7b861] px-3 text-sm font-black text-[#17130d] shadow-2xl shadow-black/35 transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-70 sm:h-12 sm:gap-2 sm:px-4 sm:text-base"
+          className="flex min-h-11 touch-manipulation items-center gap-2 border border-[#d7b861]/55 bg-[#d7b861] px-3 text-sm font-black text-[#17130d] transition-colors duration-150 hover:bg-[#f3dfaa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff3cf] focus-visible:ring-offset-2 focus-visible:ring-offset-[#10130f] disabled:cursor-not-allowed disabled:opacity-70"
           disabled={hasVotedToSkip}
           onClick={onSkip}
-          title="Pular fase"
           type="button"
         >
-          <span aria-hidden="true" className="text-lg">
-            ⏩
-          </span>
           <span>{hasVotedToSkip ? "Aguardando" : "Pular"}</span>
-          <span className="rounded-full bg-[#17130d]/15 px-2 py-0.5 text-xs">
+          <span className="font-mono text-xs tabular-nums" aria-label={`${skipVoteCount} de ${activeUserCount} votos`}>
             {skipVoteCount}/{activeUserCount}
           </span>
         </button>

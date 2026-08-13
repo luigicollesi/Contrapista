@@ -1,0 +1,1 @@
+https://accounts.google.com/o/oauth2/v2/auth?client_id=747378668945-b3m5kj9ouu864k5n06921ppe19m82htd.apps.googleusercontent.com&redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fapi%2Fauth%2Fcallback%2Fgoogle&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fgmail.send&access_type=offline&prompt=consent&include_granted_scopes=true&login_hint=luigicollesi%40gmail.com

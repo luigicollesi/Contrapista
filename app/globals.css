@@ -1,5 +1,36 @@
 @import "tailwindcss";
 
+@keyframes game-workspace-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.game-workspace-enter {
+  animation: game-workspace-enter 360ms ease-out both;
+}
+
+@keyframes game-workspace-view-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.game-workspace-view {
+  animation: game-workspace-view-enter 180ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-workspace-enter,
+  .game-workspace-view {
+    animation: none;
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -272,8 +303,8 @@ select:disabled,
 
 @media (prefers-color-scheme: light) {
   .sy-theme {
-    background: #f4ecd8 !important;
-    color: #201812 !important;
+    background: #10130f !important;
+    color: #f7f0df !important;
   }
 
   .public-red-details {

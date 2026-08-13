@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 type GamePhase = "ready" | "reading" | "roulette" | "turn" | "shared_clue" | "pause";
 
 type TurnPlayer = {
@@ -6,6 +8,7 @@ type TurnPlayer = {
 };
 
 type GamePhasePanelProps = {
+  actions: ReactNode;
   currentTurnIndex: number;
   phase: GamePhase;
   phaseLabel: string;
@@ -13,31 +16,36 @@ type GamePhasePanelProps = {
   round: number;
 };
 
-function phaseDescription(phase: GamePhase, currentPlayerName?: string) {
-  if (phase === "ready") {
-    return "Confirme presença para abrir o dossiê.";
-  }
+const phaseSteps = [
+  { id: "reading", label: "Leitura" },
+  { id: "roulette", label: "Sorteio" },
+  { id: "turn", label: "Compartilhar" },
+  { id: "shared_clue", label: "Analisar" },
+  { id: "pause", label: "Relacionar" },
+] as const;
 
+function phaseDescription(phase: GamePhase, currentPlayerName?: string) {
   if (phase === "turn") {
     return `Vez de ${currentPlayerName ?? "investigador"}`;
   }
 
   if (phase === "roulette") {
-    return "A ordem está sendo definida.";
+    return "A ordem está sendo definida";
   }
 
   if (phase === "shared_clue") {
-    return "Todos analisam o fragmento aberto.";
+    return "A mesa analisa o fragmento aberto";
   }
 
   if (phase === "pause") {
-    return "Reorganize a tese.";
+    return "Relacione as evidências e reorganize a tese";
   }
 
-  return "Leia sem revelar demais.";
+  return "Leia o arquivo e seus fragmentos reservados";
 }
 
 export function GamePhasePanel({
+  actions,
   currentTurnIndex,
   phase,
   phaseLabel,
@@ -47,39 +55,65 @@ export function GamePhasePanel({
   const currentPlayerName = players[currentTurnIndex]?.name;
 
   return (
-    <section className="sticky top-2 z-20 mt-4 rounded-lg border border-[#d7b861]/35 bg-[#171b16]/95 p-3 shadow-2xl shadow-black/20 backdrop-blur sm:mt-5 sm:p-4">
-      <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
-        <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d7b861] sm:text-xs sm:tracking-[0.24em]">
-            Rodada {round}
-          </p>
-          <h2 className="mt-1 truncate text-xl font-bold text-[#fff3cf] sm:text-2xl">
-            {phaseLabel}
-          </h2>
-          <p className="mt-1 text-xs leading-5 text-stone-400 sm:text-sm">
-            {phaseDescription(phase, currentPlayerName)}
-          </p>
+    <section
+      className="sticky top-0 z-40 -mx-3 mt-3 border-y border-[#d7b861]/30 bg-[#10130f]/[0.98] px-3 py-3 shadow-[0_10px_24px_rgba(0,0,0,.2)] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+      aria-label="Estado atual da investigação"
+    >
+      <div className="mx-auto max-w-[1480px]">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#c8a24a] sm:text-xs">
+                Rodada {round}
+              </p>
+              <span aria-hidden="true" className="text-stone-700">/</span>
+              <h2 className="truncate text-sm font-black uppercase tracking-[0.12em] text-[#fff3cf] sm:text-base">
+                {phaseLabel}
+              </h2>
+            </div>
+            <p className="mt-1 truncate text-xs text-stone-400 sm:text-sm">
+              {phaseDescription(phase, currentPlayerName)}
+            </p>
+          </div>
+          <div>{actions}</div>
         </div>
 
-        {phase !== "roulette" ? (
-          <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
+        <div className="mt-3 hidden items-center gap-2 lg:flex" aria-label="Fluxo da rodada">
+          {phaseSteps.map((step, index) => {
+            const isCurrent = step.id === phase;
+
+            return (
+              <div className="flex min-w-0 flex-1 items-center gap-2" key={step.id}>
+                <div className={`min-w-0 border-t-2 pt-1.5 ${isCurrent ? "border-[#d7b861]" : "border-stone-800"}`}>
+                  <span className={`block truncate text-[10px] font-black uppercase tracking-[0.12em] ${isCurrent ? "text-[#fff3cf]" : "text-stone-600"}`}>
+                    {step.label}
+                  </span>
+                  {isCurrent ? <span className="mt-0.5 block text-[9px] font-black uppercase tracking-[0.14em] text-[#d7b861]">Agora</span> : null}
+                </div>
+                {index < phaseSteps.length - 1 ? <span aria-hidden="true" className="text-stone-700">›</span> : null}
+              </div>
+            );
+          })}
+        </div>
+
+        {phase !== "roulette" && players.length > 0 ? (
+          <ol className="scrollbar-none mt-3 flex gap-2 overflow-x-auto pb-0.5 text-xs" aria-label="Ordem da mesa">
             {players.map((player, index) => {
               const isCurrent = index === currentTurnIndex;
+              const isNext = index === currentTurnIndex + 1;
 
               return (
-                <span
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold sm:text-sm ${
-                    isCurrent
-                      ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
-                      : "border-stone-700 bg-[#0f120e] text-stone-300"
-                  }`}
-                  key={player.id}
-                >
-                  {player.name}
-                </span>
+                <li className="flex shrink-0 items-center gap-2" key={player.id}>
+                  {index > 0 ? <span aria-hidden="true" className="text-stone-700">→</span> : null}
+                  <span className={isCurrent ? "font-bold text-[#fff3cf]" : "text-stone-500"}>
+                    {player.name}
+                    {isCurrent ? <strong className="ml-1.5 text-[9px] uppercase tracking-[0.1em] text-[#d7b861]">Agora</strong> : null}
+                    {isNext ? <strong className="ml-1.5 text-[9px] uppercase tracking-[0.1em] text-stone-400">Próximo</strong> : null}
+                  </span>
+                </li>
               );
             })}
-          </div>
+          </ol>
         ) : null}
       </div>
     </section>

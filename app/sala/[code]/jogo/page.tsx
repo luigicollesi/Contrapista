@@ -9,11 +9,15 @@ import { FixedPhaseActions } from "@/components/game/fixed-phase-actions";
 import { GamePhasePanel } from "@/components/game/game-phase-panel";
 import {
   CaseDossier,
+  EvidenceLedger,
   EliminatedCluesArchive,
   EliminatedPlayerArchive,
   FinalSolutionSection,
+  GameTableRail,
+  MobileWorkspaceNav,
   PlayerCluesSection,
   ReadyInvestigationSection,
+  type GameWorkspaceView,
 } from "@/components/game/game-sections";
 import {
   GameHeader,
@@ -41,6 +45,29 @@ import {
 } from "@/lib/client-session";
 
 const EMPTY_USER_IDS: string[] = [];
+
+function workspaceColumns(
+  phase: GameState["phase"] | undefined,
+  isMyTurn: boolean,
+) {
+  if (phase === "reading") {
+    return "lg:grid-cols-[minmax(130px,10fr)_minmax(0,68fr)_minmax(240px,22fr)]";
+  }
+
+  if (phase === "turn" && isMyTurn) {
+    return "lg:grid-cols-[minmax(150px,12fr)_minmax(0,54fr)_minmax(280px,34fr)]";
+  }
+
+  if (phase === "turn") {
+    return "lg:grid-cols-[minmax(190px,18fr)_minmax(0,62fr)_minmax(220px,20fr)]";
+  }
+
+  if (phase === "pause") {
+    return "lg:grid-cols-[minmax(130px,9fr)_minmax(0,55fr)_minmax(280px,36fr)]";
+  }
+
+  return "lg:grid-cols-[minmax(150px,12fr)_minmax(0,62fr)_minmax(250px,26fr)]";
+}
 
 function hashString(value: string) {
   let hash = 2166136261;
@@ -136,6 +163,10 @@ export default function GamePage() {
   const isLoadingRoomRef = useRef(false);
   const [isSubmittingGuess, setIsSubmittingGuess] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const [mobileWorkspaceView, setMobileWorkspaceView] =
+    useState<GameWorkspaceView>("dossier");
+  const hasSelectedWorkspaceViewRef = useRef(false);
+  const lastAutoWorkspacePhaseRef = useRef("");
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -409,6 +440,34 @@ export default function GamePage() {
       })
       .filter((group): group is NonNullable<typeof group> => Boolean(group));
   }, [eliminatedUserIds, gameCase, room]);
+
+  useEffect(() => {
+    const autoWorkspaceKey = `${currentPhaseKey}:${isEliminated}`;
+
+    if (
+      !gameStarted ||
+      !gameState ||
+      hasSelectedWorkspaceViewRef.current ||
+      lastAutoWorkspacePhaseRef.current === autoWorkspaceKey
+    ) {
+      return;
+    }
+
+    lastAutoWorkspacePhaseRef.current = autoWorkspaceKey;
+
+    if (gameState.phase === "pause") {
+      return;
+    }
+
+    if (isEliminated || isMyTurn) {
+      setMobileWorkspaceView("evidence");
+      return;
+    }
+
+    setMobileWorkspaceView(
+      gameState.phase === "reading" ? "dossier" : "table",
+    );
+  }, [currentPhaseKey, gameStarted, gameState, isEliminated, isMyTurn]);
 
   async function postGameAction(path: "ready" | "skip") {
     if (!userId) {
@@ -761,22 +820,22 @@ export default function GamePage() {
 
   return (
     <GameShell>
-      {gameState && gameStarted ? (
-        <FixedPhaseActions
-          activeUserCount={activeUsers.length}
-          canSkipPhase={canSkipPhase}
-          hasVotedToSkip={hasVotedToSkip}
-          onSkip={() => postGameAction("skip")}
-          skipVoteCount={skipVoteIds.length}
-          timerEndsAt={fixedTimerEndsAt}
-          timerLabel={fixedTimerLabel}
-        />
-      ) : null}
-      <section className="relative mx-auto w-full max-w-7xl">
+      <section className="relative mx-auto w-full max-w-[1480px]">
         <GameHeader code={code} isLeaving={isLeaving} onLeave={leaveRoom} />
 
         {gameState && gameStarted ? (
           <GamePhasePanel
+            actions={
+              <FixedPhaseActions
+                activeUserCount={activeUsers.length}
+                canSkipPhase={canSkipPhase}
+                hasVotedToSkip={hasVotedToSkip}
+                onSkip={() => postGameAction("skip")}
+                skipVoteCount={skipVoteIds.length}
+                timerEndsAt={fixedTimerEndsAt}
+                timerLabel={fixedTimerLabel}
+              />
+            }
             currentTurnIndex={gameState.currentTurnIndex}
             phase={gameState.phase}
             phaseLabel={phaseLabel}
@@ -786,7 +845,7 @@ export default function GamePage() {
         ) : null}
 
         {error ? (
-          <p className="mt-6 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
+          <p className="mt-5 border-l-2 border-red-400 bg-red-950/35 px-4 py-3 text-sm font-medium text-red-100" aria-live="polite">
             {error}
           </p>
         ) : null}
@@ -804,30 +863,56 @@ export default function GamePage() {
           />
         ) : null}
 
-        {gameCase && gameStarted ? (
-          <>
-            <CaseDossier gameCase={gameCase} />
+        {gameCase && gameState && gameStarted ? (
+          <div key={gameState.matchId ?? gameCase.id} className="game-workspace-enter">
+            <MobileWorkspaceNav
+              activeView={mobileWorkspaceView}
+              evidenceLabel={isEliminated ? "Arquivo" : "Pistas"}
+              onSelect={(view) => {
+                hasSelectedWorkspaceViewRef.current = true;
+                setMobileWorkspaceView(view);
+              }}
+            />
 
-            {!isEliminated ? (
-              <PlayerCluesSection
-                clues={playerClues}
-                onSelectClue={setSelectedClue}
-                sharedClueIds={mySharedClueIds}
-              />
-            ) : null}
+            <div
+              className={`mt-4 min-w-0 lg:grid lg:items-stretch lg:gap-px lg:bg-[#d7b861]/20 lg:transition-[grid-template-columns] lg:duration-300 motion-reduce:transition-none ${workspaceColumns(gameState.phase, isMyTurn)}`}
+            >
+              <aside className={`${mobileWorkspaceView === "table" ? "block" : "hidden"} game-workspace-view min-w-0 bg-[#11140f] px-4 py-5 lg:block lg:min-h-[36rem]`}>
+                <GameTableRail
+                  currentTurnUserId={gameState.phase === "turn" || gameState.phase === "shared_clue" ? currentTurnUserId : null}
+                  currentUserId={userId}
+                  eliminatedUserIds={eliminatedUserIds}
+                  order={gameState.order}
+                  users={room?.users ?? []}
+                />
+              </aside>
 
-            {!isEliminated && eliminatedClueGroups.length > 0 ? (
-              <EliminatedCluesArchive groups={eliminatedClueGroups} />
-            ) : null}
+              <div className={`${mobileWorkspaceView === "dossier" ? "block" : "hidden"} game-workspace-view min-w-0 lg:block`}>
+                <CaseDossier gameCase={gameCase} />
+              </div>
 
-            {isEliminated ? (
-              <EliminatedPlayerArchive gameCase={gameCase} />
-            ) : null}
+              <aside className={`${mobileWorkspaceView === "evidence" ? "block" : "hidden"} game-workspace-view min-w-0 lg:block`}>
+                <EvidenceLedger isMyTurn={isMyTurn}>
+                  {!isEliminated ? (
+                    <PlayerCluesSection
+                      clues={playerClues}
+                      isMyTurn={isMyTurn}
+                      onSelectClue={setSelectedClue}
+                      sharedClueIds={mySharedClueIds}
+                    />
+                  ) : null}
 
-            {!isEliminated ? (
-              <FinalSolutionSection onOpen={openSolution} />
-            ) : null}
-          </>
+                  {!isEliminated && eliminatedClueGroups.length > 0 ? (
+                    <EliminatedCluesArchive groups={eliminatedClueGroups} />
+                  ) : null}
+
+                  {isEliminated ? <EliminatedPlayerArchive gameCase={gameCase} /> : null}
+
+                  {!isEliminated ? <FinalSolutionSection onOpen={openSolution} /> : null}
+                </EvidenceLedger>
+              </aside>
+            </div>
+          </div>
         ) : null}
       </section>
       {renderModal()}

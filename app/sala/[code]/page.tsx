@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type SubmitEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { FriendNetworkPanel } from "@/components/public/friend-network-panel";
@@ -1103,6 +1103,8 @@ export default function RoomPage() {
   );
   const readyCount =
     room?.users.filter((user) => hasCompleteProfile(user) && user.ready).length ?? 0;
+  const pendingUsers =
+    room?.users.filter((user) => !hasCompleteProfile(user) || !user.ready) ?? [];
   const canSubmitProfile = currentUser ? Boolean(color) : true;
   const roomMemberAccountIds = new Set(
     room?.users
@@ -1113,198 +1115,35 @@ export default function RoomPage() {
   const canUseSocial = Boolean(room && !isMatchmadeRoom && !room.activecase);
 
   return (
-    <main className="sy-theme min-h-screen overflow-hidden bg-[#10130f] px-3 py-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
+    <main className="sy-theme min-h-screen overflow-x-hidden bg-[#10130f] px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 text-stone-50 sm:px-6 sm:py-8 lg:px-8">
       <div className="absolute inset-0 opacity-20">
         <div className="h-full w-full bg-[linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px)] bg-[size:72px_72px]" />
       </div>
-      <section className="relative mx-auto w-full max-w-7xl">
-        <header className="grid gap-4 border-b border-[#d7b861]/25 pb-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end sm:pb-6">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#c8a24a] sm:text-sm sm:tracking-[0.28em]">
-                Sala reservada
-              </p>
-              {currentUser ? (
-                <LeaveRoomButton onClick={leave} />
-              ) : (
-                <Link
-                  className="text-sm font-semibold text-[#d7b861]"
-                  href="/"
-                >
-                  Voltar ao início
-                </Link>
-              )}
-            </div>
-            <h1 className="mt-2 font-serif text-3xl font-bold leading-tight text-[#fff3cf] sm:text-5xl">
-              Ante-sala do caso
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300 sm:mt-3 sm:text-base">
-              Escolha uma cor e confirme presença.
-            </p>
-          </div>
-          <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 rounded-lg border border-[#d7b861]/40 bg-[#171b16] px-4 py-3 shadow-2xl shadow-black/25 sm:block sm:px-6 sm:py-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#c8a24a]">
-              Código
-            </p>
-            <p className="justify-self-end font-mono text-3xl font-bold tracking-[0.24em] text-[#fff3cf] sm:mt-1 sm:text-4xl sm:tracking-[0.32em]">
-              {code}
-            </p>
-            <p className="col-span-2 mt-1 text-sm text-stone-400 sm:mt-2">
-              {readyCount}/{room?.userCount ?? 0} prontos
-            </p>
-          </div>
-        </header>
-
-        {showProfileForm ? (
-          <form
-            className="mt-6 grid gap-5 rounded-lg border border-[#d7b861]/30 bg-[#171b16] p-5 shadow-2xl shadow-black md:grid-cols-[1fr_auto] lg:p-6"
-            onSubmit={currentUser ? updateUser : join}
-          >
-            <div>
-              <p className="text-sm font-semibold text-[#d7b861]">
-                Identificação
-              </p>
-              <p className="mt-2 rounded-lg border border-stone-700 bg-[#0f120e] px-4 py-3 text-lg font-semibold text-[#fff3cf]">
-                {currentUser ? getUserName(currentUser) : "Entrar com seu nome"}
-              </p>
-
-              {currentUser ? (
-              <div className="mt-5">
-                <p className="text-sm font-semibold text-[#d7b861]">
-                  Cor exclusiva
-                </p>
-                <div className="mt-3 flex flex-wrap gap-3">
-                  {colorOptions.map(([key, option]) => {
-                    const isUsed = usedColors.has(key);
-
-                    return (
-                      <button
-                        aria-label={`Escolher ${option.name}`}
-                        className={`flex h-14 min-w-32 items-center gap-3 rounded-lg border px-3 text-left transition ${
-                          color === key
-                            ? "border-[#fff3cf] bg-white/10"
-                            : "border-stone-700 bg-[#0f120e]"
-                        } ${
-                          isUsed
-                            ? "cursor-not-allowed opacity-35"
-                            : "hover:border-[#d7b861]"
-                        }`}
-                        disabled={isUsed}
-                        key={key}
-                        onClick={() => setColor(key)}
-                        title={isUsed ? "Cor já escolhida" : option.name}
-                        type="button"
-                      >
-                        <span
-                          className="h-7 w-7 rounded-full border border-white/30"
-                          style={{ backgroundColor: option.hex }}
-                        />
-                        <span className="font-semibold text-stone-100">
-                          {option.name}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+      <section className="relative mx-auto w-full max-w-[1480px]">
+        <header className="border-b border-[#d7b861]/25 pb-4 sm:pb-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-bold uppercase tracking-[0.2em] text-[#c8a24a]">
+                <span>Ante-sala</span>
+                <span aria-hidden="true" className="text-stone-700">/</span>
+                <span>{isMatchmadeRoom ? (room?.mode === "ranked" ? "Ranqueada" : "Casual") : "Personalizada"}</span>
               </div>
-              ) : (
-                <p className="mt-4 max-w-xl text-sm leading-6 text-stone-300">
-                  Entre, escolha uma cor e aguarde a mesa.
-                </p>
-              )}
+              <h1 className="mt-2 text-balance font-serif text-3xl font-bold leading-tight text-[#fff3cf] sm:text-4xl">
+                Sala de investigação
+              </h1>
             </div>
 
-            <div className="flex flex-col gap-3 self-end sm:flex-row md:flex-col">
-              {currentUser ? (
-                <button
-                  className="h-14 rounded-lg border border-stone-600 px-8 font-semibold text-stone-100 transition hover:bg-white/10"
-                  onClick={() => {
-                    setIsEditing(false);
-                    setColor(currentUser.color ?? "");
-                  }}
-                  type="button"
-                >
-                  Cancelar
-                </button>
-              ) : null}
-              <button
-                className="h-14 rounded-lg bg-[#d7b861] px-8 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={isSaving || !canSubmitProfile}
-                type="submit"
-              >
-                {currentUser ? "Salvar cor" : "Entrar na mesa"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div
-            className="current-player-card mt-6 flex flex-col justify-between gap-4 rounded-lg border px-5 py-4 shadow-2xl shadow-black/20 sm:flex-row sm:items-center"
-            style={{
-              borderColor: `${getUserColorHex(currentUser.color)}66`,
-              "--player-color": getUserColorHex(currentUser.color),
-            } as CSSProperties}
-          >
-            <div className="flex items-center gap-4">
-              <span
-                className="h-12 w-12 rounded-full border-2 border-white/50"
-                style={{ backgroundColor: getUserColorHex(currentUser.color) }}
-              />
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#d7b861]">
-                  Sua identificação
-                </p>
-                <p className="text-2xl font-bold text-[#fff3cf]">
-                  {getUserName(currentUser)}
-                </p>
-                <p className="text-sm text-stone-300">
-                  {getUserColorName(currentUser.color)}
-                </p>
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+              <div className="flex items-baseline gap-2 border-l border-[#d7b861]/25 pl-4">
+                <span className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">Código</span>
+                <strong className="font-mono text-2xl tabular-nums tracking-[0.22em] text-[#fff3cf]" translate="no">{code}</strong>
               </div>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <button
-                className="h-11 rounded-lg border border-stone-600 bg-[#0f120e] px-5 font-semibold text-stone-100 shadow-sm transition hover:border-[#d7b861]"
-                onClick={() => {
-                  setColor(currentUser.color ?? "");
-                  setIsEditing(true);
-                }}
-                type="button"
-              >
-                Alterar cor
-              </button>
-              <button
-                className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] shadow-sm transition hover:bg-[#f3dfaa]"
-                disabled={!currentUserHasProfile}
-                onClick={() => toggleReady(!currentUser.ready)}
-                type="button"
-              >
-                {currentUser.ready ? "Cancelar pronto" : "Pronto"}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {error ? (
-          <p className="mt-5 rounded-lg border border-red-400/30 bg-red-950/50 px-4 py-3 text-sm font-medium text-red-100">
-            {error}
-          </p>
-        ) : null}
-
-        {notice ? (
-          <p className="mt-5 rounded-lg border border-[#d7b861]/35 bg-[#2d2818]/80 px-4 py-3 text-sm font-medium text-[#fff3cf]">
-            {notice}
-          </p>
-        ) : null}
-
-        <section className="mt-8">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-serif text-3xl font-bold text-[#fff3cf]">
-              Participantes na mesa
-            </h2>
-            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold tabular-nums text-stone-300" aria-live="polite">
+                <span className="text-[#d7b861]">{readyCount}</span>/{room?.userCount ?? 0} prontos
+              </p>
               {canUseSocial ? (
                 <button
-                  className="rounded-full border border-[#d7b861]/40 bg-[#171b16] px-4 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-[#fff3cf] transition hover:bg-[#d7b861]/10"
+                  className="inline-flex h-10 items-center border-b border-[#d7b861]/45 px-1 text-xs font-black uppercase tracking-[0.16em] text-[#fff3cf] transition-colors hover:border-[#fff3cf] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] focus-visible:ring-offset-4 focus-visible:ring-offset-[#10130f]"
                   onClick={() => {
                     setSocialMessage("");
                     setIsSocialOpen(true);
@@ -1314,72 +1153,159 @@ export default function RoomPage() {
                   Social
                 </button>
               ) : null}
-              <span className="rounded-full border border-[#d7b861]/40 bg-[#171b16] px-3 py-1 text-sm font-semibold text-[#d7b861]">
-                {room?.userCount ?? 0}
-              </span>
+              {currentUser ? (
+                <LeaveRoomButton onClick={leave} />
+              ) : (
+                <Link
+                  className="text-sm font-semibold text-[#d7b861] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
+                  href="/"
+                >
+                  Voltar ao início
+                </Link>
+              )}
             </div>
           </div>
+        </header>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {room?.users.map((user, index) => (
-              <article
-                className="player-card relative overflow-hidden rounded-lg border bg-[#171b16] p-5 shadow-2xl shadow-black/20"
-                key={user.id}
-                style={{
-                  borderColor: `${getUserColorHex(user.color)}66`,
-                }}
-              >
-                <div
-                  className="absolute inset-x-0 top-0 h-2"
-                  style={{ backgroundColor: getUserColorHex(user.color) }}
-                />
-                {index === 0 && !isMatchmadeRoom ? (
-                  <div className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-[#d7b861]/60 bg-[#0f120e] text-lg text-[#d7b861] shadow-lg" title="Líder da investigação">
-                    ♛
-                  </div>
+        <div className="mt-5 grid gap-x-7 gap-y-7 lg:grid-cols-[minmax(180px,0.72fr)_minmax(0,2.2fr)_minmax(230px,0.9fr)] xl:gap-x-10">
+          <aside className="order-1 min-w-0 border-b border-[#d7b861]/20 pb-6 lg:order-none lg:border-b-0 lg:border-l lg:border-[#d7b861]/20 lg:pb-0 lg:pl-6 lg:[grid-column:3] lg:[grid-row:1]" aria-labelledby="current-player-heading">
+
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#c8a24a]">Sua posição</p>
+            <h2 id="current-player-heading" className="mt-2 text-balance font-serif text-2xl font-bold text-[#fff3cf]">
+              {currentUser ? getUserName(currentUser) : "Identificação"}
+            </h2>
+
+            {showProfileForm ? (
+              <form className="mt-5" onSubmit={currentUser ? updateUser : join}>
+                <p className="text-sm leading-6 text-stone-400">
+                  {currentUser ? "Escolha uma cor exclusiva para ocupar seu lugar na mesa." : "Entre na mesa para escolher sua identificação."}
+                </p>
+                {currentUser ? (
+                  <fieldset className="mt-5">
+                    <legend className="text-xs font-bold uppercase tracking-[0.16em] text-stone-400">Cor exclusiva</legend>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {colorOptions.map(([key, option]) => {
+                        const isUsed = usedColors.has(key);
+
+                        return (
+                          <button
+                            aria-label={`Escolher ${option.name}`}
+                            aria-pressed={color === key}
+                            className={`h-10 w-10 rounded-full border-2 transition-[border-color,opacity,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] focus-visible:ring-offset-2 focus-visible:ring-offset-[#10130f] ${color === key ? "scale-110 border-[#fff3cf]" : "border-white/25"} ${isUsed ? "cursor-not-allowed opacity-25" : "hover:scale-105 hover:border-[#d7b861]"}`}
+                            disabled={isUsed}
+                            key={key}
+                            onClick={() => setColor(key)}
+                            style={{ backgroundColor: option.hex }}
+                            title={isUsed ? `${option.name}: cor já escolhida` : option.name}
+                            type="button"
+                          />
+                        );
+                      })}
+                    </div>
+                    {color ? <p className="mt-3 text-sm text-stone-300">{PLAYER_COLORS[color].name}</p> : null}
+                  </fieldset>
                 ) : null}
-
-                <div className="flex items-start justify-between gap-4 pt-3">
-                  <div className="min-w-0 pr-12">
-                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#d7b861]">
-                      {getUserColorName(user.color)}
-                      {user.id === userId ? " / Você" : ""}
-                      {index === 0 && !isMatchmadeRoom ? " / Líder" : ""}
-                    </p>
-                    <h3 className="mt-2 truncate text-3xl font-black text-[#fff3cf]">
-                      {getUserName(user)}
-                    </h3>
-                  </div>
-                  <span
-                    className="h-14 w-14 shrink-0 rounded-full border-2 border-white/40 shadow-lg"
-                    style={{ backgroundColor: getUserColorHex(user.color) }}
-                  />
-                </div>
-                <div className="mt-5 flex items-center justify-between border-t border-stone-700 pt-4">
-                  <span className="text-sm text-stone-400">Status</span>
-                  <span
-                    className={`rounded-full px-3 py-1 text-sm font-bold ${
-                      user.ready
-                        ? "bg-[#d7b861] text-[#17130d]"
-                        : "bg-stone-800 text-stone-300"
-                    }`}
+                <div className="mt-5 grid gap-2">
+                  <button
+                    className="min-h-12 bg-[#d7b861] px-4 font-bold text-[#17130d] transition-colors hover:bg-[#f3dfaa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff3cf] focus-visible:ring-offset-2 focus-visible:ring-offset-[#10130f] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSaving || !canSubmitProfile}
+                    type="submit"
                   >
-                    {user.ready ? "Pronto" : "Aguardando"}
-                  </span>
+                    {isSaving ? "Salvando…" : currentUser ? "Salvar cor" : "Entrar na mesa"}
+                  </button>
+                  {currentUser ? (
+                    <button
+                      className="min-h-11 border border-stone-700 px-4 font-semibold text-stone-200 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
+                      onClick={() => {
+                        setIsEditing(false);
+                        setColor(currentUser.color ?? "");
+                      }}
+                      type="button"
+                    >
+                      Cancelar
+                    </button>
+                  ) : null}
                 </div>
-              </article>
-            ))}
+              </form>
+            ) : (
+              <div className="mt-4">
+                <div className="flex items-center gap-3 border-y border-[#d7b861]/15 py-4">
+                  <span className="h-11 w-11 shrink-0 rounded-full border-2 border-white/35" style={{ backgroundColor: getUserColorHex(currentUser.color) }} />
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-[#fff3cf]">{getUserColorName(currentUser.color)}</p>
+                    <button
+                      className="mt-1 text-sm font-semibold text-[#d7b861] underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
+                      onClick={() => {
+                        setColor(currentUser.color ?? "");
+                        setIsEditing(true);
+                      }}
+                      type="button"
+                    >
+                      Alterar cor
+                    </button>
+                  </div>
+                </div>
+                <div className="py-4">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-stone-400">Seu status</span>
+                    <strong className={currentUser.ready ? "text-emerald-300" : "text-stone-200"}>{currentUser.ready ? "Pronto" : "Aguardando"}</strong>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-sm tabular-nums">
+                    <span className="text-stone-400">Mesa</span>
+                    <strong className="text-stone-200">{readyCount}/{room?.userCount ?? 0} prontos</strong>
+                  </div>
+                  {pendingUsers.length > 0 ? (
+                    <p className="mt-4 text-sm leading-6 text-stone-400">
+                      Faltam: <span className="text-stone-200">{pendingUsers.map(getUserName).join(", ")}</span>
+                    </p>
+                  ) : (
+                    <p className="mt-4 text-sm font-semibold text-emerald-300">Todos estão prontos.</p>
+                  )}
+                </div>
+                <button
+                  className={`min-h-12 w-full px-4 font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#10130f] disabled:cursor-not-allowed disabled:opacity-60 ${currentUser.ready ? "border border-[#d7b861]/50 text-[#fff3cf] hover:bg-[#d7b861]/10 focus-visible:ring-[#d7b861]" : "bg-[#d7b861] text-[#17130d] hover:bg-[#f3dfaa] focus-visible:ring-[#fff3cf]"}`}
+                  disabled={!currentUserHasProfile || isSaving}
+                  onClick={() => toggleReady(!currentUser.ready)}
+                  type="button"
+                >
+                  {isSaving ? "Atualizando…" : currentUser.ready ? "Cancelar pronto" : "Pronto"}
+                </button>
+              </div>
+            )}
 
-            {room && room.users.length === 0 ? (
-              <p className="rounded-lg border border-dashed border-stone-600 bg-[#171b16] p-6 text-stone-400">
-                Ainda não há participantes na mesa.
-              </p>
-            ) : null}
-          </div>
-        </section>
+            {error ? <p className="mt-5 border-l-2 border-red-400 bg-red-950/30 px-3 py-2 text-sm text-red-100" aria-live="polite">{error}</p> : null}
+            {notice ? <p className="mt-5 border-l-2 border-[#d7b861] bg-[#2d2818]/45 px-3 py-2 text-sm text-[#fff3cf]" aria-live="polite">{notice}</p> : null}
+          </aside>
+
+          <aside className="order-2 min-w-0 border-b border-[#d7b861]/20 pb-6 lg:order-none lg:border-b-0 lg:border-r lg:border-[#d7b861]/20 lg:pb-0 lg:pr-6 lg:[grid-column:1] lg:[grid-row:1]" aria-labelledby="participants-heading">
+            <div className="flex items-end justify-between gap-3 border-b border-[#d7b861]/20 pb-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#c8a24a]">Mesa</p>
+                <h2 id="participants-heading" className="mt-1 font-serif text-2xl font-bold text-[#fff3cf]">Participantes</h2>
+              </div>
+              <span className="font-mono text-sm tabular-nums text-stone-400">{room?.userCount ?? 0}</span>
+            </div>
+            <ol className="divide-y divide-stone-800">
+              {room?.users.map((user, index) => (
+                <li className="flex min-w-0 items-center gap-3 py-3" key={user.id}>
+                  <span className="h-3 w-3 shrink-0 rounded-full border border-white/30" style={{ backgroundColor: getUserColorHex(user.color) }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-[#fff3cf]">{getUserName(user)}</p>
+                    <p className="mt-0.5 truncate text-[11px] font-semibold uppercase tracking-[0.1em] text-stone-500">
+                      {index === 0 && !isMatchmadeRoom ? "Líder" : "Investigador"}{user.id === userId ? " · Você" : ""}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-[11px] font-bold uppercase tracking-[0.08em] ${user.ready ? "text-emerald-300" : "text-stone-500"}`}>{user.ready ? "Pronto" : "Aguarda"}</span>
+                </li>
+              ))}
+            </ol>
+            {room && room.users.length === 0 ? <p className="py-5 text-sm text-stone-400">Ainda não há participantes na mesa.</p> : null}
+          </aside>
+
+          <div className="order-3 min-w-0 lg:order-none lg:[grid-column:2] lg:[grid-row:1]">
 
         {isMatchmadeRoom ? (
-          <section className="mt-7 rounded-lg border border-[#d7b861]/25 bg-[#171b16] px-6 py-5 shadow-2xl shadow-black/20">
+          <section className="border-b border-[#d7b861]/20 pb-7">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
               Partida pareada
             </p>
@@ -1393,9 +1319,10 @@ export default function RoomPage() {
           </section>
         ) : (
           <>
-          <section className="mt-7 rounded-lg border border-[#d7b861]/30 bg-[#171b16] px-6 py-5 shadow-2xl shadow-black/20">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div>
+          <section className="border-b border-[#d7b861]/25 pb-7">
+            <div>
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+                <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
                   Caso da mesa
                 </p>
@@ -1406,7 +1333,8 @@ export default function RoomPage() {
                       ? "Escolha automática"
                       : "Geração de caso"}
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
+                </div>
+                <p className="max-w-md text-sm leading-6 text-stone-300 sm:text-right">
                   {room?.caseSelectionMode === "manual"
                     ? `A sala irá direto para o jogo quando todos ficarem prontos${selectedCase ? `: ${selectedCase.title}` : "."}`
                     : room?.caseSelectionMode === "automatic"
@@ -1416,93 +1344,72 @@ export default function RoomPage() {
               </div>
               <div
                 aria-label="Modo de caso da mesa"
-                className="grid w-full gap-2 sm:grid-cols-3 lg:w-[34rem]"
+                className="mt-6 flex w-full overflow-x-auto border-b border-stone-700"
                 role="radiogroup"
               >
                 <button
                   aria-checked={caseSelectionMode === "generate"}
-                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`min-h-11 flex-1 border-b-2 px-3 py-2 text-center text-sm font-black uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50 ${
                     caseSelectionMode === "generate"
-                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
-                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                      ? "border-[#d7b861] text-[#fff3cf]"
+                      : "border-transparent text-stone-400 hover:border-stone-500 hover:text-stone-100"
                   }`}
                   disabled={!canEditConfig || isSaving || caseSelectionMode === "generate"}
                   onClick={() => updateCaseSelectionMode({ mode: "generate" })}
                   role="radio"
                   type="button"
                 >
-                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
-                    Gerar
-                    <span
-                      className={`h-3 w-3 rounded-full border ${
-                        caseSelectionMode === "generate"
-                          ? "border-[#17130d] bg-[#17130d]"
-                          : "border-stone-500"
-                      }`}
-                    />
-                  </span>
-                  <span className="mt-2 block text-xs leading-5 opacity-85">
-                    Cria um caso novo.
-                  </span>
+                  Gerar
                 </button>
                 <button
                   aria-checked={caseSelectionMode === "automatic"}
-                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`min-h-11 flex-1 border-b-2 px-3 py-2 text-center text-sm font-black uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50 ${
                     caseSelectionMode === "automatic"
-                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
-                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                      ? "border-[#d7b861] text-[#fff3cf]"
+                      : "border-transparent text-stone-400 hover:border-stone-500 hover:text-stone-100"
                   }`}
                   disabled={!canEditConfig || isSaving || caseSelectionMode === "automatic"}
                   onClick={() => updateCaseSelectionMode({ mode: "automatic" })}
                   role="radio"
                   type="button"
                 >
-                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
-                    Automático
-                    <span
-                      className={`h-3 w-3 rounded-full border ${
-                        caseSelectionMode === "automatic"
-                          ? "border-[#17130d] bg-[#17130d]"
-                          : "border-stone-500"
-                      }`}
-                    />
-                  </span>
-                  <span className="mt-2 block text-xs leading-5 opacity-85">
-                    Sorteia um caso compatível.
-                  </span>
+                  Automático
                 </button>
                 <button
                   aria-checked={caseSelectionMode === "manual"}
-                  className={`min-h-24 rounded-lg border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`min-h-11 flex-1 border-b-2 px-3 py-2 text-center text-sm font-black uppercase tracking-[0.1em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50 ${
                     caseSelectionMode === "manual"
-                      ? "border-[#f3dfaa] bg-[#d7b861] text-[#17130d] shadow-[0_0_0_3px_rgba(215,184,97,0.22)]"
-                      : "border-[#d7b861]/25 bg-[#0f120e] text-stone-200 hover:border-[#d7b861]/75 hover:bg-[#171b16]"
+                      ? "border-[#d7b861] text-[#fff3cf]"
+                      : "border-transparent text-stone-400 hover:border-stone-500 hover:text-stone-100"
                   }`}
                   disabled={!canEditConfig || isSaving}
                   onClick={openCasePicker}
                   role="radio"
                   type="button"
                 >
-                  <span className="flex items-center justify-between gap-2 text-sm font-black uppercase tracking-[0.12em]">
-                    Manual
-                    <span
-                      className={`h-3 w-3 rounded-full border ${
-                        caseSelectionMode === "manual"
-                          ? "border-[#17130d] bg-[#17130d]"
-                          : "border-stone-500"
-                      }`}
-                    />
-                  </span>
-                  <span className="mt-2 block text-xs leading-5 opacity-85">
-                    {selectedCase ? selectedCase.title : "Escolha no arquivo."}
-                  </span>
+                  Manual
                 </button>
+              </div>
+              <div className="mt-5 border-l-2 border-[#d7b861]/35 pl-4 text-sm leading-6 text-stone-300">
+                {caseSelectionMode === "generate" ? <p>Um dossiê inédito será criado para esta mesa quando todos estiverem prontos.</p> : null}
+                {caseSelectionMode === "automatic" ? <p>A mesa sorteará um caso pronto compatível com o número atual de investigadores.</p> : null}
+                {caseSelectionMode === "manual" ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-serif text-xl font-bold text-[#fff3cf]">{selectedCase?.title ?? "Nenhum caso escolhido"}</p>
+                      {selectedCase ? <p className="mt-1 text-xs font-bold uppercase tracking-[0.12em] text-stone-500">{selectedCase.totalClues} pistas · {selectedCase.falseCluePercentage}% falsas</p> : null}
+                    </div>
+                    <button className="min-h-10 border border-[#d7b861]/45 px-4 text-sm font-bold text-[#fff3cf] transition-colors hover:bg-[#d7b861]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:opacity-50" disabled={!canEditConfig || isSaving} onClick={openCasePicker} type="button">
+                      {selectedCase ? "Trocar caso" : "Escolher caso"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </section>
 
-        <section className="mt-7 overflow-hidden rounded-lg border border-[#d7b861]/30 bg-[#171b16] shadow-2xl shadow-black/25">
-          <div className="border-b border-[#d7b861]/20 bg-[#0f120e] px-6 py-5">
+        <section className="pt-7">
+          <div className="border-b border-[#d7b861]/20 pb-5">
             <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
@@ -1515,12 +1422,12 @@ export default function RoomPage() {
                   Ajuste o ritmo e salve antes da largada.
                 </p>
               </div>
-              <div className={`rounded-lg border px-4 py-3 text-sm font-semibold ${
+              <div className={`border-l-2 px-3 py-1 text-sm font-semibold ${
                 canEditConfig
                   ? isConfigDirty
-                    ? "border-[#d7b861]/50 bg-[#2a2112] text-[#fff3cf]"
-                    : "border-emerald-500/30 bg-emerald-950/30 text-emerald-100"
-                  : "border-stone-700 bg-[#171b16] text-stone-300"
+                    ? "border-[#d7b861] text-[#fff3cf]"
+                    : "border-emerald-500 text-emerald-100"
+                  : "border-stone-700 text-stone-300"
               }`}>
                 {canEditConfig
                   ? isConfigDirty
@@ -1530,29 +1437,26 @@ export default function RoomPage() {
               </div>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2 rounded-lg border border-[#d7b861]/20 bg-[#171b16] p-3 text-sm font-semibold text-stone-300">
-              <span className="rounded-full bg-[#0f120e] px-3 py-1">
+            <div className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold text-stone-400">
+              <span>
                 Timers {configDraft.timersEnabled ? "ligados" : "desligados"}
               </span>
-              <span className="rounded-full bg-[#0f120e] px-3 py-1">
+              <span>
                 {configDraft.trueCluesPerPlayer}% pistas verdadeiras
               </span>
-              <span className="rounded-full bg-[#0f120e] px-3 py-1">
+              <span>
                 Leitura {configDraft.readingTimeSeconds}s
               </span>
-              <span className="rounded-full bg-[#0f120e] px-3 py-1">
+              <span>
                 Palpite {configDraft.finalGuessTimeSeconds}s
               </span>
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="grid gap-3 sm:grid-cols-2">
+          <div className="pt-5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-[#d7b861]/15 pb-5">
+              <span className="mr-2 text-xs font-bold uppercase tracking-[0.16em] text-stone-500">Preset</span>
               {ROOM_CONFIG_PRESETS.map((preset) => {
-                const presetConfig = snapRoomConfigToPlayerCount(
-                  preset.config,
-                  room?.users.length ?? 1,
-                );
                 const isActivePreset = configsMatch(
                   configDraft,
                   preset.config,
@@ -1561,38 +1465,27 @@ export default function RoomPage() {
 
                 return (
                   <button
-                    className={`rounded-lg border px-4 py-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    className={`min-h-10 border px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50 ${
                       isActivePreset
-                        ? "border-[#d7b861] bg-[#d7b861] text-[#17130d] shadow-lg shadow-[#d7b861]/20"
-                        : "border-[#d7b861]/25 bg-[#0f120e] hover:border-[#d7b861] hover:bg-[#171b16]"
+                        ? "border-[#d7b861] bg-[#d7b861] text-[#17130d]"
+                        : "border-stone-700 text-stone-300 hover:border-[#d7b861] hover:text-[#fff3cf]"
                     }`}
                     disabled={!canEditConfig || isSaving}
                     key={preset.name}
                     onClick={() => applyConfigPreset(preset.config)}
                     type="button"
                   >
-                    <span className="flex items-center justify-between gap-3">
-                      <span className="font-serif text-xl font-bold">
-                        {preset.name}
-                      </span>
-                      {isActivePreset ? (
-                        <span className="rounded-full bg-[#17130d]/15 px-3 py-1 text-xs font-black uppercase tracking-[0.14em]">
-                          Ativo
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="mt-2 block text-sm leading-5 opacity-80">
-                      {presetConfig.cluesPerPlayer} pistas por pessoa, {presetConfig.trueCluesPerPlayer}% verdadeiras, resposta de {presetConfig.finalGuessTimeSeconds}s.
-                    </span>
+                    {preset.name.replace("Jogo ", "")}
                   </button>
                 );
               })}
+              <span className={`min-h-10 border px-4 py-2 text-sm font-bold ${ROOM_CONFIG_PRESETS.some((preset) => configsMatch(configDraft, preset.config, room?.users.length ?? 1)) ? "border-stone-800 text-stone-600" : "border-[#d7b861] text-[#fff3cf]"}`}>Personalizado</span>
             </div>
 
-            <div className="mt-5 space-y-5">
+            <div className="divide-y divide-[#d7b861]/15">
               {configGroups.map((group) => (
                 <div
-                  className="rounded-lg border border-[#d7b861]/25 bg-[#0f120e] p-4"
+                  className="py-6"
                   key={group.id}
                 >
                   <div className="flex flex-col justify-between gap-2 border-b border-[#d7b861]/15 pb-4 md:flex-row md:items-end">
@@ -1628,7 +1521,7 @@ export default function RoomPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <div className="mt-2 divide-y divide-stone-800">
                     {configFields
                       .filter((field) => field.group === group.id)
                       .map((field) => {
@@ -1663,7 +1556,7 @@ export default function RoomPage() {
 
                         return (
                           <div
-                            className="rounded-lg border border-stone-700 bg-[#171b16] p-4"
+                            className="grid gap-4 py-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.95fr)_140px] xl:items-center"
                             key={field.key}
                           >
                             <div className="flex items-start justify-between gap-4">
@@ -1675,15 +1568,15 @@ export default function RoomPage() {
                                   {field.description}
                                 </p>
                               </div>
-                              <span className="shrink-0 rounded-full border border-[#d7b861]/25 bg-[#0f120e] px-3 py-1 text-xs font-bold text-stone-400">
+                              <span className="shrink-0 text-xs font-bold tabular-nums text-stone-500">
                                 {effectiveMin}-{max}{field.suffix}
                               </span>
                             </div>
 
-                            <div className="mt-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+                            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
                               <button
                                 aria-label={`Diminuir ${field.label}`}
-                                className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-700 bg-[#0f120e] text-lg font-black text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex h-10 w-10 items-center justify-center border border-stone-700 text-lg font-black text-stone-100 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!canEditConfig || isSaving || value <= effectiveMin}
                                 onClick={() =>
                                   updateConfigDraft(field.key, String(decrementValue))
@@ -1707,7 +1600,7 @@ export default function RoomPage() {
                               />
                               <button
                                 aria-label={`Aumentar ${field.label}`}
-                                className="flex h-10 w-10 items-center justify-center rounded-lg border border-stone-700 bg-[#0f120e] text-lg font-black text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex h-10 w-10 items-center justify-center border border-stone-700 text-lg font-black text-stone-100 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!canEditConfig || isSaving || value >= max}
                                 onClick={() =>
                                   updateConfigDraft(field.key, String(incrementValue))
@@ -1718,14 +1611,11 @@ export default function RoomPage() {
                               </button>
                             </div>
 
-                            <div className="mt-3 flex items-center justify-between gap-3">
-                              <label className="text-xs font-semibold text-stone-500" htmlFor={`config-${field.key}`}>
-                                Valor exato
-                              </label>
+                            <div className="flex items-center justify-end gap-3">
                               <div className="flex items-center gap-2">
                                 <input
-                                  aria-label={`Valor exato de ${field.label}`}
-                                  className="h-10 w-24 rounded-lg border border-stone-700 bg-[#0f120e] px-3 text-center font-bold text-[#fff3cf] outline-none transition focus:border-[#d7b861] focus:ring-4 focus:ring-[#d7b861]/20 disabled:opacity-60"
+                                  aria-label={`Definir ${field.label}`}
+                                  className="h-10 w-24 border border-stone-700 bg-[#0f120e] px-3 text-center font-bold tabular-nums text-[#fff3cf] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:opacity-60"
                                   disabled={!canEditConfig || isSaving}
                                   id={`config-${field.key}`}
                                   max={max}
@@ -1758,31 +1648,28 @@ export default function RoomPage() {
               ))}
             </div>
 
-            {canEditConfig ? (
-              <div className="sticky bottom-4 z-10 mt-6 flex flex-col gap-3 rounded-lg border border-[#d7b861]/30 bg-[#10130f]/95 p-3 shadow-2xl shadow-black/30 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm font-semibold text-stone-300">
-                  {isConfigDirty
-                    ? "Revise e salve."
-                    : "Sem alterações pendentes."}
-                </p>
+            {canEditConfig && isConfigDirty ? (
+              <div className="sticky bottom-0 z-10 mt-6 flex flex-col gap-3 border-y border-[#d7b861]/45 bg-[#10130f] py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-bold text-[#fff3cf]">Alterações não salvas</p>
+                  <p className="mt-1 text-xs leading-5 text-stone-400">Salvar a mesa remove o status de pronto dos participantes.</p>
+                </div>
                 <div className="flex flex-wrap justify-end gap-3">
-                  {isConfigDirty ? (
                     <button
-                      className="h-11 rounded-lg border border-stone-600 bg-[#0f120e] px-5 font-semibold text-stone-100 transition hover:border-[#d7b861] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="h-11 border border-stone-600 px-5 font-semibold text-stone-100 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861] disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={isSaving}
                       onClick={cancelConfigChanges}
                       type="button"
                     >
                       Cancelar
                     </button>
-                  ) : null}
                   <button
-                    className="h-11 rounded-lg bg-[#d7b861] px-5 font-bold text-[#17130d] transition hover:bg-[#f3dfaa] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isSaving || !isConfigDirty}
+                    className="h-11 bg-[#d7b861] px-5 font-bold text-[#17130d] transition-colors hover:bg-[#f3dfaa] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#fff3cf] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isSaving}
                     onClick={saveRoomConfig}
                     type="button"
                   >
-                    {isSaving ? "Salvando" : "Salvar mesa"}
+                    {isSaving ? "Salvando…" : "Salvar mesa"}
                   </button>
                 </div>
               </div>
@@ -1791,11 +1678,15 @@ export default function RoomPage() {
         </section>
           </>
         )}
+          </div>
+        </div>
 
         {isSocialOpen && canUseSocial ? (
           <ResponsiveSheet
+            ariaLabelledBy="social-sheet-title"
             backdropClassName="bg-black/70 backdrop-blur-sm"
-            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:w-[48rem] sm:p-6"
+            contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:w-[34rem] sm:p-6"
+            side="right"
           >
             <div>
               <div className="flex items-start justify-between gap-4">
@@ -1803,7 +1694,7 @@ export default function RoomPage() {
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
                     Social
                   </p>
-                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  <h2 id="social-sheet-title" className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
                     Mesa e amigos
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
@@ -1812,11 +1703,11 @@ export default function RoomPage() {
                 </div>
                 <button
                   aria-label="Fechar social"
-                  className="h-9 w-9 rounded-lg border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d7b861]"
+                  className="h-9 w-9 border border-stone-600 text-lg font-bold text-stone-200 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
                   onClick={() => setIsSocialOpen(false)}
                   type="button"
                 >
-                  X
+                  ×
                 </button>
               </div>
 
@@ -1899,7 +1790,7 @@ export default function RoomPage() {
               </section>
 
               {socialMessage ? (
-                <p className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#2d2818]/80 px-4 py-3 text-sm font-semibold text-[#fff3cf]">
+                <p className="mt-4 rounded-lg border border-[#d7b861]/30 bg-[#2d2818]/80 px-4 py-3 text-sm font-semibold text-[#fff3cf]" aria-live="polite">
                   {socialMessage}
                 </p>
               ) : null}
@@ -1909,6 +1800,7 @@ export default function RoomPage() {
 
         {isCasePickerOpen ? (
           <ResponsiveSheet
+            ariaLabelledBy="case-picker-title"
             backdropClassName="bg-black/70 backdrop-blur-sm"
             contentClassName="max-w-3xl border border-[#d7b861]/35 bg-[#171b16] p-4 text-stone-50 shadow-black/50 sm:w-[48rem] sm:p-6"
           >
@@ -1918,7 +1810,7 @@ export default function RoomPage() {
                   <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#c8a24a]">
                     Arquivo de casos
                   </p>
-                  <h2 className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
+                  <h2 id="case-picker-title" className="mt-2 font-serif text-3xl font-bold text-[#fff3cf]">
                     Escolha um caso pronto
                   </h2>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
@@ -1927,17 +1819,17 @@ export default function RoomPage() {
                 </div>
                 <button
                   aria-label="Fechar seleção de caso"
-                  className="h-9 w-9 rounded-lg border border-stone-600 text-lg font-bold text-stone-200 transition hover:border-[#d7b861]"
+                  className="h-9 w-9 border border-stone-600 text-lg font-bold text-stone-200 transition-colors hover:border-[#d7b861] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d7b861]"
                   onClick={() => setIsCasePickerOpen(false)}
                   type="button"
                 >
-                  X
+                  ×
                 </button>
               </div>
 
               {isLoadingCases ? (
                 <p className="mt-6 rounded-lg border border-[#d7b861]/20 bg-[#0f120e] p-5 text-stone-300">
-                  Carregando casos...
+                  Carregando casos…
                 </p>
               ) : null}
 
